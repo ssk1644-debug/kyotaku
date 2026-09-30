@@ -1,0 +1,537 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>居宅営業管理システム</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap">
+</head><body>
+<style>
+/* Layout: 上部に現在地バー、中央に居宅カルテ（CMカード→利用者→記録）、下部に固定タブ。iPadでは2列。 */
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --line:#d9dfdc; --ink:#1c2826; --muted:#5d6c68;
+  --accent:#0d6e62; --accent-soft:#dcefeb; --notice:#9a5b00; --notice-soft:#fbefd9;
+  --alert:#b3261e; --alert-soft:#f9e1de;
+  --f-display:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121816; --surface:#1b2321; --line:#2e3a37; --ink:#e4ece9; --muted:#9aaba6;
+  --accent:#4cc2b1; --accent-soft:#16332e; --notice:#f0b458; --notice-soft:#3a2c14;
+  --alert:#ff8a80; --alert-soft:#3d1c19; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121816; --surface:#1b2321; --line:#2e3a37; --ink:#e4ece9; --muted:#9aaba6;
+  --accent:#4cc2b1; --accent-soft:#16332e; --notice:#f0b458; --notice-soft:#3a2c14;
+  --alert:#ff8a80; --alert-soft:#3d1c19; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;margin:0}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.35}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1100px;margin:0 auto;padding:12px 16px 110px}
+.num{font-variant-numeric:tabular-nums}
+
+/* 現在地バー */
+.locbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.locbar-in{max-width:1100px;margin:0 auto;padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.brand{font-family:var(--f-display);font-weight:700;font-size:16px;margin-right:auto}
+.brand small{display:block;font-family:var(--f-body);font-weight:400;font-size:11px;color:var(--muted);letter-spacing:.04em}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12.5px;border:1px solid var(--line);background:var(--bg)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.pill.on .dot{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.pill.off .dot{background:var(--alert)}
+select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-size:13px;max-width:100%}
+
+/* 到着バナー */
+.arrive{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;background:var(--accent);color:var(--surface);padding:12px 16px;border-radius:12px;margin:12px 0}
+.arrive b{font-family:var(--f-display);font-size:17px}
+.arrive .btn{background:var(--surface);color:var(--accent);border:0}
+
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:10px;font-weight:700;font-size:14px}
+.btn.primary{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+.btn.sm{padding:4px 10px;font-size:12.5px}
+
+/* 居宅ヘッダ */
+.ohead{padding:14px 0 6px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:flex-end}
+.ohead h1{font-size:22px}
+.meta{color:var(--muted);font-size:13px}
+.section-t{display:flex;align-items:baseline;gap:10px;margin:22px 0 10px}
+.section-t h2{font-size:16px}
+.section-t .meta{margin-left:auto}
+
+/* 連絡事項 */
+.notices{display:grid;gap:8px}
+.notice{background:var(--notice-soft);border-left:4px solid var(--notice);padding:10px 12px;border-radius:6px}
+.notice .from{font-size:12px;color:var(--notice);font-weight:700}
+
+/* CM */
+.cms{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.cm{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.cm.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.cm-top{display:flex;gap:12px;align-items:center}
+.avatar{width:52px;height:52px;border-radius:10px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:20px;flex:none;overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.cm h3{font-size:17px}
+.kana{font-size:11.5px;color:var(--muted);letter-spacing:.05em}
+.kv{display:grid;grid-template-columns:5.5em 1fr;gap:3px 8px;font-size:13.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--line)}
+.last{font-size:13px;background:var(--bg);border-radius:8px;padding:8px 10px}
+.last .meta{font-size:11.5px}
+
+/* 利用者 */
+.clients{display:grid;gap:8px}
+.client{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:grid;grid-template-columns:1fr auto;gap:4px 12px}
+.client .nm{font-weight:700}
+.status{font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;align-self:start;white-space:nowrap}
+.st-ok{background:var(--accent-soft);color:var(--accent)}
+.st-warn{background:var(--notice-soft);color:var(--notice)}
+.st-alert{background:var(--alert-soft);color:var(--alert)}
+.client .recent{grid-column:1/-1;font-size:13.5px}
+.client .items{grid-column:1/-1;font-size:12.5px;color:var(--muted)}
+
+/* 記録フォーム */
+.form{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px}
+.form label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.form input,.form select,.form textarea{padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:15px;width:100%}
+.form textarea{min-height:84px;resize:vertical}
+.row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.log{display:grid;gap:8px}
+.logi{border-left:3px solid var(--line);padding:4px 0 4px 12px;font-size:14px}
+.logi .meta{font-size:12px}
+
+/* 一覧 */
+.olist{display:grid;gap:8px}
+.oitem{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-align:left;width:100%}
+.oitem .dist{margin-left:auto;font-weight:700;color:var(--accent);white-space:nowrap}
+.oitem .t{min-width:0}
+.oitem .t b{display:block;font-family:var(--f-display)}
+.badge{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--notice-soft);color:var(--notice);font-weight:700;margin-left:4px}
+
+/* 名刺 */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.bcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.bcard .ph{aspect-ratio:91/55;max-width:100%;background:var(--bg);display:grid;place-items:center;color:var(--muted);font-size:12px}
+.bcard .ph img{width:100%;height:100%;object-fit:cover}
+.bcard .bd{padding:10px 12px;font-size:13.5px;display:grid;gap:2px}
+.bcard .bd b{font-size:15.5px;font-family:var(--f-display)}
+.search{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-bottom:12px;font-size:15px}
+.prev{max-width:260px;border-radius:8px;border:1px solid var(--line)}
+
+/* タブ */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabs-in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+.tab{background:none;border:0;padding:10px 4px 12px;font-size:12.5px;color:var(--muted);display:grid;justify-items:center;gap:2px}
+.tab svg{width:22px;height:22px}
+.tab[aria-current="true"]{color:var(--accent);font-weight:700}
+.empty{padding:30px 16px;text-align:center;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:14px}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:14px;z-index:9}
+.scan{display:flex!important;flex-direction:row;align-items:center;gap:14px;padding:16px;border:2px dashed var(--accent);border-radius:12px;background:var(--accent-soft);color:var(--accent)!important;cursor:pointer}
+.scan b{font-size:16px;font-family:var(--f-display)}
+.progress{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:14px}
+.spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:sp 0.8s linear infinite;vertical-align:-3px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.match{background:var(--accent-soft);border-radius:8px;padding:10px 12px;font-size:14px}
+.recbox{display:grid;gap:8px;padding:12px;border-radius:10px;background:var(--bg);border:1px solid var(--line)}
+.recbtn{color:var(--alert);border-color:var(--alert)}
+.recbtn.rec{background:var(--alert);color:var(--surface)}
+.recdot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--alert);margin-right:6px}
+@media (prefers-reduced-motion:no-preference){.recdot{animation:bl 1s infinite}}
+@keyframes bl{50%{opacity:.25}}
+.warnTxt{color:var(--alert);font-weight:700}
+.trans{white-space:pre-wrap;font-size:13px;background:var(--bg);padding:8px;border-radius:6px;max-height:200px;overflow:auto}
+.demo{font-size:11.5px;color:var(--muted);text-align:center;margin-top:28px}
+@media (min-width:900px){
+  .split{display:grid;grid-template-columns:1.25fr 1fr;gap:20px;align-items:start}
+}
+@media (prefers-reduced-motion:no-preference){.cm,.oitem{transition:border-color .15s}}
+</style>
+
+<header class="locbar">
+  <div class="locbar-in">
+    <div class="brand">居宅営業管理システム<small>アスポート 営業用 ・ 試作版（ダミーデータ）</small></div>
+    <span id="gpsPill" class="pill"><span class="dot"></span><span id="gpsText">位置を確認中…</span></span>
+    <select id="sim" class="sim" aria-label="位置を試す">
+      <option value="">📍 位置を試す（デモ）</option>
+    </select>
+  </div>
+</header>
+
+<main class="wrap" id="app"></main>
+
+<nav class="tabs" aria-label="画面切替">
+  <div class="tabs-in">
+    <button class="tab" data-v="visit" id="t-visit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>訪問中</button>
+    <button class="tab" data-v="list" id="t-list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>居宅一覧</button>
+    <button class="tab" data-v="cards" id="t-cards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14 10h4M14 13h3"/></svg>名刺</button>
+    <button class="tab" data-v="log" id="t-log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg>面談記録</button>
+  </div>
+</nav>
+
+<script>
+/* ===== ダミーデータ（実在の事業所・人物ではありません） ===== */
+const SEED = {
+ offices:[
+  {id:"o1",name:"ひだまりケアプランセンター",addr:"福山市霞町（ダミー）",lat:34.4868,lng:133.3598,tel:"084-000-0001",
+   notices:[{from:"事務所 → 営業",text:"A.Y様のベッド交換、11/2午前で調整済みとCMさんへお伝えください。"},{from:"社長",text:"担当者会議の日程調整ボードのご案内チラシを渡す。"}]},
+  {id:"o2",name:"みどり野居宅介護支援事業所",addr:"福山市春日町（ダミー）",lat:34.5021,lng:133.3829,tel:"084-000-0002",
+   notices:[{from:"事務所 → 営業",text:"S.K様 退院予定日が未確認。CMさんに確認をお願いします。"}]},
+  {id:"o3",name:"あおぞら居宅支援センター",addr:"福山市引野町（ダミー）",lat:34.4994,lng:133.4030,tel:"084-000-0003",notices:[]},
+  {id:"o4",name:"ケアプランともえ",addr:"福山市神辺町（ダミー）",lat:34.5405,lng:133.3830,tel:"084-000-0004",
+   notices:[{from:"営業 前回",text:"新任CMさんが入職予定と聞いた。名刺をいただく。"}]},
+  {id:"o5",name:"しおかぜケアマネ室",addr:"福山市松永町（ダミー）",lat:34.4460,lng:133.2540,tel:"084-000-0005",notices:[]}
+ ],
+ cms:[
+  {id:"c1",office:"o1",name:"佐藤 美和",kana:"さとう みわ",role:"主任CM",years:"12年",担当:32,traits:["電話より対面派","午前中が捕まりやすい"],likes:"甘い物は控えめ。お孫さんの話を嫌がらない。",note:"福祉用具は機能重視。カタログより実物を見たいタイプ。"},
+  {id:"c2",office:"o1",name:"中村 健太",kana:"なかむら けんた",role:"CM",years:"3年",担当:24,traits:["LINE連絡OK","若手"],likes:"サッカー（カープより広島FC）。",note:"住宅改修の相談が多い。見積りは早めに出すと喜ばれる。"},
+  {id:"c3",office:"o2",name:"高橋 恵子",kana:"たかはし けいこ",role:"管理者",years:"18年",担当:20,traits:["要点を先に","書類に厳しい"],likes:"園芸。",note:"事業所の方針決定者。新規紹介は高橋さん経由。"},
+  {id:"c4",office:"o2",name:"井上 真由",kana:"いのうえ まゆ",role:"CM",years:"6年",担当:30,traits:["入退院の連絡が早い"],likes:"",note:"退院前カンファの声かけをくれる。"},
+  {id:"c5",office:"o3",name:"藤井 聡",kana:"ふじい さとし",role:"管理者",years:"9年",担当:28,traits:["メール派"],likes:"釣り。",note:"他社（競合）メインだが、スロープ案件で相談あり。"},
+  {id:"c6",office:"o4",name:"岡田 由美",kana:"おかだ ゆみ",role:"CM",years:"15年",担当:35,traits:["夕方16時以降","電話は折り返し"],likes:"",note:"担当者会議の日程調整に苦労している様子。"},
+  {id:"c7",office:"o5",name:"村上 直子",kana:"むらかみ なおこ",role:"管理者",years:"10年",担当:22,traits:["訪問は事前連絡必須"],likes:"",note:""}
+ ],
+ clients:[
+  {id:"u1",cm:"c1",name:"A.Y 様",lv:"要介護3",items:"特殊寝台・マットレス・車いす",status:"ok",recent:"体調安定。ベッドのリモコン不調の訴えあり → 交換予定。"},
+  {id:"u2",cm:"c1",name:"M.T 様",lv:"要介護1",items:"手すり（置き型）・歩行器",status:"warn",recent:"転倒あり（10月中旬）。浴室手すりの追加を検討中。"},
+  {id:"u3",cm:"c2",name:"H.K 様",lv:"要支援2",items:"住宅改修（玄関段差）",status:"ok",recent:"改修完了。理由書の控えをお渡し済み。"},
+  {id:"u4",cm:"c3",name:"S.K 様",lv:"要介護4",items:"特殊寝台・エアマット・リフト",status:"alert",recent:"入院中（誤嚥性肺炎）。退院日未定。用具は一時預かり中。"},
+  {id:"u5",cm:"c4",name:"N.O 様",lv:"要介護2",items:"車いす・スロープ",status:"ok",recent:"デイ利用が週3回に増加。"},
+  {id:"u6",cm:"c5",name:"F.R 様",lv:"要介護2",items:"スロープ（見積中）",status:"warn",recent:"スロープの見積り提出待ち。"},
+  {id:"u7",cm:"c6",name:"T.I 様",lv:"要介護5",items:"特殊寝台・エアマット",status:"ok",recent:"看取り期。ご家族の意向でベッド位置変更。"}
+ ],
+ records:[
+  {id:"r1",office:"o1",cm:"c1",date:"2026-09-18",text:"A.Y様のリモコン不調を聞き取り。新型ベッドのカタログを渡した。",next:"交換日の連絡"},
+  {id:"r2",office:"o2",cm:"c3",date:"2026-09-22",text:"S.K様入院の報告を受けた。退院前に連絡をもらう約束。",next:"退院日確認"},
+  {id:"r3",office:"o4",cm:"c6",date:"2026-09-10",text:"担当者会議の日程調整が大変とのこと。調整ボードに関心あり。",next:"試用の案内"}
+ ],
+ cards:[
+  {id:"b1",name:"佐藤 美和",org:"ひだまりケアプランセンター",title:"主任介護支援専門員",tel:"084-000-0001",email:"sato@example.jp",memo:"",cm:"c1",photo:""},
+  {id:"b2",name:"藤井 聡",org:"あおぞら居宅支援センター",title:"管理者",tel:"084-000-0003",email:"fujii@example.jp",memo:"メール連絡を好む",cm:"c5",photo:""}
+ ]
+};
+
+const KEY="kyotaku-proto-v1";
+let DB;
+try{DB=JSON.parse(localStorage.getItem(KEY))||null}catch(e){DB=null}
+if(!DB) DB=JSON.parse(JSON.stringify(SEED));
+function save(){try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast("この端末には保存できませんでした（容量不足の可能性）")}}
+
+const ARRIVE_M=150; // この距離以内で「到着」とみなす
+const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:""};
+
+/* ===== 位置 ===== */
+function dist(a,b,c,d){const R=6371000,r=Math.PI/180,x=(c-a)*r,y=(d-b)*r;
+ const h=Math.sin(x/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+function nearest(){ if(!S.pos) return [];
+ return DB.offices.filter(o=>o.lat!=null).map(o=>({o,d:dist(S.pos.lat,S.pos.lng,o.lat,o.lng)})).sort((a,b)=>a.d-b.d)}
+function fmtD(m){return m<1000?Math.round(m)+" m":(m/1000).toFixed(1)+" km"}
+function onPos(lat,lng,src){
+ S.pos={lat,lng}; S.gps=src;
+ const n=nearest()[0];
+ if(n && n.d<=ARRIVE_M && S.autoOpened!==n.o.id){S.autoOpened=n.o.id;S.office=n.o.id;S.view="visit";S.selCm=null}
+ if(n && n.d>ARRIVE_M*2 && S.autoOpened===n.o.id) S.autoOpened=null;
+ render();
+}
+function startGps(){
+ if(!navigator.geolocation){S.gps="off";render();return}
+ try{navigator.geolocation.watchPosition(p=>onPos(p.coords.latitude,p.coords.longitude,"gps"),
+   ()=>{if(S.gps!=="sim"){S.gps="off";render()}},{enableHighAccuracy:true,maximumAge:15000,timeout:20000})}
+ catch(e){S.gps="off"}
+}
+const sim=document.getElementById("sim");
+DB.offices.forEach(o=>{const op=document.createElement("option");op.value=o.id;op.textContent=o.name+" の前";sim.appendChild(op)});
+const opt=document.createElement("option");opt.value="away";opt.textContent="どの居宅からも離れた場所";sim.appendChild(opt);
+sim.onchange=()=>{const v=sim.value;if(!v)return;
+ if(v==="away"){onPos(34.49,133.30,"sim");return}
+ const o=DB.offices.find(x=>x.id===v);onPos(o.lat+0.0004,o.lng+0.0003,"sim")};
+
+/* ===== 表示 ===== */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const stLabel={ok:["安定","st-ok"],warn:["要フォロー","st-warn"],alert:["入院・要注意","st-alert"]};
+function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2200)}
+function cardOf(cmId){return DB.cards.find(c=>c.cm===cmId&&c.photo)}
+
+function renderGps(){
+ const p=$("#gpsPill"),t=$("#gpsText");p.className="pill";
+ const n=nearest()[0];
+ if(S.gps==="gps"||S.gps==="sim"){p.classList.add("on");
+   t.textContent=(S.gps==="sim"?"デモ位置":"GPS")+(n?" ・ 最寄り "+fmtD(n.d):"");}
+ else if(S.gps==="off"){p.classList.add("off");t.textContent="GPSが使えません";}
+ else t.textContent="位置を確認中…";
+}
+
+function viewVisit(){
+ const o=DB.offices.find(x=>x.id===S.office);
+ if(!o){
+  const near=nearest().slice(0,3);
+  return `<div class="empty" style="margin-top:16px">
+   <h2 style="font-size:17px;margin-bottom:6px">居宅に近づくと、ここに自動で表示されます</h2>
+   <p style="margin:0">半径${ARRIVE_M}m以内に入ると、在籍CM・利用者の近況・連絡事項が開きます。<br>
+   ${S.gps==="off"?"この画面ではGPSが使えないため、右上の「位置を試す」で動きを確認できます。":""}</p></div>
+   ${near.length?`<div class="section-t"><h2>近くの居宅</h2></div><div class="olist">${near.map(officeRow).join("")}</div>`:""}`;
+ }
+ const cms=DB.cms.filter(c=>c.office===o.id);
+ const d=S.pos&&o.lat!=null?dist(S.pos.lat,S.pos.lng,o.lat,o.lng):null;
+ const here=d!==null&&d<=ARRIVE_M;
+ const recs=DB.records.filter(r=>r.office===o.id).sort((a,b)=>b.date.localeCompare(a.date));
+ const cmIds=cms.map(c=>c.id);
+ const clients=DB.clients.filter(u=>cmIds.includes(u.cm)&&(!S.selCm||u.cm===S.selCm));
+ return `
+ ${here?`<div class="arrive"><div><b>${esc(o.name)} に到着</b><div style="font-size:13px">現在地から ${fmtD(d)}</div></div>
+   <button class="btn sm" onclick="document.getElementById('f-text').focus()">面談を記録する</button></div>`:""}
+ <div class="ohead"><h1>${esc(o.name)}</h1>
+  <span class="meta">${esc(o.addr)} ・ <span class="num">${esc(o.tel)}</span>${d!==null?" ・ "+fmtD(d):""}</span>
+  <span class="meta">最終訪問 <span class="num">${recs[0]?recs[0].date:"記録なし"}</span></span>
+  ${o.lat==null?`<span class="meta">位置が未登録です ${S.pos?`<button class="btn sm" onclick="setOfficePos('${o.id}')">今いる場所を登録</button>`:"（現在地が取れると登録できます）"}</span>`:""}</div>
+
+ ${o.notices.length?`<div class="section-t"><h2>連絡事項・今日伝えること</h2><span class="meta">${o.notices.length}件</span></div>
+  <div class="notices">${o.notices.map(n=>`<div class="notice"><div class="from">${esc(n.from)}</div>${esc(n.text)}</div>`).join("")}</div>`:""}
+
+ <div class="section-t"><h2>在籍ケアマネジャー</h2><span class="meta">${cms.length}名 ・ タップで担当利用者を絞り込み</span></div>
+ <div class="cms">${cms.map(cmCard).join("")||'<div class="empty">登録されたCMがいません</div>'}</div>
+
+ <div class="split">
+  <div>
+   <div class="section-t"><h2>担当利用者の近況</h2><span class="meta">${S.selCm?esc(DB.cms.find(c=>c.id===S.selCm).name)+" さん担当 ・ <a href='#' onclick='S.selCm=null;render();return false'>全員を表示</a>":"この居宅の全CM"}</span></div>
+   <div class="clients">${clients.map(u=>{const [l,c]=stLabel[u.status];const cm=DB.cms.find(x=>x.id===u.cm);
+     return `<div class="client"><div><span class="nm">${esc(u.name)}</span> <span class="meta">${esc(u.lv)} ・ CM ${esc(cm.name.split(" ")[0])}</span></div>
+     <span class="status ${c}">${l}</span><div class="recent">${esc(u.recent)}</div><div class="items">利用中：${esc(u.items)}</div></div>`}).join("")||'<div class="empty">担当利用者はいません</div>'}</div>
+  </div>
+  <div>
+   <div class="section-t"><h2>面談を記録</h2></div>
+   ${recordForm(o,cms)}
+   <div class="section-t"><h2>これまでの面談</h2></div>
+   <div class="log">${recs.map(logItem).join("")||'<div class="meta">まだ記録がありません</div>'}</div>
+  </div>
+ </div>`;
+}
+function cmCard(c){
+ const card=cardOf(c.id);const last=DB.records.filter(r=>r.cm===c.id).sort((a,b)=>b.date.localeCompare(a.date))[0];
+ const n=DB.clients.filter(u=>u.cm===c.id).length;
+ return `<div class="cm ${S.selCm===c.id?"sel":""}" role="button" tabindex="0" onclick="S.selCm=S.selCm==='${c.id}'?null:'${c.id}';render()">
+  <div class="cm-top"><div class="avatar">${card?`<img src="${card.photo}" alt="">`:esc(c.name[0])}</div>
+   <div><div class="kana">${esc(c.kana)}</div><h3>${esc(c.name)}</h3><div class="meta">${esc(c.role)} ・ 経験${esc(c.years)}</div></div></div>
+  <div class="chips">${c.traits.map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
+  <dl class="kv"><dt>担当件数</dt><dd class="num">${c.担当}件（当社 ${n}件）</dd>
+   ${c.note?`<dt>傾向</dt><dd>${esc(c.note)}</dd>`:""}${c.likes?`<dt>話題</dt><dd>${esc(c.likes)}</dd>`:""}</dl>
+  ${last?`<div class="last"><div class="meta num">前回 ${last.date}</div>${esc(last.text)}${last.next?`<div class="meta">次回：${esc(last.next)}</div>`:""}</div>`:""}
+ </div>`;
+}
+function recordForm(o,cms){
+ const today=new Date().toISOString().slice(0,10);
+ return `<form class="form" id="recForm" onsubmit="addRecord(event,'${o.id}')">
+  <div class="row2"><label>面談したCM<select id="f-cm">${cms.map(c=>`<option value="${c.id}" ${S.selCm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="">（CM不在・事業所のみ）</option></select></label>
+  <label>日付<input type="date" id="f-date" value="${today}"></label></div>
+  <div class="recbox">
+   <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn recbtn" id="recBtn" onclick="toggleRec()">● 録音を開始</button>
+   <button type="button" class="btn" onclick="summarize(this)">AIで要約</button></div>
+   <div id="recState" class="meta">録音の前に、CMさんに「記録のため録音してよいか」を確認してください。</div>
+   <audio id="recAudio" controls hidden style="width:100%"></audio>
+   <label>文字起こし<textarea id="f-trans" placeholder="録音すると、ここに会話が文字で入ります（貼り付けも可）"></textarea></label>
+  </div>
+  <label>話した内容<textarea id="f-text" required placeholder="例：M.T様の浴室手すり、来週見積りを持参"></textarea></label>
+  <label>次回アクション<input id="f-next" placeholder="例：見積り提出（10/7まで）"></label>
+  <button class="btn primary" type="submit">記録を保存</button></form>`;
+}
+function logItem(r){const cm=DB.cms.find(c=>c.id===r.cm);const o=DB.offices.find(x=>x.id===r.office);
+ return `<div class="logi"><div class="meta num">${r.date} ・ ${S.view==="log"?esc(o.name)+" ・ ":""}${cm?esc(cm.name):"事業所"}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${r.trans?`<details><summary class="meta">文字起こしを見る</summary><div class="trans">${esc(r.trans)}</div></details>`:""}</div>`}
+window.addRecord=(e,oid)=>{e.preventDefault();
+ const t=$("#f-text").value.trim();if(!t)return;
+ DB.records.push({id:"r"+Date.now(),office:oid,cm:$("#f-cm").value,date:$("#f-date").value,text:t,next:$("#f-next").value.trim(),trans:$("#f-trans").value.trim()});
+ if(RC.on)stopRec();
+ save();toast("面談記録を保存しました");render();};
+
+function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id).length;
+ return `<button class="oitem" onclick="S.office='${o.id}';S.view='visit';S.selCm=null;render();scrollTo(0,0)">
+ <div class="t"><b>${esc(o.name)}${o.notices.length?`<span class="badge">連絡${o.notices.length}</span>`:""}</b><span class="meta">${esc(o.addr)} ・ CM ${cms}名</span></div>
+ ${d!=null?`<span class="dist num">${fmtD(d)}</span>`:""}</button>`}
+function viewList(){
+ const rows=S.pos?nearest():DB.offices.map(o=>({o,d:null}));
+ return `<div class="section-t"><h2>居宅一覧</h2><span class="meta">${S.pos?"近い順":"登録順"} ・ ${rows.length}件</span></div>
+ <div class="olist">${rows.map(officeRow).join("")}</div>`;
+}
+
+function viewCards(){
+ const q=S.q.trim();
+ const list=DB.cards.filter(c=>!q||[c.name,c.org,c.title,c.memo].join(" ").includes(q));
+ return `<div class="section-t"><h2>名刺</h2><span class="meta">${DB.cards.length}枚</span></div>
+ <input class="search" id="q" placeholder="名前・事業所で検索" value="${esc(S.q)}" oninput="S.q=this.value;renderCardsOnly()">
+ <div id="cardList">${cardGrid(list)}</div>
+ <div class="section-t"><h2>名刺を読み取る</h2></div>
+ <div class="form">
+  <label class="scan" for="c-photo"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3.2"/></svg>
+   <span><b>カメラで名刺を撮影</b><br><span class="meta">読み取った内容から、居宅とCMを自動で登録します</span></span></label>
+  <input type="file" id="c-photo" accept="image/*" capture="environment" onchange="scanCard(this)" style="position:absolute;opacity:0;width:1px;height:1px">
+  <div id="scanArea">${scanAreaHtml()}</div>
+ </div>`;
+}
+function scanAreaHtml(){
+ if(SC.stage==="idle") return "";
+ if(SC.stage==="reading") return `<img class="prev" src="${SC.photo}" alt=""><div class="progress"><span class="spin"></span>${esc(SC.msg||"名刺を読み取り中…")}</div>`;
+ const f=SC.fields, m=matchOffice(f.org);
+ return `<img class="prev" src="${SC.photo}" alt="">
+ ${SC.err?`<div class="notice">${esc(SC.err)}</div>`:`<div class="meta">読み取り結果です。違っていれば直してから登録してください。</div>`}
+ <form class="form" style="padding:0;border:0" onsubmit="commitCard(event)">
+  <div class="row2"><label>氏名<input id="c-name" required value="${esc(f.name)}"></label><label>ふりがな<input id="c-kana" value="${esc(f.kana)}"></label></div>
+  <div class="row2"><label>事業所名<input id="c-org" value="${esc(f.org)}" oninput="SC.fields.org=this.value;updMatch()"></label><label>役職・資格<input id="c-title" value="${esc(f.title)}"></label></div>
+  <label>住所<input id="c-addr" value="${esc(f.addr)}"></label>
+  <div class="row2"><label>電話<input id="c-tel" inputmode="tel" value="${esc(f.tel)}"></label><label>メール<input id="c-email" type="email" value="${esc(f.email)}"></label></div>
+  <label>メモ<input id="c-memo" placeholder="例：新任。前職は病院のMSW"></label>
+  <div id="matchBox" class="match">${matchHtml(m)}</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit">居宅・CMに登録</button><button class="btn" type="button" onclick="SC.stage='idle';renderScan()">やめる</button></div>
+ </form>`;
+}
+function matchHtml(m){
+ if(!SC.fields.org.trim()) return `<b>登録先：</b>事業所名が空です（名刺だけ保存します）`;
+ if(m) return `<b>登録先：</b>既存の居宅「${esc(m.name)}」に CM として追加`;
+ return `<b>登録先：</b>新しい居宅「${esc(SC.fields.org)}」を作成し、CM として追加<br><span class="meta">${S.pos?"今いる場所を居宅の位置として登録します（到着時の自動表示に使います）":"現在地が取れないため位置は未登録。あとで居宅画面から登録できます"}</span>`;
+}
+window.updMatch=()=>{$("#matchBox").innerHTML=matchHtml(matchOffice(SC.fields.org))};
+const norm=s=>String(s||"").replace(/株式会社|有限会社|合同会社|医療法人(社団)?|社会福祉法人|一般社団法人|居宅介護支援事業所|[\s　・（）()]/g,"");
+function matchOffice(org){const n=norm(org);if(n.length<3)return null;
+ return DB.offices.find(o=>{const a=norm(o.name);return a===n||a.includes(n)||n.includes(a)})||null}
+function cardGrid(list){return list.length?`<div class="cards">${list.map(c=>`<div class="bcard">
+  <div class="ph">${c.photo?`<img src="${c.photo}" alt="${esc(c.name)}の名刺">`:"写真なし"}</div>
+  <div class="bd"><b>${esc(c.name)}</b><span class="meta">${esc(c.org)} ${esc(c.title)}</span>
+  <span class="num">${esc(c.tel)}</span><span>${esc(c.email)}</span>${c.memo?`<span class="meta">${esc(c.memo)}</span>`:""}
+  ${c.cm?`<span class="chip" style="justify-self:start">CM登録あり</span>`:""}</div></div>`).join("")}</div>`:'<div class="empty">該当する名刺がありません</div>'}
+window.renderCardsOnly=()=>{const q=S.q.trim();$("#cardList").innerHTML=cardGrid(DB.cards.filter(c=>!q||[c.name,c.org,c.title,c.memo].join(" ").includes(q)))};
+/* ===== 名刺スキャン（OCR） ===== */
+const SC={stage:"idle",photo:"",fields:null,err:"",msg:""};
+const EMPTY_F={name:"",kana:"",org:"",title:"",addr:"",tel:"",email:""};
+function renderScan(){const a=$("#scanArea");if(a)a.innerHTML=scanAreaHtml()}
+function shrink(file,W){return new Promise((res,rej)=>{const rd=new FileReader();rd.onerror=rej;
+ rd.onload=()=>{const img=new Image();img.onerror=rej;img.onload=()=>{const s=Math.min(1,W/Math.max(img.width,img.height));
+  const cv=document.createElement("canvas");cv.width=img.width*s;cv.height=img.height*s;cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
+  cv.toBlob(b=>res({blob:b,url:cv.toDataURL("image/jpeg",0.72)}),"image/jpeg",0.85)};img.src=rd.result};rd.readAsDataURL(file)})}
+window.scanCard=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;
+ let blob,url;
+ try{({blob,url}=await shrink(f,1400))}
+ catch(e){SC.stage="confirm";SC.photo="";SC.fields=Object.assign({},EMPTY_F);
+  SC.err="写真を開けませんでした（形式："+(f.type||"不明")+"）。iPhoneの場合はカメラ設定を「互換性優先」にするか、この画面から直接撮影してください。";renderScan();return}
+ SC.stage="reading";SC.photo=url;SC.err="";SC.msg="名刺を読み取り中…（10〜30秒）";renderScan();
+ let fields=null,step="準備";
+ try{ step="AI接続";const ai=await getSample();
+  let canImg=false;
+  if(ai){try{const lim=await ai.limits();canImg=!!(lim&&lim.images)}catch(e){canImg=false}}
+  if(ai&&canImg){ step="AI読み取り";SC.msg="AIで名刺を読み取り中…（初回は許可の確認が出ます）";renderScan();
+   fields=await ai.json(
+   `これは日本の介護業界の名刺の写真です。記載内容を読み取り、次のキーだけを持つJSONで返してください。読めない項目は空文字。
+{"name":"氏名（姓と名の間に半角スペース）","kana":"ふりがな（ひらがな。記載がなければ空）","org":"事業所名（法人名ではなく居宅介護支援事業所などの事業所名を優先）","title":"役職・資格（例：主任介護支援専門員）","addr":"事業所の住所","tel":"電話番号（携帯より事業所の固定電話を優先）","email":"メールアドレス"}`,
+   {images:blob});
+  } else if(ai&&!canImg){ throw {code:"no_image",message:"この画面ではAIに画像を送れません"} }
+  else { step="端末OCR";fields=await tessOcr(blob) }
+ }catch(e){const why={not_granted:"AIの利用が許可されていません。もう一度撮影すると許可の確認が出ます",rate_limited:"AIが混み合っています。少し待って再度お試しください",no_image:"この画面ではAIに画像を送れません",invalid_json:"AIの返答を読み取れませんでした。もう一度お試しください"}[e.code];
+  SC.err="自動で読み取れませんでした（"+step+"）："+(why||e.message||e.code||"不明なエラー")+"。手で入力して登録できます。"}
+ SC.fields=Object.assign({},EMPTY_F,fields||{});SC.stage="confirm";renderScan();
+};
+/* サーバー設置版（Claude無し）用：Tesseract.jsで端末内OCR */
+function tessOcr(blob){return new Promise((res,rej)=>{
+ const go=async()=>{try{SC.msg="端末で文字を認識中…（初回は1分ほど）";renderScan();
+   const r=await Tesseract.recognize(blob,"jpn+eng");res(parseCardText(r.data.text))}catch(e){rej(e)}};
+ if(window.Tesseract) return go();
+ const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";s.onload=go;s.onerror=()=>rej(new Error("文字認識の部品を読み込めません（ネット接続を確認してください）"));document.head.appendChild(s);})}
+function parseCardText(t){
+ const lines=t.split(/\n/).map(l=>l.replace(/\s+/g," ").trim()).filter(Boolean),f=Object.assign({},EMPTY_F);
+ const tel=t.match(/(?:TEL|Tel|電話|℡)?[:：\s]*(0\d{1,4}[-‐ー−\s]?\d{1,4}[-‐ー−\s]?\d{3,4})/);if(tel)f.tel=tel[1].replace(/[‐ー−\s]/g,"-");
+ const em=t.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);if(em)f.email=em[0];
+ f.org=lines.find(l=>/居宅|ケアプラン|介護支援|ケアマネ|センター|事業所/.test(l))||"";
+ f.addr=(lines.find(l=>/[都道府県市区町村]\S*\d/.test(l)&&!/TEL|FAX|@/.test(l))||"").replace(/^〒?\s*\d{3}-?\d{4}\s*/,"");
+ f.title=lines.find(l=>/介護支援専門員|ケアマネ|管理者|所長|主任|社会福祉士|看護師/.test(l)&&l.length<20)||"";
+ f.name=lines.find(l=>/^[一-龥々]{1,4}\s?[一-龥々ぁ-ん]{1,4}$/.test(l.replace(/\s/g," ")))||"";
+ return f;}
+window.commitCard=e=>{e.preventDefault();
+ const v=id=>$(id).value.trim();
+ const f={name:v("#c-name"),kana:v("#c-kana"),org:v("#c-org"),title:v("#c-title"),addr:v("#c-addr"),tel:v("#c-tel"),email:v("#c-email"),memo:v("#c-memo")};
+ let o=matchOffice(f.org),made="";
+ if(!o&&f.org){o={id:"o"+Date.now(),name:f.org,addr:f.addr||"住所未登録",tel:f.tel,lat:S.pos?S.pos.lat:null,lng:S.pos?S.pos.lng:null,notices:[]};DB.offices.push(o);made="居宅を新規登録・"}
+ let cm=null;
+ if(o){cm=DB.cms.find(c=>c.office===o.id&&c.name.replace(/\s/g,"")===f.name.replace(/\s/g,""));
+  if(!cm){cm={id:"c"+Date.now(),office:o.id,name:f.name,kana:f.kana,role:/主任/.test(f.title)?"主任CM":/管理者|所長/.test(f.title)?"管理者":"CM",years:"—",担当:0,traits:[],likes:"",note:f.memo};DB.cms.push(cm);made+="CMを追加"}
+  else made+="既存CMに名刺を紐付け";}
+ DB.cards.unshift({id:"b"+Date.now(),name:f.name,org:f.org,title:f.title,tel:f.tel,email:f.email,memo:f.memo,cm:cm?cm.id:"",photo:SC.photo});
+ SC.stage="idle";save();toast(made||"名刺を保存しました");
+ if(o){S.office=o.id;S.view="visit";S.selCm=cm?cm.id:null;scrollTo(0,0)}
+ render();};
+window.setOfficePos=id=>{const o=DB.offices.find(x=>x.id===id);if(!o||!S.pos)return;o.lat=S.pos.lat;o.lng=S.pos.lng;save();toast("今いる場所を登録しました");render()};
+
+/* ===== Claude（要約・OCR）への接続 ===== */
+let _sample;
+function getSample(){if(_sample!==undefined)return Promise.resolve(_sample);
+ if(!window.claude||!window.claude.use){_sample=null;return Promise.resolve(null)}
+ return window.claude.use("sample").then(s=>(_sample=s||null)).catch(()=>(_sample=null))}
+
+/* ===== 録音・文字起こし・要約 ===== */
+const RC={on:false,rec:null,sr:null,stream:null,finalText:"",audioUrl:"",t0:0,timer:null};
+window.toggleRec=async()=>{RC.on?stopRec():startRec()};
+async function startRec(){
+ const st=$("#recState");
+ try{RC.stream=await navigator.mediaDevices.getUserMedia({audio:true})}
+ catch(e){st.innerHTML=`<span class="warnTxt">マイクが使えません。</span>Claudeの画面上ではマイクが制限されています。サーバーに置いた版をスマホ・iPadで開くと録音できます。ここでは下の欄に文字起こしを貼り付けて要約を試せます。`;return}
+ RC.on=true;RC.finalText=$("#f-trans").value?$("#f-trans").value+"\n":"";
+ const chunks=[];try{RC.rec=new MediaRecorder(RC.stream);RC.rec.ondataavailable=e=>chunks.push(e.data);
+  RC.rec.onstop=()=>{RC.audioUrl=URL.createObjectURL(new Blob(chunks,{type:RC.rec.mimeType}));const a=$("#recAudio");if(a){a.src=RC.audioUrl;a.hidden=false}};RC.rec.start()}catch(e){}
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(SR){const sr=new SR();sr.lang="ja-JP";sr.continuous=true;sr.interimResults=true;
+  sr.onresult=ev=>{let interim="";for(let i=ev.resultIndex;i<ev.results.length;i++){const r=ev.results[i];
+    if(r.isFinal)RC.finalText+=r[0].transcript+"。\n";else interim+=r[0].transcript}
+   $("#f-trans").value=RC.finalText+interim};
+  sr.onend=()=>{if(RC.on)try{sr.start()}catch(e){}};sr.onerror=()=>{};RC.sr=sr;try{sr.start()}catch(e){}}
+ RC.t0=Date.now();RC.timer=setInterval(()=>{const s=Math.floor((Date.now()-RC.t0)/1000);
+  st.innerHTML=`<span class="recdot"></span>録音中 <span class="num">${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}</span>${SR?" ・ 文字起こし中":" ・ この端末は自動文字起こし非対応"}`},500);
+ $("#recBtn").classList.add("rec");$("#recBtn").textContent="■ 録音を止める";
+}
+function stopRec(){RC.on=false;clearInterval(RC.timer);
+ try{RC.sr&&RC.sr.stop()}catch(e){} try{RC.rec&&RC.rec.state!=="inactive"&&RC.rec.stop()}catch(e){}
+ RC.stream&&RC.stream.getTracks().forEach(t=>t.stop());
+ $("#recBtn").classList.remove("rec");$("#recBtn").textContent="● 録音を開始";
+ $("#recState").textContent="録音を止めました。「AIで要約」を押すと、話した内容と次回アクションに入ります。";}
+window.summarize=async(btn)=>{const tr=$("#f-trans").value.trim();const st=$("#recState");
+ if(!tr){st.textContent="文字起こしが空です。録音するか、文字を貼り付けてください。";return}
+ const ai=await getSample();
+ if(!ai){st.textContent="この画面ではAI要約が使えません（サーバー版はGAS連携後に対応予定）。";return}
+ const o=DB.offices.find(x=>x.id===S.office);const cmSel=$("#f-cm");const cmName=cmSel.selectedOptions[0]?.text||"";
+ const names=DB.clients.filter(u=>DB.cms.some(c=>c.id===u.cm&&c.office===o.id)).map(u=>u.name).join("、");
+ btn.disabled=true;st.innerHTML=`<span class="spin"></span>要約中…`;
+ try{const r=await ai.json(
+ `福祉用具貸与事業所（アスポート）の営業担当が、居宅介護支援事業所「${o.name}」のケアマネジャー（${cmName}）と面談したときの文字起こしです。音声認識のため誤字があります。
+営業日報向けに要約し、次のキーだけのJSONで返してください。
+{"summary":"話した内容の要約（箇条書き風に3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。1〜2行）","clients":["話題に出た利用者名"]}
+参考：この居宅の当社利用者は ${names||"なし"}。
+--- 文字起こし ---
+${tr.slice(0,20000)}`,{modelTier:"quick"});
+  $("#f-text").value=r.summary||"";$("#f-next").value=r.next||"";
+  st.textContent="要約を入れました。確認して「記録を保存」を押してください。"+(r.clients&&r.clients.length?"（話題の利用者："+r.clients.join("、")+"）":"");
+ }catch(e){st.textContent=e.code==="not_granted"?"AIの利用が許可されませんでした。":"要約できませんでした（"+(e.code||"error")+"）。少し待ってもう一度お試しください。"}
+ btn.disabled=false;};
+
+function viewLog(){
+ const recs=[...DB.records].sort((a,b)=>b.date.localeCompare(a.date));
+ const todo=recs.filter(r=>r.next);
+ return `<div class="split"><div><div class="section-t"><h2>面談記録</h2><span class="meta">全${recs.length}件</span></div>
+ <div class="log">${recs.map(logItem).join("")}</div></div>
+ <div><div class="section-t"><h2>次回アクション</h2><span class="meta">${todo.length}件</span></div>
+ <div class="log">${todo.map(r=>`<div class="logi"><b>${esc(r.next)}</b><div class="meta">${esc(DB.offices.find(o=>o.id===r.office).name)} ・ ${r.date}</div></div>`).join("")}</div>
+ <p style="margin-top:24px"><button class="btn sm" onclick="resetDemo(this)">ダミーデータに戻す</button></p></div></div>`;
+}
+window.resetDemo=b=>{if(b.dataset.c!=="1"){b.dataset.c="1";b.textContent="もう一度押すと初期化します";return}
+ DB=JSON.parse(JSON.stringify(SEED));save();toast("初期データに戻しました");render();};
+
+function render(){
+ renderGps();
+ document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));
+ const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog}[S.view]();
+ $("#app").innerHTML=v+`<p class="demo">試作版：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`;
+}
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{S.view=t.dataset.v;render();scrollTo(0,0)});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classList?.contains("cm"))e.target.click()});
+
+/* 初期表示：GPSを試し、使えなければデモとして1件目の居宅前に立った状態で開く */
+startGps();
+S.office="o1";
+render();
+setTimeout(()=>{if(S.gps==="wait"){S.gps="off";render()}},6000);
+</script>
+</body></html>
