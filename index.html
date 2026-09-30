@@ -141,6 +141,14 @@ select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);backgr
 @keyframes bl{50%{opacity:.25}}
 .warnTxt{color:var(--alert);font-weight:700}
 .trans{white-space:pre-wrap;font-size:13px;background:var(--bg);padding:8px;border-radius:6px;max-height:200px;overflow:auto}
+.scan{width:100%;text-align:left;font:inherit}
+.cam{position:fixed;inset:0;z-index:20;background:#000;color:#fff}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.guide{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:min(88vw,calc(62vh*91/55));aspect-ratio:91/55;max-width:100%;border:3px solid #fff;border-radius:10px;box-shadow:0 0 0 100vmax rgba(0,0,0,.45)}
+.camtip{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 16px);text-align:center;font-size:14px;padding:0 16px;text-shadow:0 1px 3px #000}
+.cambar{position:absolute;left:0;right:0;bottom:0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 20px);display:flex;justify-content:space-between;align-items:center}
+.cbtn{background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:999px;padding:9px 14px;font-size:14px;min-width:88px}
+.shutter{width:72px;height:72px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.4);background-clip:padding-box}
 .demo{font-size:11.5px;color:var(--muted);text-align:center;margin-top:28px}
 @media (min-width:900px){
   .split{display:grid;grid-template-columns:1.25fr 1fr;gap:20px;align-items:start}
@@ -361,8 +369,9 @@ function viewCards(){
  <div id="cardList">${cardGrid(list)}</div>
  <div class="section-t"><h2>名刺を読み取る</h2></div>
  <div class="form">
-  <label class="scan" for="c-photo"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3.2"/></svg>
-   <span><b>カメラで名刺を撮影</b><br><span class="meta">読み取った内容から、居宅とCMを自動で登録します</span></span></label>
+  <button type="button" class="scan" onclick="openCam()"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3.2"/></svg>
+   <span><b>カメラで名刺を撮影</b><br><span class="meta">読み取った内容から、居宅とCMを自動で登録します</span></span></button>
+  <label for="c-photo" class="meta" style="display:block;text-align:center;text-decoration:underline;cursor:pointer">撮影済みの写真から選ぶ</label>
   <input type="file" id="c-photo" accept="image/*" capture="environment" onchange="scanCard(this)" style="position:absolute;opacity:0;width:1px;height:1px">
   <div id="scanArea">${scanAreaHtml()}</div>
  </div>`;
@@ -372,7 +381,7 @@ function scanAreaHtml(){
  if(SC.stage==="reading") return `<img class="prev" src="${SC.photo}" alt=""><div class="progress"><span class="spin"></span>${esc(SC.msg||"名刺を読み取り中…")}</div>`;
  const f=SC.fields, m=matchOffice(f.org);
  return `<img class="prev" src="${SC.photo}" alt="">
- ${SC.err?`<div class="notice">${esc(SC.err)}</div>`:`<div class="meta">読み取り結果です。違っていれば直してから登録してください。</div>`}
+ ${SC.err?`<div class="notice">${esc(SC.err)}</div>`:`<div class="meta">読み取り結果です（${SC.route==="端末OCR"?"端末の文字認識・精度低め。設定でGASを登録するとAIで読めます":"AI読み取り"}）。違っていれば直してから登録してください。</div>`}
  <form class="form" style="padding:0;border:0" onsubmit="commitCard(event)">
   <div class="row2"><label>氏名<input id="c-name" required value="${esc(f.name)}"></label><label>ふりがな<input id="c-kana" value="${esc(f.kana)}"></label></div>
   <div class="row2"><label>事業所名<input id="c-org" value="${esc(f.org)}" oninput="SC.fields.org=this.value;updMatch()"></label><label>役職・資格<input id="c-title" value="${esc(f.title)}"></label></div>
@@ -408,29 +417,88 @@ function shrink(file,W){return new Promise((res,rej)=>{const rd=new FileReader()
   cv.toBlob(b=>res({blob:b,url:cv.toDataURL("image/jpeg",0.72)}),"image/jpeg",0.85)};img.src=rd.result};rd.readAsDataURL(file)})}
 window.scanCard=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;
  let blob,url;
- try{({blob,url}=await shrink(f,1400))}
+ try{({blob,url}=await shrink(f,1600))}
  catch(e){SC.stage="confirm";SC.photo="";SC.fields=Object.assign({},EMPTY_F);
-  SC.err="写真を開けませんでした（形式："+(f.type||"不明")+"）。iPhoneの場合はカメラ設定を「互換性優先」にするか、この画面から直接撮影してください。";renderScan();return}
- SC.stage="reading";SC.photo=url;SC.err="";SC.msg="名刺を読み取り中…（10〜30秒）";renderScan();
- let fields=null,step="準備";
- try{ step="AI接続";const ai=await getSample();
-  let canImg=false;
-  if(ai){try{const lim=await ai.limits();canImg=!!(lim&&lim.images)}catch(e){canImg=false}}
-  if(ai&&canImg){ step="AI読み取り";SC.msg="AIで名刺を読み取り中…（初回は許可の確認が出ます）";renderScan();
-   fields=await ai.json(
-   `これは日本の介護業界の名刺の写真です。記載内容を読み取り、次のキーだけを持つJSONで返してください。読めない項目は空文字。
-{"name":"氏名（姓と名の間に半角スペース）","kana":"ふりがな（ひらがな。記載がなければ空）","org":"事業所名（法人名ではなく居宅介護支援事業所などの事業所名を優先）","title":"役職・資格（例：主任介護支援専門員）","addr":"事業所の住所","tel":"電話番号（携帯より事業所の固定電話を優先）","email":"メールアドレス"}`,
-   {images:blob});
-  } else if(ai&&!canImg){ throw {code:"no_image",message:"この画面ではAIに画像を送れません"} }
-  else { step="端末OCR";fields=await tessOcr(blob) }
- }catch(e){const why={not_granted:"AIの利用が許可されていません。もう一度撮影すると許可の確認が出ます",rate_limited:"AIが混み合っています。少し待って再度お試しください",no_image:"この画面ではAIに画像を送れません",invalid_json:"AIの返答を読み取れませんでした。もう一度お試しください"}[e.code];
-  SC.err="自動で読み取れませんでした（"+step+"）："+(why||e.message||e.code||"不明なエラー")+"。手で入力して登録できます。"}
- SC.fields=Object.assign({},EMPTY_F,fields||{});SC.stage="confirm";renderScan();
+  SC.err="写真を開けませんでした（形式："+(f.type||"不明")+"）。アプリ内カメラで撮影するか、iPhoneのカメラ設定を「互換性優先」にしてください。";renderScan();return}
+ processCard(blob,url);
 };
+const CARD_PROMPT=`これは日本の介護業界の名刺の写真です。記載内容を正確に読み取り、次のキーだけを持つJSONで返してください。読めない項目は空文字。
+{"name":"氏名（姓と名の間に半角スペース）","kana":"ふりがな（ひらがな。記載がなければ空）","org":"事業所名（法人名ではなく居宅介護支援事業所などの事業所名を優先）","title":"役職・資格（例：主任介護支援専門員）","addr":"事業所の住所","tel":"電話番号（携帯より事業所の固定電話を優先）","email":"メールアドレス"}`;
+async function processCard(blob,url){
+ SC.stage="reading";SC.photo=url;SC.err="";SC.msg="名刺を読み取り中…";renderScan();
+ let fields=null,route="";
+ try{
+  const r=await aiJson(CARD_PROMPT,blob,m=>{SC.msg=m;renderScan()});
+  if(r){fields=r.data;route=r.route}
+  else{route="端末OCR";fields=await tessOcr(blob)}
+ }catch(e){SC.err="自動で読み取れませんでした（"+(e.route||route||"AI")+"）："+errText(e)+"。手で入力して登録できます。"}
+ SC.fields=Object.assign({},EMPTY_F,fields||{});SC.stage="confirm";SC.route=route;renderScan();
+}
+function errText(e){return {not_granted:"AIの利用が許可されていません。もう一度試すと許可の確認が出ます",rate_limited:"AIが混み合っています。少し待って再度お試しください",invalid_json:"AIの返答を読み取れませんでした。もう一度お試しください",bad_token:"合言葉が違います（設定を確認）",no_key:"GAS側にAPIキーが設定されていません",network:"GASに接続できません（URLと通信を確認）"}[e.code]||e.message||e.code||"不明なエラー"}
+
+/* ===== AIの呼び先：①Claude画面上 → ②GAS（Gemini/Claude API）→ ③なし ===== */
+const CFGKEY="kyotaku-ai-cfg";
+function getCfg(){try{return JSON.parse(localStorage.getItem(CFGKEY))||{}}catch(e){return {}}}
+function setCfg(c){try{localStorage.setItem(CFGKEY,JSON.stringify(c))}catch(e){}}
+function b64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(blob)})}
+async function gasCall(payload){const c=getCfg();let res;
+ try{res=await fetch(c.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(Object.assign({token:c.token||""},payload))})}
+ catch(e){throw {code:"network",route:"GAS"}}
+ let j;try{j=await res.json()}catch(e){throw {code:"network",message:"GASの応答が不正です（デプロイの公開範囲を「全員」にしてください）",route:"GAS"}}
+ if(!j.ok)throw {code:j.code||"gas",message:j.error,route:"GAS"};return j.data}
+async function aiJson(prompt,blob,onMsg){
+ const ai=await getSample();
+ if(ai){let canImg=true;
+  if(blob){try{const lim=await ai.limits();canImg=!!(lim&&lim.images)}catch(e){canImg=false}}
+  if(canImg){onMsg&&onMsg("AIで読み取り中…（初回は許可の確認が出ます）");
+   try{return {route:"Claude",data:await ai.json(prompt,blob?{images:blob}:{modelTier:"quick"})}}catch(e){e.route="Claude";throw e}}
+ }
+ const c=getCfg();
+ if(c.url){onMsg&&onMsg("AIで読み取り中…（5〜15秒）");
+  return {route:"GAS",data:await gasCall({action:"json",prompt,image:blob?await b64(blob):null})}}
+ return null;
+}
+
+/* ===== アプリ内カメラ（名刺ガイド枠） ===== */
+const CAM={stream:null,track:null};
+window.openCam=async()=>{
+ let stream;
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false})}
+ catch(e){$("#c-photo").click();return}
+ CAM.stream=stream;CAM.track=stream.getVideoTracks()[0];
+ const ov=document.createElement("div");ov.className="cam";ov.id="cam";
+ ov.innerHTML=`<video id="camv" playsinline autoplay muted></video>
+  <div class="guide" id="guide"><span></span></div>
+  <div class="camtip">名刺を枠に合わせて、影やテカリが入らないように</div>
+  <div class="cambar">
+   <button class="cbtn" type="button" onclick="closeCam()">閉じる</button>
+   <button class="shutter" type="button" aria-label="撮影" onclick="snapCam()"></button>
+   <button class="cbtn" type="button" onclick="closeCam();$('#c-photo').click()">写真から選ぶ</button>
+  </div>`;
+ document.body.appendChild(ov);
+ const v=$("#camv");v.srcObject=stream;try{await v.play()}catch(e){}
+ let caps={};try{caps=CAM.track.getCapabilities?CAM.track.getCapabilities():{}}catch(e){}
+ try{if(caps.focusMode&&caps.focusMode.includes("continuous"))await CAM.track.applyConstraints({advanced:[{focusMode:"continuous"}]})}catch(e){}
+};
+window.closeCam=()=>{CAM.stream&&CAM.stream.getTracks().forEach(t=>t.stop());CAM.stream=null;const o=$("#cam");o&&o.remove()};
+window.snapCam=()=>{const v=$("#camv"),g=$("#guide").getBoundingClientRect(),r=v.getBoundingClientRect();
+ const vw=v.videoWidth,vh=v.videoHeight;if(!vw)return;
+ const sc=Math.max(r.width/vw,r.height/vh),ox=(vw*sc-r.width)/2,oy=(vh*sc-r.height)/2;
+ const pad=0.04;let x=(g.left-r.left+ox)/sc,y=(g.top-r.top+oy)/sc,w=g.width/sc,h=g.height/sc;
+ x-=w*pad;y-=h*pad;w*=1+2*pad;h*=1+2*pad;x=Math.max(0,x);y=Math.max(0,y);w=Math.min(vw-x,w);h=Math.min(vh-y,h);
+ const k=Math.min(1,1600/w),cv=document.createElement("canvas");cv.width=w*k;cv.height=h*k;
+ cv.getContext("2d").drawImage(v,x,y,w,h,0,0,cv.width,cv.height);
+ const url=cv.toDataURL("image/jpeg",0.8);cv.toBlob(b=>{closeCam();processCard(b,url)},"image/jpeg",0.9);};
+
+function prep(blob){return new Promise(res=>{const u=URL.createObjectURL(blob),img=new Image();
+ img.onload=()=>{const k=Math.max(1,2000/img.width),cv=document.createElement("canvas");cv.width=img.width*k;cv.height=img.height*k;
+  const x=cv.getContext("2d");x.drawImage(img,0,0,cv.width,cv.height);const d=x.getImageData(0,0,cv.width,cv.height),p=d.data;
+  for(let i=0;i<p.length;i+=4){let g=.299*p[i]+.587*p[i+1]+.114*p[i+2];g=Math.max(0,Math.min(255,(g-128)*1.6+150));p[i]=p[i+1]=p[i+2]=g}
+  x.putImageData(d,0,0);cv.toBlob(b=>res(b||blob),"image/png")};img.onerror=()=>res(blob);img.src=u})}
 /* サーバー設置版（Claude無し）用：Tesseract.jsで端末内OCR */
 function tessOcr(blob){return new Promise((res,rej)=>{
  const go=async()=>{try{SC.msg="端末で文字を認識中…（初回は1分ほど）";renderScan();
-   const r=await Tesseract.recognize(blob,"jpn+eng");res(parseCardText(r.data.text))}catch(e){rej(e)}};
+   const r=await Tesseract.recognize(await prep(blob),"jpn+eng");res(parseCardText(r.data.text))}catch(e){rej(e)}};
  if(window.Tesseract) return go();
  const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";s.onload=go;s.onerror=()=>rej(new Error("文字認識の部品を読み込めません（ネット接続を確認してください）"));document.head.appendChild(s);})}
 function parseCardText(t){
@@ -490,21 +558,21 @@ function stopRec(){RC.on=false;clearInterval(RC.timer);
  $("#recState").textContent="録音を止めました。「AIで要約」を押すと、話した内容と次回アクションに入ります。";}
 window.summarize=async(btn)=>{const tr=$("#f-trans").value.trim();const st=$("#recState");
  if(!tr){st.textContent="文字起こしが空です。録音するか、文字を貼り付けてください。";return}
- const ai=await getSample();
- if(!ai){st.textContent="この画面ではAI要約が使えません（サーバー版はGAS連携後に対応予定）。";return}
- const o=DB.offices.find(x=>x.id===S.office);const cmSel=$("#f-cm");const cmName=cmSel.selectedOptions[0]?.text||"";
+ const o=DB.offices.find(x=>x.id===S.office);const cmName=$("#f-cm").selectedOptions[0]?.text||"";
  const names=DB.clients.filter(u=>DB.cms.some(c=>c.id===u.cm&&c.office===o.id)).map(u=>u.name).join("、");
  btn.disabled=true;st.innerHTML=`<span class="spin"></span>要約中…`;
- try{const r=await ai.json(
+ try{const rr=await aiJson(
  `福祉用具貸与事業所（アスポート）の営業担当が、居宅介護支援事業所「${o.name}」のケアマネジャー（${cmName}）と面談したときの文字起こしです。音声認識のため誤字があります。
 営業日報向けに要約し、次のキーだけのJSONで返してください。
 {"summary":"話した内容の要約（箇条書き風に3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。1〜2行）","clients":["話題に出た利用者名"]}
 参考：この居宅の当社利用者は ${names||"なし"}。
 --- 文字起こし ---
-${tr.slice(0,20000)}`,{modelTier:"quick"});
+${tr.slice(0,20000)}`,null);
+  if(!rr){st.textContent="AI要約を使うには、「面談記録」タブの「AI連携の設定」でGASのURLを登録してください。";btn.disabled=false;return}
+  const r=rr.data;
   $("#f-text").value=r.summary||"";$("#f-next").value=r.next||"";
   st.textContent="要約を入れました。確認して「記録を保存」を押してください。"+(r.clients&&r.clients.length?"（話題の利用者："+r.clients.join("、")+"）":"");
- }catch(e){st.textContent=e.code==="not_granted"?"AIの利用が許可されませんでした。":"要約できませんでした（"+(e.code||"error")+"）。少し待ってもう一度お試しください。"}
+ }catch(e){st.textContent="要約できませんでした："+errText(e)}
  btn.disabled=false;};
 
 function viewLog(){
@@ -514,8 +582,22 @@ function viewLog(){
  <div class="log">${recs.map(logItem).join("")}</div></div>
  <div><div class="section-t"><h2>次回アクション</h2><span class="meta">${todo.length}件</span></div>
  <div class="log">${todo.map(r=>`<div class="logi"><b>${esc(r.next)}</b><div class="meta">${esc(DB.offices.find(o=>o.id===r.office).name)} ・ ${r.date}</div></div>`).join("")}</div>
+ <div class="section-t"><h2>AI連携の設定</h2></div>
+ <form class="form" onsubmit="saveCfg(event)">
+  <div class="meta">サーバーに置いた版で、名刺のAI読み取りと録音の要約を使うための設定です。Claudeの画面上では不要です。</div>
+  <label>GASのURL（…/exec）<input id="g-url" value="${esc(getCfg().url||"")}" placeholder="https://script.google.com/macros/s/…/exec"></label>
+  <label>合言葉（GASに設定したTOKEN）<input id="g-token" value="${esc(getCfg().token||"")}"></label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit">保存</button><button class="btn" type="button" onclick="testCfg(this)">接続テスト</button></div>
+  <div id="g-st" class="meta"></div>
+ </form>
  <p style="margin-top:24px"><button class="btn sm" onclick="resetDemo(this)">ダミーデータに戻す</button></p></div></div>`;
 }
+window.saveCfg=e=>{e.preventDefault();setCfg({url:$("#g-url").value.trim(),token:$("#g-token").value.trim()});toast("設定を保存しました")};
+window.testCfg=async b=>{setCfg({url:$("#g-url").value.trim(),token:$("#g-token").value.trim()});const st=$("#g-st");
+ if(!getCfg().url){st.textContent="URLを入力してください";return}
+ b.disabled=true;st.innerHTML='<span class="spin"></span>確認中…';
+ try{const d=await gasCall({action:"ping"});st.textContent="接続できました（AI："+d.provider+" / "+d.model+"）"}catch(e){st.textContent="接続できません："+errText(e)}
+ b.disabled=false};
 window.resetDemo=b=>{if(b.dataset.c!=="1"){b.dataset.c="1";b.textContent="もう一度押すと初期化します";return}
  DB=JSON.parse(JSON.stringify(SEED));save();toast("初期データに戻しました");render();};
 
