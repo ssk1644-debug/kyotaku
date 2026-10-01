@@ -234,12 +234,19 @@ function dist(a,b,c,d){const R=6371000,r=Math.PI/180,x=(c-a)*r,y=(d-b)*r;
 function nearest(){ if(!S.pos) return [];
  return DB.offices.filter(o=>o.lat!=null).map(o=>({o,d:dist(S.pos.lat,S.pos.lng,o.lat,o.lng)})).sort((a,b)=>a.d-b.d)}
 function fmtD(m){return m<1000?Math.round(m)+" m":(m/1000).toFixed(1)+" km"}
+function hereId(){const n=nearest()[0];return n&&n.d<=ARRIVE_M?n.o.id:null}
+function typing(){const a=document.activeElement;return !!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest("#app"))}
 function onPos(lat,lng,src){
+ const before=hereId(),first=!S.pos;
  S.pos={lat,lng}; S.gps=src;
- const n=nearest()[0];
- if(n && n.d<=ARRIVE_M && S.autoOpened!==n.o.id){S.autoOpened=n.o.id;S.office=n.o.id;S.view="visit";S.selCm=null}
+ const n=nearest()[0];let opened=false;
+ if(n && n.d<=ARRIVE_M && S.autoOpened!==n.o.id){S.autoOpened=n.o.id;S.office=n.o.id;S.view="visit";S.selCm=null;opened=true}
  if(n && n.d>ARRIVE_M*2 && S.autoOpened===n.o.id) S.autoOpened=null;
- render();
+ /* GPSは数秒ごとに届くため、入力中は画面を作り直さない（キーボードが閉じるのを防ぐ） */
+ renderGps();
+ if(src==="sim"){render();return}
+ if(typing()||SC.stage!=="idle"||RC.on)return;
+ if(opened||first||S.view==="list"||(S.view==="visit"&&(!S.office||before!==hereId())))render();
 }
 function startGps(){
  if(!navigator.geolocation){S.gps="off";render();return}
