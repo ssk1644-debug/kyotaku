@@ -255,11 +255,12 @@ function startGps(){
  catch(e){S.gps="off"}
 }
 const sim=document.getElementById("sim");
-DB.offices.forEach(o=>{const op=document.createElement("option");op.value=o.id;op.textContent=o.name+" の前";sim.appendChild(op)});
-const opt=document.createElement("option");opt.value="away";opt.textContent="どの居宅からも離れた場所";sim.appendChild(opt);
+function fillSim(){sim.length=1;DB.offices.filter(o=>o.lat!=null).slice(0,80).forEach(o=>{const op=document.createElement("option");op.value=o.id;op.textContent=o.name+" の前";sim.appendChild(op)});
+ const opt=document.createElement("option");opt.value="away";opt.textContent="どの居宅からも離れた場所";sim.appendChild(opt)}
+fillSim();
 sim.onchange=()=>{const v=sim.value;if(!v)return;
  if(v==="away"){onPos(34.49,133.30,"sim");return}
- const o=DB.offices.find(x=>x.id===v);onPos(o.lat+0.0004,o.lng+0.0003,"sim")};
+ const o=DB.offices.find(x=>x.id===v);if(!o)return;onPos(o.lat+0.0004,o.lng+0.0003,"sim")};
 
 /* ===== 表示 ===== */
 const $=s=>document.querySelector(s);
@@ -362,11 +363,82 @@ function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id).length;
  return `<button class="oitem" onclick="S.office='${o.id}';S.view='visit';S.selCm=null;render();scrollTo(0,0)">
  <div class="t"><b>${esc(o.name)}${o.notices.length?`<span class="badge">連絡${o.notices.length}</span>`:""}</b><span class="meta">${esc(o.addr)} ・ CM ${cms}名</span></div>
  ${d!=null?`<span class="dist num">${fmtD(d)}</span>`:""}</button>`}
-function viewList(){
- const rows=S.pos?nearest():DB.offices.map(o=>({o,d:null}));
- return `<div class="section-t"><h2>居宅一覧</h2><span class="meta">${S.pos?"近い順":"登録順"} ・ ${rows.length}件</span></div>
- <div class="olist">${rows.map(officeRow).join("")}</div>`;
+function listRows(){
+ const q=(S.lq||"").trim();
+ let rows=S.pos?nearest().concat(DB.offices.filter(o=>o.lat==null).map(o=>({o,d:null}))):DB.offices.map(o=>({o,d:null}));
+ if(q)rows=rows.filter(r=>(r.o.name+" "+(r.o.kana||"")+" "+r.o.addr+" "+(r.o.corp||"")).includes(q));
+ return rows;
 }
+function listHtml(){const rows=listRows(),show=rows.slice(0,150);
+ return `<div class="meta" style="margin-bottom:6px">${rows.length}件${rows.length>150?"（近い順に150件まで表示。検索で絞り込めます）":""}</div>
+ <div class="olist">${show.map(officeRow).join("")||'<div class="empty">該当する居宅がありません</div>'}</div>`}
+window.renderListOnly=()=>{const el=$("#listBox");if(el)el.innerHTML=listHtml()};
+function viewList(){
+ const imp=DB.importedAt;
+ return `<div class="section-t"><h2>居宅一覧</h2><span class="meta">${S.pos?"近い順":"登録順"} ・ 全${DB.offices.length}件</span></div>
+ <input class="search" id="lq" placeholder="事業所名・住所・法人名で検索" value="${esc(S.lq||"")}" oninput="S.lq=this.value;renderListOnly()">
+ <div id="listBox">${listHtml()}</div>
+ <div class="section-t"><h2>福山市の居宅データを取り込む</h2></div>
+ <div class="form">
+  <div class="meta">厚生労働省「介護サービス情報公表システム」のオープンデータ（居宅介護支援・全国CSV、毎年6月末・12月末時点）から、福山市の事業所だけを取り込みます。住所・電話・位置（緯度経度）も入るので、到着時の自動表示にそのまま使えます。${imp?`<br>前回の取り込み：<span class="num">${esc(imp)}</span>`:""}</div>
+  <label style="flex-direction:row;display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="imp-drop" style="width:auto" ${DB.offices.some(o=>/^o\d$/.test(o.id))?"checked":""}> ダミーの居宅（試作用）を削除して置き換える</label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+   <button class="btn primary" type="button" onclick="importViaGas(this)">自動で取り込む（GAS経由）</button>
+   <label class="btn" for="imp-file" style="display:inline-flex;color:var(--ink)">CSVファイルを選ぶ</label>
+   <input type="file" id="imp-file" accept=".csv,text/csv" onchange="importCsvFile(this)" style="position:absolute;opacity:0;width:1px;height:1px">
+  </div>
+  <div id="imp-st" class="meta">CSVは <a href="https://www.mhlw.go.jp/stf/kaigo-kouhyou_opendata.html" target="_blank" rel="noopener">厚労省のオープンデータのページ</a> の「居宅介護支援」からダウンロードできます。</div>
+ </div>`;
+}
+
+/* ===== 居宅データ取込 ===== */
+function parseCsv(t){const rows=[];let row=[],f="",q=false;
+ for(let i=0;i<t.length;i++){const c=t[i];
+  if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+  else if(c==='"')q=true;else if(c===","){row.push(f);f=""}
+  else if(c==="\n"||c==="\r"){if(c==="\r"&&t[i+1]==="\n")i++;row.push(f);rows.push(row);row=[];f=""}
+  else f+=c}
+ if(f||row.length){row.push(f);rows.push(row)}return rows}
+function decodeBuf(buf){try{return new TextDecoder("utf-8",{fatal:true}).decode(buf)}catch(e){return new TextDecoder("shift_jis").decode(buf)}}
+function csvToOffices(text){
+ const rows=parseCsv(text.replace(/^﻿/,""));const h=rows[0].map(x=>x.trim());
+ const ix=n=>h.findIndex(x=>x===n||x.includes(n));
+ const I={city:ix("市区町村名"),name:ix("事業所名"),kana:ix("事業所名カナ"),addr:ix("住所"),bldg:ix("方書"),lat:ix("緯度"),lng:ix("経度"),tel:ix("電話番号"),corp:ix("法人の名称"),code:ix("事業所番号"),url:ix("URL")};
+ if(I.name<0||I.addr<0)throw new Error("居宅介護支援のCSVではないようです（事業所名・住所の列が見つかりません）");
+ const out=[];
+ for(const r of rows.slice(1)){const city=r[I.city]||"",addr=r[I.addr]||"";
+  if(!(city.includes("福山市")||addr.includes("福山市")))continue;
+  out.push({code:r[I.code]||"",name:(r[I.name]||"").trim(),kana:r[I.kana]||"",addr:(addr+(r[I.bldg]?" "+r[I.bldg]:"")).trim(),
+   lat:parseFloat(r[I.lat])||null,lng:parseFloat(r[I.lng])||null,tel:r[I.tel]||"",corp:r[I.corp]||"",url:r[I.url]||""})}
+ return out}
+function mergeOffices(list,drop){
+ if(drop){const dummy=DB.offices.filter(o=>/^o\d$/.test(o.id)).map(o=>o.id);
+  const dcm=DB.cms.filter(c=>dummy.includes(c.office)).map(c=>c.id);
+  DB.offices=DB.offices.filter(o=>!dummy.includes(o.id));DB.cms=DB.cms.filter(c=>!dcm.includes(c.id));
+  DB.clients=DB.clients.filter(u=>!dcm.includes(u.cm));DB.records=DB.records.filter(r=>!dummy.includes(r.office));
+  DB.cards.forEach(c=>{if(dcm.includes(c.cm))c.cm=""});if(dummy.includes(S.office))S.office=null}
+ let add=0,upd=0;
+ for(const x of list){
+  let o=DB.offices.find(o=>x.code&&o.code===x.code);
+  if(!o){const n=norm(x.name);o=n.length>=3?DB.offices.find(o=>!o.code&&(norm(o.name)===n||norm(o.name).includes(n)||n.includes(norm(o.name)))):null}
+  if(o){Object.assign(o,{code:x.code||o.code,kana:x.kana,addr:x.addr,tel:x.tel||o.tel,corp:x.corp,url:x.url});if(x.lat){o.lat=x.lat;o.lng=x.lng}upd++}
+  else{DB.offices.push({id:"k"+(x.code||Date.now()+"_"+add),code:x.code,name:x.name,kana:x.kana,addr:x.addr,tel:x.tel,corp:x.corp,url:x.url,lat:x.lat,lng:x.lng,notices:[]});add++}
+ }
+ DB.importedAt=new Date().toLocaleString("ja-JP");save();fillSim();
+ return `福山市の居宅 ${list.length}件を取り込みました（新規${add}件・更新${upd}件）`}
+window.importCsvFile=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;const st=$("#imp-st");
+ st.innerHTML='<span class="spin"></span>読み込み中…';
+ try{const list=csvToOffices(decodeBuf(await f.arrayBuffer()));
+  if(!list.length)throw new Error("福山市の事業所が見つかりませんでした");
+  const msg=mergeOffices(list,$("#imp-drop").checked);toast(msg);render();$("#imp-st").textContent=msg}
+ catch(e){st.textContent="取り込めませんでした："+(e.message||e)}};
+window.importViaGas=async b=>{const st=$("#imp-st");
+ if(!getCfg().url){st.textContent="先に「面談記録」タブの「AI連携の設定」でGASのURLと合言葉を登録してください。";return}
+ b.disabled=true;st.innerHTML='<span class="spin"></span>厚労省のデータを取得中…（20〜40秒）';
+ try{const d=await gasCall({action:"kyotaku",city:"福山市"});
+  const msg=mergeOffices(d.offices,$("#imp-drop").checked)+"（"+d.asof+"）";toast("取り込みました");render();$("#imp-st").textContent=msg}
+ catch(e){st.textContent="取り込めませんでした："+errText(e)}
+ b.disabled=false};
 
 function viewCards(){
  const q=S.q.trim();
@@ -606,7 +678,7 @@ window.testCfg=async b=>{setCfg({url:$("#g-url").value.trim(),token:$("#g-token"
  try{const d=await gasCall({action:"ping"});st.textContent="接続できました（AI："+d.provider+" / "+d.model+"）"}catch(e){st.textContent="接続できません："+errText(e)}
  b.disabled=false};
 window.resetDemo=b=>{if(b.dataset.c!=="1"){b.dataset.c="1";b.textContent="もう一度押すと初期化します";return}
- DB=JSON.parse(JSON.stringify(SEED));save();toast("初期データに戻しました");render();};
+ DB=JSON.parse(JSON.stringify(SEED));save();fillSim();toast("初期データに戻しました");render();};
 
 function render(){
  renderGps();
@@ -619,7 +691,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classList?.
 
 /* 初期表示：GPSを試し、使えなければデモとして1件目の居宅前に立った状態で開く */
 startGps();
-S.office="o1";
+S.office=DB.offices.some(o=>o.id==="o1")?"o1":null;
 render();
 setTimeout(()=>{if(S.gps==="wait"){S.gps="off";render()}},6000);
 </script>
