@@ -233,8 +233,8 @@ const SEED = {
 
 const KEY="kyotaku-proto-v1";
 const clone=o=>JSON.parse(JSON.stringify(o));
-let DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[]};
-if(MODE==="demo"){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}DB=d||clone(SEED);if(!DB.users)DB.users=clone(SEED.users);
+let DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[]};
+if(MODE==="demo"){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}DB=d||clone(SEED);if(!DB.users)DB.users=clone(SEED.users);if(!DB.calendar)DB.calendar=[];
  DB.cms.forEach(c=>{if(c.count==null&&c["担当"]!=null)c.count=c["担当"]})}
 function save(){if(MODE!=="demo")return;try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast("この端末には保存できませんでした（容量不足の可能性）")}}
 const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -271,7 +271,7 @@ async function persist(ops){
 async function loadAll(){const d=await api("load");
  DB.offices=d.offices.map(r=>fromServer("offices",r,d.notices||[]));
  DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r));
- DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[]}
+ DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[]}
 
 /* ===== Googleログイン ===== */
 function initGis(){if(window.google&&google.accounts){gisReady();return}
@@ -291,7 +291,7 @@ async function boot(){S.loading=true;render();
 window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{sessionStorage.removeItem("kyotaku-s")}catch(e){}
  try{google.accounts.id.disableAutoSelect()}catch(e){}
  if(s&&typeof msg!=="string")fetch(setupCfg().gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"logout",session:s})}).catch(()=>{});
- DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render()};
+ DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render()};
 
 const ARRIVE_M=150; // この距離以内で「到着」とみなす
 const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:"",cmEdit:null,loginMsg:"",loading:false};
@@ -300,13 +300,13 @@ const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null
 function dist(a,b,c,d){const R=6371000,r=Math.PI/180,x=(c-a)*r,y=(d-b)*r;
  const h=Math.sin(x/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 function nearest(){ if(!S.pos) return [];
- return DB.offices.filter(o=>o.lat!=null).map(o=>({o,d:dist(S.pos.lat,S.pos.lng,o.lat,o.lng)})).sort((a,b)=>a.d-b.d)}
+ return DB.offices.filter(o=>o.lat!=null&&ost(o)!=="非表示").map(o=>({o,d:dist(S.pos.lat,S.pos.lng,o.lat,o.lng)})).sort((a,b)=>a.d-b.d)}
 function fmtD(m){return m<1000?Math.round(m)+" m":(m/1000).toFixed(1)+" km"}
 function hereId(){const n=nearest()[0];return n&&n.d<=ARRIVE_M?n.o.id:null}
 /* 入力中・入力途中の内容がある間は、画面を作り直さない */
 function typing(){const a=document.activeElement;
  if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest("#app"))return true;
- return !!(S.cmEdit||($("#f-text")&&$("#f-text").value)||($("#f-trans")&&$("#f-trans").value))}
+ return !!(S.cmEdit||S.calEditing||S.bulk||($("#f-text")&&$("#f-text").value)||($("#f-trans")&&$("#f-trans").value))}
 function onPos(lat,lng,src){
  const before=hereId(),first=!S.pos;
  S.pos={lat,lng}; S.gps=src;
@@ -358,7 +358,7 @@ function viewVisit(){
    ${S.gps==="off"?"この画面ではGPSが使えないため、右上の「位置を試す」で動きを確認できます。":""}</p></div>
    ${near.length?`<div class="section-t"><h2>近くの居宅</h2></div><div class="olist">${near.map(officeRow).join("")}</div>`:""}`;
  }
- const cms=DB.cms.filter(c=>c.office===o.id);
+ const allCms=DB.cms.filter(c=>c.office===o.id),cms=allCms.filter(c=>cst(c)==="在籍"),gone=allCms.filter(c=>cst(c)==="退職"||cst(c)==="異動");
  const d=S.pos&&o.lat!=null?dist(S.pos.lat,S.pos.lng,o.lat,o.lng):null;
  const here=d!==null&&d<=ARRIVE_M;
  const recs=DB.records.filter(r=>r.office===o.id).sort((a,b)=>b.date.localeCompare(a.date));
@@ -367,20 +367,24 @@ function viewVisit(){
  return `
  ${here?`<div class="arrive"><div><b>${esc(o.name)} に到着</b><div style="font-size:13px">現在地から ${fmtD(d)}</div></div>
    <button class="btn sm" onclick="document.getElementById('f-text').focus()">面談を記録する</button></div>`:""}
- <div class="ohead"><h1>${esc(o.name)}</h1>
+ <div class="ohead"><h1>${esc(o.name)}</h1>${ost(o)!=="稼働"?`<span class="status st-alert">${esc(ost(o))}</span>`:""}
   <span class="meta">${esc(o.addr)} ・ <span class="num">${esc(o.tel)}</span>${d!==null?" ・ "+fmtD(d):""}</span>
   <span class="meta">最終訪問 <span class="num">${recs[0]?recs[0].date:"記録なし"}</span></span>
   <span class="meta">担当：<b style="color:var(--ink)">${esc(staffNames(o))}</b>${canAdmin()&&!S.staffEdit?` <button class="btn sm" type="button" onclick="S.staffEdit=true;render()">変更</button>`:""}</span>
+  ${canAdmin()?`<span class="meta">状態 <select class="sim" onchange="setOfficeStatus('${o.id}',this.value)">${["稼働","休止","非表示"].map(v=>`<option ${v===ost(o)?"selected":""}>${v}</option>`).join("")}</select></span>`:""}
   ${o.lat==null?`<span class="meta">位置が未登録です ${S.pos?`<button class="btn sm" onclick="setOfficePos('${o.id}')">今いる場所を登録</button>`:"（現在地が取れると登録できます）"}</span>`:""}</div>
 
  ${S.staffEdit&&canAdmin()?staffForm(o):""}
  ${o.notices.length?`<div class="section-t"><h2>連絡事項・今日伝えること</h2><span class="meta">${o.notices.length}件</span></div>
   <div class="notices">${o.notices.map(n=>`<div class="notice"><div class="from">${esc(n.from)}</div>${esc(n.text)}</div>`).join("")}</div>`:""}
 
+ ${S.calEditing===o.id?calForm(o):calBox(o)}
  <div class="section-t"><h2>在籍ケアマネジャー</h2><span class="meta">${cms.length}名 ・ タップで担当利用者を絞り込み</span>
-  <button class="btn sm" type="button" onclick="S.cmEdit='new';render()">＋ ケアマネを追加</button></div>
+  <button class="btn sm" type="button" onclick="S.cmEdit='new';render()">＋ ケアマネを追加</button>
+  ${cms.length?`<button class="btn sm" type="button" onclick="S.bulk=!S.bulk;render()">${S.bulk?"整理をやめる":"退職者をまとめて整理"}</button>`:""}</div>
  ${S.cmEdit?cmForm(o):""}
- <div class="cms">${cms.map(cmCard).join("")||'<div class="empty">登録されたCMがいません。「＋ ケアマネを追加」か、名刺の読み取りで登録できます。</div>'}</div>
+ ${S.bulk?bulkForm(o,cms):`<div class="cms">${cms.map(cmCard).join("")||'<div class="empty">登録されたCMがいません。「＋ ケアマネを追加」か、名刺の読み取りで登録できます。</div>'}</div>`}
+ ${gone.length?`<details style="margin-top:10px"><summary class="meta">退職・異動したケアマネ（${gone.length}名）</summary><div class="log" style="margin-top:6px">${gone.map(c=>`<div class="logi"><b>${esc(c.name)}</b> <span class="status st-warn">${esc(cst(c))}</span> <button class="btn sm" type="button" onclick="S.cmEdit='${c.id}';render()">編集</button>${c.history?`<div class="meta" style="white-space:pre-wrap">${esc(c.history)}</div>`:""}</div>`).join("")}</div></details>`:""}
 
  <div class="split">
   <div>
@@ -407,6 +411,7 @@ function cmCard(c){
   <div class="chips">${c.traits.map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
   <dl class="kv"><dt>担当件数</dt><dd class="num">${c.count!=null&&c.count!==""?c.count+"件":"—"}（当社 ${n}件）</dd>
    ${c.note?`<dt>傾向</dt><dd>${esc(c.note)}</dd>`:""}${c.likes?`<dt>話題</dt><dd>${esc(c.likes)}</dd>`:""}</dl>
+  ${c.history?`<div class="meta" style="white-space:pre-wrap">${esc(c.history)}</div>`:""}
   ${last?`<div class="last"><div class="meta num">前回 ${last.date}</div>${esc(last.text)}${last.next?`<div class="meta">次回：${esc(last.next)}</div>`:""}</div>`:""}
  </div>`;
 }
@@ -423,15 +428,52 @@ function cmForm(o){
    <label>特徴（、で区切る）<input id="m-traits" value="${esc((c.traits||[]).join("、"))}" placeholder="例：午前中が捕まりやすい、LINE可"></label></div>
   <label>傾向・メモ<input id="m-note" value="${esc(c.note)}"></label>
   <label>会話の話題<input id="m-likes" value="${esc(c.likes)}"></label>
+  ${S.cmEdit!=="new"?`<div class="row2"><label>状態<select id="m-status">${["在籍","退職"].map(v=>`<option ${v===(cst(c)==="異動"?"在籍":cst(c))?"selected":""}>${v}</option>`).join("")}</select></label>
+   <label>別の居宅へ異動（移籍先）<input id="m-move" list="officeNames" placeholder="移籍先の居宅名を入力・選択"></label></div>
+   <datalist id="officeNames">${DB.offices.filter(x=>ost(x)!=="非表示"&&x.id!==o.id).map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist>
+   ${c.history?`<div class="meta" style="white-space:pre-wrap">これまでの経歴：${esc(c.history)}</div>`:""}`:""}
   <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit" id="m-save">保存</button><button class="btn" type="button" onclick="S.cmEdit=null;render()">やめる</button></div>
  </form>`}
 window.saveCm=async(e,oid)=>{e.preventDefault();const v=id=>$(id).value.trim();const b=$("#m-save");b.disabled=true;
- const row={id:S.cmEdit==="new"?newId("c"):S.cmEdit,office:oid,name:v("#m-name"),kana:v("#m-kana"),role:v("#m-role"),years:v("#m-years"),
+ const old=DB.cms.find(x=>x.id===S.cmEdit)||{};const today=new Date().toLocaleDateString("sv-SE");let hist=old.history||"",office=oid,status="在籍";
+ const curOff=DB.offices.find(x=>x.id===(old.office||oid))||{name:""};
+ if($("#m-status")){status=$("#m-status").value;
+  const mv=$("#m-move").value.trim();
+  if(mv){const to=DB.offices.find(x=>x.name===mv)||matchOffice(mv);if(!to){toast("移籍先の居宅が見つかりません");b.disabled=false;return}
+   office=to.id;hist=(hist?hist+"\n":"")+today+" "+curOff.name+" → "+to.name+"（異動）"}
+  if(status==="退職"&&cst(old)!=="退職")hist=(hist?hist+"\n":"")+today+" "+curOff.name+"を退職"}
+ const row={id:S.cmEdit==="new"?newId("c"):S.cmEdit,office,status,history:hist,name:v("#m-name"),kana:v("#m-kana"),role:v("#m-role"),years:v("#m-years"),
   count:v("#m-count")===""?null:Number(v("#m-count").replace(/[^0-9]/g,"")),traits:v("#m-traits").split(/[、,]/).map(x=>x.trim()).filter(Boolean),note:v("#m-note"),likes:v("#m-likes")};
- try{await persist([{table:"cms",row}]);S.cmEdit=null;toast("ケアマネを保存しました");render()}
+ try{await persist([{table:"cms",row}]);S.cmEdit=null;toast(office!==oid?"異動を記録しました（移籍先の居宅に表示されます）":"ケアマネを保存しました");render()}
  catch(err){b.disabled=false;toast("保存できませんでした："+errText(err))}};
+function calBox(o){const k=calOf(o);
+ if(!k)return canAdmin()?`<div class="meta" style="margin-top:10px">${CAL_YEAR}カレンダー：予定なし <button class="btn sm" type="button" onclick="calEdit('${o.id}')">予定を作る</button></div>`:"";
+ const it=[["卓上","desk"],["1カ月","m1"],["3カ月","m3"],["新年メモ","memo"]].filter(([l,f])=>+k[f]).map(([l,f])=>`${l} <b class="num">${k[f]}</b>`).join("・")||"数の指定なし";
+ const done=k.state==="配布済";
+ return `<div class="notice" style="margin-top:12px;${done?"background:var(--accent-soft);border-left-color:var(--accent)":""}"><div class="from" style="${done?"color:var(--accent)":""}">${CAL_YEAR}カレンダー ・ ${done?"配布済"+(k.date?"（"+esc(k.date)+(k.by?" "+esc(k.by):"")+"）":""):"未配布"}</div>${it}${k.note?`<div class="meta">${esc(k.note)}</div>`:""}
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${done?`<button class="btn sm" type="button" onclick="calSet('${k.id}',false)">未配布に戻す</button>`:`<button class="btn sm primary" type="button" onclick="calSet('${k.id}',true)">配布済にする</button>`}${canAdmin()?`<button class="btn sm" type="button" onclick="calEdit('${o.id}')">数を変更</button>`:""}</div></div>`}
+window.calSet=async(id,done)=>{const k=DB.calendar.find(x=>x.id===id);const row={id,state:done?"配布済":"未配布",date:done?new Date().toLocaleDateString("sv-SE"):"",by:done&&USER?USER.name:""};
+ try{if(MODE==="live")await persist([{table:"calendar",row}]);else{Object.assign(k,row);save()}toast(done?"配布済にしました":"未配布に戻しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
+window.calEdit=oid=>{S.calEditing=oid;render()};
+function calForm(o){const k=calOf(o)||{};return `<form class="form" onsubmit="calSave(event,'${o.id}')" style="margin-top:8px"><b>${CAL_YEAR}カレンダーの予定数</b>
+ <div class="row2"><label>卓上<input id="k-desk" inputmode="numeric" value="${esc(k.desk||"")}"></label><label>1カ月<input id="k-m1" inputmode="numeric" value="${esc(k.m1||"")}"></label></div>
+ <div class="row2"><label>3カ月<input id="k-m3" inputmode="numeric" value="${esc(k.m3||"")}"></label><label>新年メモ<input id="k-memo" inputmode="numeric" value="${esc(k.memo||"")}"></label></div>
+ <label>メモ<input id="k-note" value="${esc(k.note||"")}"></label>
+ <div style="display:flex;gap:8px"><button class="btn primary" type="submit">保存</button><button class="btn" type="button" onclick="S.calEditing=null;render()">やめる</button></div></form>`}
+window.calSave=async(e,oid)=>{e.preventDefault();const v=id=>$(id).value.trim();const ex=calOf({id:oid});
+ const row={id:CAL_YEAR+"-"+oid,office:oid,year:CAL_YEAR,desk:v("#k-desk"),m1:v("#k-m1"),m3:v("#k-m3"),memo:v("#k-memo"),note:v("#k-note"),state:ex?ex.state||"未配布":"未配布"};
+ try{if(MODE==="live")await persist([{table:"calendar",row}]);else{ex?Object.assign(ex,row):DB.calendar.push(row);save()}S.calEditing=null;toast("保存しました");render()}catch(err){toast("保存できませんでした："+errText(err))}};
+window.setOfficeStatus=async(id,st)=>{if(st==="非表示"&&!S.confirmHide){S.confirmHide=true;toast("もう一度「非表示」を選ぶと非表示にします");render();return}S.confirmHide=false;
+ try{await persist([{table:"offices",row:{id,status:st}}]);toast("状態を「"+st+"」にしました");if(st==="非表示"){S.office=null}render()}catch(e){toast("保存できませんでした："+errText(e))}};
+function bulkForm(o,cms){return `<form class="form" onsubmit="bulkSave(event,'${o.id}')"><b>辞めたケアマネにチェックを入れて「退職にする」を押してください</b>
+ <div style="display:grid;gap:6px">${cms.map(c=>`<label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" name="bk" value="${c.id}" style="width:auto"> ${esc(c.name)} <span class="meta">${esc(c.kana||"")}</span></label>`).join("")}</div>
+ <div style="display:flex;gap:8px"><button class="btn primary" type="submit">退職にする</button><button class="btn" type="button" onclick="S.bulk=false;render()">やめる</button></div></form>`}
+window.bulkSave=async(e,oid)=>{e.preventDefault();const ids=[...document.querySelectorAll("input[name=bk]:checked")].map(x=>x.value);if(!ids.length){toast("チェックがありません");return}
+ const o=DB.offices.find(x=>x.id===oid),today=new Date().toLocaleDateString("sv-SE");
+ const ops=ids.map(id=>{const c=DB.cms.find(x=>x.id===id);return {table:"cms",row:{id,status:"退職",history:(c.history?c.history+"\n":"")+today+" "+o.name+"を退職"}}});
+ try{await persist(ops);S.bulk=false;toast(ids.length+"名を退職にしました");render()}catch(err){toast("保存できませんでした："+errText(err))}};
 function recordForm(o,cms){
- const today=new Date().toISOString().slice(0,10);
+ const today=new Date().toLocaleDateString("sv-SE");
  return `<form class="form" id="recForm" onsubmit="addRecord(event,'${o.id}')">
   <div class="row2"><label>面談したCM<select id="f-cm">${cms.map(c=>`<option value="${c.id}" ${S.selCm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="">（CM不在・事業所のみ）</option></select></label>
   <label>日付<input type="date" id="f-date" value="${today}"></label></div>
@@ -455,40 +497,62 @@ window.addRecord=async(e,oid)=>{e.preventDefault();
  try{await persist([{table:"records",row}]);$("#f-text").value="";$("#f-trans").value="";toast("面談記録を保存しました");render()}
  catch(err){b.disabled=false;toast("保存できませんでした："+errText(err))}};
 
-function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id).length;
+function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").length;
  return `<button class="oitem" onclick="S.office='${o.id}';S.view='visit';S.selCm=null;render();scrollTo(0,0)">
- <div class="t"><b>${esc(o.name)}${o.notices.length?`<span class="badge">連絡${o.notices.length}</span>`:""}</b><span class="meta">${esc(o.addr)} ・ CM ${cms}名 ・ 担当 ${esc(staffNames(o))}</span></div>
+ <div class="t"><b>${esc(o.name)}${ost(o)!=="稼働"?`<span class="badge st-alert">${esc(ost(o))}</span>`:""}${o.notices.length?`<span class="badge">連絡${o.notices.length}</span>`:""}${(k=>k?`<span class="badge ${k.state==="配布済"?"st-ok":""}">${k.state==="配布済"?"ｶﾚﾝﾀﾞｰ済":"ｶﾚﾝﾀﾞｰ未"}</span>`:"")(calOf(o))}</b><span class="meta">${esc(o.addr)} ・ CM ${cms}名 ・ 担当 ${esc(staffNames(o))}</span></div>
  ${d!=null?`<span class="dist num">${fmtD(d)}</span>`:""}</button>`}
 function listRows(){
  const q=(S.lq||"").trim();
  let rows=S.pos?nearest().concat(DB.offices.filter(o=>o.lat==null).map(o=>({o,d:null}))):DB.offices.map(o=>({o,d:null}));
  if(q)rows=rows.filter(r=>(r.o.name+" "+(r.o.kana||"")+" "+r.o.addr+" "+(r.o.corp||"")).includes(q));
- if(S.mine)rows=rows.filter(r=>staffOf(r.o).includes(me()));
+ if(S.mine)rows=rows.filter(r=>isMine(r.o));
+ if(!S.showAll)rows=rows.filter(r=>ost(r.o)==="稼働");else rows=rows.filter(r=>ost(r.o)!=="非表示"||S.showAll==="all");
+ if(S.calf==="todo")rows=rows.filter(r=>{const k=calOf(r.o);return k&&k.state!=="配布済"});
+ if(S.calf==="done")rows=rows.filter(r=>{const k=calOf(r.o);return k&&k.state==="配布済"});
  return rows;
 }
 function listHtml(){const rows=listRows(),show=rows.slice(0,150);
  return `<div class="meta" style="margin-bottom:6px">${rows.length}件${rows.length>150?"（近い順に150件まで表示。検索で絞り込めます）":""}</div>
  <div class="olist">${show.map(officeRow).join("")||'<div class="empty">該当する居宅がありません</div>'}</div>`}
 window.renderListOnly=()=>{const el=$("#listBox");if(el)el.innerHTML=listHtml()};
+/* ===== 状態（居宅：稼働/休止/非表示、CM：在籍/退職/異動） ===== */
+const CAL_YEAR="2027";
+function ost(o){return o.status||"稼働"}
+function cst(c){return c.status||"在籍"}
+function calOf(o){return DB.calendar.find(k=>k.office===o.id&&String(k.year)===CAL_YEAR)}
+function calTotal(k){return ["desk","m1","m3","memo"].reduce((a,f)=>a+(+k[f]||0),0)}
 /* ===== 担当営業 ===== */
 function me(){return MODE==="live"?(USER&&USER.email):(DB.users[0]&&DB.users[0].email)}
+function isMine(o){const s=staffOf(o);if(!USER&&MODE==="demo")return s.includes(me());return !!USER&&(s.includes(USER.email)||s.includes(USER.name))}
 function staffOf(o){return String(o.staff||"").split(",").map(x=>x.trim()).filter(Boolean)}
 function uname(e){const u=DB.users.find(x=>x.email===e);return u?u.name:e}
 function staffNames(o){const s=staffOf(o);return s.length?s.map(uname).join("・"):"未設定"}
 function findUserByName(n){n=String(n||"").replace(/[\s　]/g,"");if(!n)return null;
  return DB.users.find(u=>u.email===n.toLowerCase()||u.name.replace(/[\s　]/g,"")===n)||DB.users.find(u=>u.name.replace(/[\s　]/g,"").startsWith(n))||null}
-function staffForm(o){const s=staffOf(o);const opt=v=>`<option value="">（なし）</option>`+DB.users.map(u=>`<option value="${esc(u.email)}" ${u.email===v?"selected":""}>${esc(u.name)}</option>`).join("");
+function staffForm(o){const s=staffOf(o);const names=[...new Set(DB.offices.flatMap(staffOf).filter(x=>!x.includes("@")))].filter(n=>!DB.users.some(u=>u.name===n));
+ const opt=v=>`<option value="">（なし）</option>`+DB.users.map(u=>`<option value="${esc(u.email)}" ${u.email===v?"selected":""}>${esc(u.name)}</option>`).join("")+names.map(n=>`<option value="${esc(n)}" ${n===v?"selected":""}>${esc(n)}</option>`).join("");
  return `<form class="form" onsubmit="saveStaff(event,'${o.id}')" style="margin-top:8px">
   <div class="row2"><label>担当営業（主）<select id="st1">${opt(s[0]||"")}</select></label><label>2人目（2人体制のときだけ）<select id="st2">${opt(s[1]||"")}</select></label></div>
   <div style="display:flex;gap:8px"><button class="btn primary" type="submit">保存</button><button class="btn" type="button" onclick="S.staffEdit=false;render()">やめる</button></div></form>`}
 window.saveStaff=async(e,id)=>{e.preventDefault();const v=[$("#st1").value,$("#st2").value].filter(Boolean);
  try{await persist([{table:"offices",row:{id,staff:[...new Set(v)].join(",")}}]);S.staffEdit=false;toast("担当を保存しました");render()}catch(err){toast("保存できませんでした："+errText(err))}};
+function calSummary(){const ks=DB.calendar.filter(k=>String(k.year)===CAL_YEAR&&(o=>o&&ost(o)==="稼働")(DB.offices.find(o=>o.id===k.office)));if(!ks.length)return "";
+ const by={};ks.forEach(k=>{const o=DB.offices.find(x=>x.id===k.office);const st=staffNames(o);(by[st]=by[st]||{t:0,d:0});by[st].t++;if(k.state==="配布済")by[st].d++});
+ const done=ks.filter(k=>k.state==="配布済").length;
+ return `<details class="form" style="margin-bottom:12px"><summary><b>${CAL_YEAR}カレンダー配布状況</b>　<span class="num">${done} / ${ks.length}</span> 件 配布済</summary>
+ <table class="cltab" style="margin-top:8px"><thead><tr><th>担当</th><th>配布済</th><th>予定</th></tr></thead><tbody>${Object.keys(by).sort().map(n=>`<tr><td>${esc(n)}</td><td class="num">${by[n].d}</td><td class="num">${by[n].t}</td></tr>`).join("")}</tbody></table></details>`}
 function canAdmin(){return MODE==="demo"||(USER&&USER.role==="admin")}
 function viewList(){
  const imp=DB.importedAt;
  return `<div class="section-t"><h2>居宅一覧</h2><span class="meta">${S.pos?"近い順":"登録順"} ・ 全${DB.offices.length}件</span></div>
  <input class="search" id="lq" placeholder="事業所名・住所・法人名で検索" value="${esc(S.lq||"")}" oninput="S.lq=this.value;renderListOnly()">
- <label style="display:flex;gap:8px;align-items:center;margin:-4px 0 10px;font-size:14px"><input type="checkbox" id="mine" ${S.mine?"checked":""} onchange="S.mine=this.checked;renderListOnly()"> 自分の担当の居宅だけ表示</label>
+ <div style="display:flex;gap:6px 16px;flex-wrap:wrap;align-items:center;margin:-4px 0 10px;font-size:14px">
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="mine" ${S.mine?"checked":""} onchange="S.mine=this.checked;renderListOnly()"> 自分の担当だけ</label>
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="showall" ${S.showAll?"checked":""} onchange="S.showAll=this.checked;renderListOnly()"> 休止中も表示</label>
+  ${canAdmin()?`<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${S.showAll==="all"?"checked":""} onchange="S.showAll=this.checked?'all':false;render()"> 非表示も表示</label>`:""}
+  <label style="display:flex;gap:6px;align-items:center">${CAL_YEAR}カレンダー <select class="sim" id="calf" onchange="S.calf=this.value;renderListOnly()"><option value="">すべて</option><option value="todo" ${S.calf==="todo"?"selected":""}>未配布だけ</option><option value="done" ${S.calf==="done"?"selected":""}>配布済だけ</option></select></label>
+ </div>
+ ${calSummary()}
  <div id="listBox">${listHtml()}</div>
  ${canAdmin()?`
  ${MODE==="live"?`<div class="section-t"><h2>ケアレンツのマスターから作成</h2></div>
@@ -500,6 +564,14 @@ function viewList(){
   <div><button class="btn primary" type="button" onclick="buildMaster(this)">マスターから作成・更新</button></div>
   <div id="ms-st" class="meta"></div>
  </div>`:""}
+ <div class="section-t"><h2>取込データ（居宅・ケアマネ・カレンダー）</h2></div>
+ <div class="form">
+  <div class="meta">Claudeが作った「居宅・ケアマネ取込データ.xlsx」（シート：居宅／ケアマネ／カレンダー${CAL_YEAR}）を選ぶと、まとめて登録・更新します。何度読み込んでも重複しません。</div>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px"><input type="checkbox" id="bd-hide" style="width:auto" checked> このファイルに載っていない居宅（厚労省データ由来など）は「非表示」にする</label>
+  <div><label class="btn primary" for="bd-file" style="display:inline-flex">取込データを選ぶ</label>
+   <input type="file" id="bd-file" accept=".xlsx" onchange="pickBundle(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div>
+  <div id="bd-area" class="meta"></div>
+ </div>
  <div class="section-t"><h2>居宅とケアマネをExcelで一括登録</h2></div>
  <div class="form">
   <div class="meta">1行に「居宅名・ケアマネ氏名」を書いたExcel（.xlsx）かCSVを選ぶと、居宅とケアマネをまとめて登録します。すでにある居宅・同じ名前のケアマネは重複して登録しません。</div>
@@ -538,6 +610,28 @@ window.buildMaster=async b=>{const st=$("#ms-st");b.disabled=true;st.innerHTML='
   const m=`居宅${d.offices}件を照合（うち新規作成${d.newOffices}件）／ケアマネ 新規${d.newCms}名・更新${d.updCms}名／利用者 新規${d.newClients}名・更新${d.updClients}名${d.skipped?`／解約・終了で除外${d.skipped}名`:""}${d.unknownStaff.length?`／ユーザー未登録の担当営業：${d.unknownStaff.join("、")}`:""}`;
   toast("マスターから作成しました");$("#ms-st").textContent=m}
  catch(e){st.textContent="作成できませんでした："+errText(e);b.disabled=false}};
+/* ===== 取込データ（居宅・ケアマネ・カレンダー） ===== */
+let BD=null;
+window.pickBundle=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;const a=$("#bd-area");
+ if(MODE!=="live"){a.textContent="取込データは本番（ログインした状態）でだけ使えます。";return}
+ a.innerHTML='<span class="spin"></span>読み込み中…';
+ try{await loadXlsx();const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
+  const sh=n=>{const k=wb.SheetNames.find(x=>x.startsWith(n));return k?XLSX.utils.sheet_to_json(wb.Sheets[k],{defval:"",raw:false}):[]};
+  const g=(r,k)=>String(r[k]??"").trim();
+  const offices=sh("居宅").filter(r=>g(r,"居宅名")).map(r=>({krCode:g(r,"ケアレンツ居宅コード"),jno:g(r,"事業所番号"),name:g(r,"居宅名"),kind:g(r,"区分"),addr:g(r,"住所"),tel:g(r,"電話"),fax:g(r,"FAX"),
+   staff:[g(r,"担当営業"),g(r,"担当営業2")].filter(Boolean).join(","),status:g(r,"状態")||"稼働",rank:g(r,"ランク")}));
+  const cms=sh("ケアマネ").filter(r=>g(r,"氏名")&&g(r,"ケアレンツ居宅コード")).map(r=>({krCode:g(r,"ケアレンツ居宅コード"),cmCode:g(r,"CMコード"),name:g(r,"氏名"),kana:g(r,"フリガナ"),status:g(r,"状態")||"在籍",note:g(r,"メモ（異動先など）")}));
+  const calendar=sh("カレンダー").filter(r=>g(r,"居宅名")).map(r=>({krCode:g(r,"ケアレンツ居宅コード"),name:g(r,"居宅名"),year:CAL_YEAR,desk:g(r,"卓上"),m1:g(r,"1カ月"),m3:g(r,"3カ月"),memo:g(r,"新年メモ"),state:g(r,"配布状況")||"未配布",date:g(r,"配布日"),note:g(r,"メモ")}));
+  if(!offices.length)throw new Error("「居宅」シートが見つからないか、空です");
+  BD={offices,cms,calendar};
+  const st=offices.reduce((m,o)=>(m[o.status]=(m[o.status]||0)+1,m),{});
+  a.innerHTML=`<div class="match">居宅 <b class="num">${offices.length}</b>件（${Object.entries(st).map(([k,v])=>esc(k)+" "+v).join("・")}）／ケアマネ <b class="num">${cms.length}</b>名（退職・異動 ${cms.filter(c=>c.status!=="在籍").length}名）／カレンダー <b class="num">${calendar.length}</b>件</div>
+  <div style="margin-top:8px"><button class="btn primary" type="button" onclick="commitBundle(this)">この内容で取り込む</button></div>`}
+ catch(e){a.textContent="読み込めませんでした："+(e.message||e)}};
+window.commitBundle=async b=>{b.disabled=true;b.textContent="取り込み中…（1分ほど）";const a=$("#bd-area");
+ try{const d=await api("importBundle",Object.assign({hideOthers:$("#bd-hide").checked},BD));await loadAll();fillSim();BD=null;render();
+  toast("取り込みました");const x=$("#bd-area");if(x)x.textContent=`居宅 新規${d.offNew}件・更新${d.offUpd}件／非表示にした居宅 ${d.hidden}件／ケアマネ 新規${d.cmNew}名・更新${d.cmUpd}名／カレンダー ${d.cal}件`}
+ catch(e){b.disabled=false;b.textContent="この内容で取り込む";a.insertAdjacentHTML("beforeend",`<div class="notice">取り込めませんでした：${esc(errText(e))}</div>`)}};
 /* ===== Excel一括登録（居宅・ケアマネ） ===== */
 const XL={stage:"idle",plan:null,err:""};
 function loadXlsx(){return new Promise((res,rej)=>{if(window.XLSX)return res();const s=document.createElement("script");
