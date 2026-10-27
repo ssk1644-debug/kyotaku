@@ -49,6 +49,14 @@ select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);backgr
 .btn{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:10px;font-weight:700;font-size:14px}
 .btn.primary{background:var(--accent);color:var(--surface);border-color:var(--accent)}
 .btn.sm{padding:4px 10px;font-size:12.5px}
+.btn:active,.tab:active,.oitem:active{transform:scale(.96);filter:brightness(.9)}
+.btn:disabled{opacity:.6}
+.bkrow{display:flex;gap:10px;align-items:center;color:var(--ink);font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.bkrow.on{background:var(--alert-soft);border-color:var(--alert);color:var(--alert);font-weight:700}
+.bkrow input{width:22px!important;height:22px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}.seg button{border:0;background:var(--surface);padding:7px 14px;font-weight:700}.seg button.on{background:var(--accent);color:var(--surface)}
+#map{height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--line);z-index:1}
+.jk{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.jk .form{gap:6px}
 
 /* 居宅ヘッダ */
 .ohead{padding:14px 0 6px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:flex-end}
@@ -122,7 +130,7 @@ select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);backgr
 
 /* タブ */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
-.tabs-in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+.tabs-in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
 .tab{background:none;border:0;padding:10px 4px 12px;font-size:12.5px;color:var(--muted);display:grid;justify-items:center;gap:2px}
 .tab svg{width:22px;height:22px}
 .tab[aria-current="true"]{color:var(--accent);font-weight:700}
@@ -175,6 +183,7 @@ select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);backgr
     <button class="tab" data-v="visit" id="t-visit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>訪問中</button>
     <button class="tab" data-v="list" id="t-list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>居宅一覧</button>
     <button class="tab" data-v="cards" id="t-cards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14 10h4M14 13h3"/></svg>名刺</button>
+    <button class="tab" data-v="settings" id="t-settings" style="order:5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>設定</button>
     <button class="tab" data-v="log" id="t-log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg>面談記録</button>
   </div>
 </nav>
@@ -233,8 +242,8 @@ const SEED = {
 
 const KEY="kyotaku-proto-v1";
 const clone=o=>JSON.parse(JSON.stringify(o));
-let DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[]};
-if(MODE==="demo"){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}DB=d||clone(SEED);if(!DB.users)DB.users=clone(SEED.users);["calendar","items","dist","visits","contracts"].forEach(k=>{if(!DB[k])DB[k]=[]});
+let DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[]};
+if(MODE==="demo"){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}DB=d||clone(SEED);if(!DB.users)DB.users=clone(SEED.users);["calendar","items","dist","visits","contracts","jisseki"].forEach(k=>{if(!DB[k])DB[k]=[]});
  DB.cms.forEach(c=>{if(c.count==null&&c["担当"]!=null)c.count=c["担当"]})}
 function save(){if(MODE!=="demo")return;try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast("この端末には保存できませんでした（容量不足の可能性）")}}
 const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -272,7 +281,7 @@ async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.offices=d.offices.map(r=>fromServer("offices",r,d.notices||[]));
  DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r));
  DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[];
- ["items","dist","visits","contracts"].forEach(k=>DB[k]=d[k]||[])}
+ ["items","dist","visits","contracts","jisseki"].forEach(k=>DB[k]=d[k]||[])}
 
 /* ===== Googleログイン ===== */
 function initGis(){if(window.google&&google.accounts){gisReady();return}
@@ -292,16 +301,20 @@ async function boot(){S.loading=true;render();
 window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{localStorage.removeItem("kyotaku-s")}catch(e){}
  try{google.accounts.id.disableAutoSelect()}catch(e){}
  if(s&&typeof msg!=="string")fetch(setupCfg().gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"logout",session:s})}).catch(()=>{});
- DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render();initGis()};
+ DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render();initGis()};
 
 const ARRIVE_M=150; // この距離以内で「到着」とみなす
-const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:"",cmEdit:null,loginMsg:"",loading:false,mine:true,recOpen:false};
+const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:"",cmEdit:null,loginMsg:"",loading:false,mine:true,recOpen:false,listMode:"list"};
+/* 表示の設定はこの端末に覚えておく（自分の担当だけ・休止中も表示など） */
+const UIKEY="kyotaku-ui",UI_FIELDS=["mine","showAll","gap","listMode"];
+try{const u=JSON.parse(localStorage.getItem(UIKEY)||"{}");UI_FIELDS.forEach(k=>{if(k in u)S[k]=u[k]})}catch(e){}
+function saveUI(){try{const u={};UI_FIELDS.forEach(k=>u[k]=S[k]);localStorage.setItem(UIKEY,JSON.stringify(u))}catch(e){}}
 
 /* ===== 位置 ===== */
 function dist(a,b,c,d){const R=6371000,r=Math.PI/180,x=(c-a)*r,y=(d-b)*r;
  const h=Math.sin(x/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 function nearest(){ if(!S.pos) return [];
- return DB.offices.filter(o=>o.lat!=null&&ost(o)!=="非表示").map(o=>({o,d:dist(S.pos.lat,S.pos.lng,o.lat,o.lng)})).sort((a,b)=>a.d-b.d)}
+ return DB.offices.filter(o=>o.lat!=null&&(ost(o)==="稼働"||(S.showAll&&ost(o)==="休止")||S.showAll==="all")).map(o=>({o,d:dist(S.pos.lat,S.pos.lng,o.lat,o.lng)})).sort((a,b)=>a.d-b.d)}
 function fmtD(m){return m<1000?Math.round(m)+" m":(m/1000).toFixed(1)+" km"}
 function hereId(){const n=nearest()[0];return n&&n.d<=ARRIVE_M?n.o.id:null}
 /* 入力中・入力途中の内容がある間は、画面を作り直さない */
@@ -317,6 +330,7 @@ function onPos(lat,lng,src){
  renderGps();
  if(src==="sim"){render();return}
  if(typing()||SC.stage!=="idle"||RC.on)return;
+ if(S.view==="list"&&S.listMode==="map"&&!opened)return;
  let moved=true;if(S.view==="list"&&!opened&&!first){const lp=S.lastListPos;moved=!lp||dist(lp.lat,lp.lng,lat,lng)>50}
  if(S.view==="list"&&moved)S.lastListPos={lat,lng};
  if(opened||first||(S.view==="list"&&moved)||(S.view==="visit"&&(!S.office||before!==hereId())))render();
@@ -387,7 +401,8 @@ function viewVisit(){
   <span class="meta">${esc(o.addr)} ・ <span class="num">${esc(o.tel)}</span>${d!==null?" ・ "+fmtD(d):""}</span>
   <span class="meta">${(l=>`最終訪問 <span class="num" style="${l&&daysSince(l)>=GAP_DAYS?"color:var(--alert);font-weight:700":""}">${l?l+"（"+daysSince(l)+"日前）":"記録なし"}</span> ・ 直近3か月 <span class="num">${visits90(o)}</span>回`)(lastVisit(o))}${(n=>n?` ・ 新規契約（12か月） <span class="num">${n}</span>件`:"")(DB.contracts.filter(c=>c.office===o.id&&c.date>=ago(365)).length)}</span>
   <span class="meta">担当：<b style="color:var(--ink)">${esc(staffNames(o))}</b>${canAdmin()&&!S.staffEdit?` <button class="btn sm" type="button" onclick="S.staffEdit=true;render()">変更</button>`:""}</span>
-  ${canAdmin()?`<span class="meta">状態 <select class="sim" onchange="setOfficeStatus('${o.id}',this.value)">${["稼働","休止","非表示"].map(v=>`<option ${v===ost(o)?"selected":""}>${v}</option>`).join("")}</select></span>`:""}
+  <span class="meta">実績の渡し方 <select class="sim" onchange="setJkMethod('${o.id}',this.value,this)"><option value="">未設定</option>${Object.keys(JK_LABEL).map(k=>`<option value="${k}" ${o.jisseki===k?"selected":""}>${JK_LABEL[k]}</option>`).join("")}</select></span>
+  ${canAdmin()?`<span class="meta">状態 <select class="sim" onchange="setOfficeStatus('${o.id}',this.value,this)">${["稼働","休止","非表示"].map(v=>`<option ${v===ost(o)?"selected":""}>${v}</option>`).join("")}</select></span>`:""}
   ${o.lat==null?`<span class="meta">位置が未登録です ${S.pos?`<button class="btn sm" onclick="setOfficePos('${o.id}')">今いる場所を登録</button>`:"（現在地が取れると登録できます）"}</span>`:""}</div>
 
  ${(sib=>sib.length?`<div class="meta" style="margin-top:4px">同じ場所：${sib.map(x=>`<button class="btn sm" type="button" style="margin:2px" onclick="S.office='${x.id}';S.selCm=null;S.recOpen=false;S.autoOpened='${x.id}';render()">${esc(x.name)}${x.kind&&x.kind!=="居宅支援"?"（"+esc(x.kind)+"）":""}</button>`).join("")}</div>`:"")(o.lat==null?[]:DB.offices.filter(x=>x.id!==o.id&&x.lat!=null&&ost(x)!=="非表示"&&dist(o.lat,o.lng,x.lat,x.lng)<40))}
@@ -397,6 +412,7 @@ function viewVisit(){
  ${o.notices.length?`<div class="section-t"><h2>連絡事項・今日伝えること</h2><span class="meta">${o.notices.length}件</span></div>
   <div class="notices">${o.notices.map(n=>`<div class="notice"><div class="from">${esc(n.from)}</div>${esc(n.text)}</div>`).join("")}</div>`:""}
 
+ ${jkBox(o)}
  ${distBox(o)}
  <div class="section-t"><h2>在籍ケアマネジャー</h2><span class="meta">${cms.length}名 ・ 名前をタップで詳しく</span>
   <button class="btn sm" type="button" onclick="S.cmEdit='new';render()">＋ ケアマネを追加</button>
@@ -453,7 +469,7 @@ function cmForm(o){
    ${c.history?`<div class="meta" style="white-space:pre-wrap">これまでの経歴：${esc(c.history)}</div>`:""}`:""}
   <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit" id="m-save">保存</button><button class="btn" type="button" onclick="S.cmEdit=null;render()">やめる</button></div>
  </form>`}
-window.saveCm=async(e,oid)=>{e.preventDefault();const v=id=>$(id).value.trim();const b=$("#m-save");b.disabled=true;
+window.saveCm=async(e,oid)=>{e.preventDefault();const v=id=>$(id).value.trim();const b=$("#m-save");b.disabled=true;b.innerHTML='<span class="spin"></span> 保存中…';
  const old=DB.cms.find(x=>x.id===S.cmEdit)||{};const today=new Date().toLocaleDateString("sv-SE");let hist=old.history||"",office=oid,status="在籍";
  const curOff=DB.offices.find(x=>x.id===(old.office||oid))||{name:""};
  if($("#m-status")){status=$("#m-status").value;
@@ -463,8 +479,8 @@ window.saveCm=async(e,oid)=>{e.preventDefault();const v=id=>$(id).value.trim();c
   if(status==="退職"&&cst(old)!=="退職")hist=(hist?hist+"\n":"")+today+" "+curOff.name+"を退職"}
  const row={id:S.cmEdit==="new"?newId("c"):S.cmEdit,office,status,history:hist,name:v("#m-name"),kana:v("#m-kana"),role:v("#m-role"),years:v("#m-years"),
   count:v("#m-count")===""?null:Number(v("#m-count").replace(/[^0-9]/g,"")),traits:v("#m-traits").split(/[、,]/).map(x=>x.trim()).filter(Boolean),note:v("#m-note"),likes:v("#m-likes")};
- try{await persist([{table:"cms",row}]);S.cmEdit=null;toast(office!==oid?"異動を記録しました（移籍先の居宅に表示されます）":"ケアマネを保存しました");render()}
- catch(err){b.disabled=false;toast("保存できませんでした："+errText(err))}};
+ try{await persist([{table:"cms",row}]);S.cmEdit=null;buzz(60);toast(office!==oid?"異動を記録しました（移籍先の居宅に表示されます）":status==="退職"&&cst(old)!=="退職"?"退職にしました（下の「退職・異動したケアマネ」から戻せます）":status==="在籍"&&cst(old)==="退職"?"在籍に戻しました":"ケアマネを保存しました");render()}
+ catch(err){b.disabled=false;b.textContent="保存";toast("保存できませんでした："+errText(err))}};
 /* ===== 配布物（カレンダー・カタログ・チラシなど） ===== */
 function activeItems(){const t=today();return DB.items.filter(i=>(!i.start||String(i.start).slice(0,10)<=t)&&(!i.end||String(i.end).slice(0,10)>=t))}
 function distOf(item,o){return DB.dist.find(d=>d.item===item.id&&d.office===o.id)}
@@ -553,15 +569,19 @@ window.commitContracts=async b=>{if(!KC)return;b.disabled=true;b.textContent="�
 window.runReports=async b=>{b.disabled=true;const st=$("#rp-st");st.innerHTML='<span class="spin"></span>集計中…';
  try{const d=await api("reports",{});st.textContent="集計シートを更新しました（"+d.at+"）"}catch(e){st.textContent="更新できませんでした："+errText(e)}b.disabled=false};
 function refCount(cmId,days){const lim=ago(days);return DB.contracts.filter(c=>c.cm===cmId&&c.date>=lim).length}
-window.setOfficeStatus=async(id,st)=>{if(st==="非表示"&&!S.confirmHide){S.confirmHide=true;toast("もう一度「非表示」を選ぶと非表示にします");render();return}S.confirmHide=false;
- try{await persist([{table:"offices",row:{id,status:st}}]);toast("状態を「"+st+"」にしました");if(st==="非表示"){S.office=null}render()}catch(e){toast("保存できませんでした："+errText(e))}};
+window.setOfficeStatus=async(id,st,sel)=>{const o=DB.offices.find(x=>x.id===id);
+ if(st==="非表示"&&!confirm((o?o.name:"")+" を非表示にしますか？\n（設定の「非表示も表示」で戻せます）")){if(sel)sel.value=ost(o);return}
+ if(sel)sel.disabled=true;
+ try{await persist([{table:"offices",row:{id,status:st}}]);buzz(60);toast("「"+st+"」にしました"+(st!=="稼働"?"（一覧には出なくなります）":""));if(st==="非表示"){S.office=null}render()}
+ catch(e){if(sel){sel.disabled=false;sel.value=ost(o)}toast("保存できませんでした："+errText(e))}};
 function bulkForm(o,cms){return `<form class="form" onsubmit="bulkSave(event,'${o.id}')"><b>辞めたケアマネにチェックを入れて「退職にする」を押してください</b>
- <div style="display:grid;gap:6px">${cms.map(c=>`<label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" name="bk" value="${c.id}" style="width:auto"> ${esc(c.name)} <span class="meta">${esc(c.kana||"")}</span></label>`).join("")}</div>
- <div style="display:flex;gap:8px"><button class="btn primary" type="submit">退職にする</button><button class="btn" type="button" onclick="S.bulk=false;render()">やめる</button></div></form>`}
+ <div style="display:grid;gap:6px">${cms.map(c=>`<label class="bkrow"><input type="checkbox" name="bk" value="${c.id}" onchange="this.parentNode.classList.toggle('on',this.checked);buzz(20);const n=document.querySelectorAll('input[name=bk]:checked').length;$('#bk-go').textContent=n?n+'名を退職にする':'退職にする'"> ${esc(c.name)} <span class="meta">${esc(c.kana||"")}</span></label>`).join("")}</div>
+ <div style="display:flex;gap:8px"><button class="btn primary" type="submit" id="bk-go">退職にする</button><button class="btn" type="button" onclick="S.bulk=false;render()">やめる</button></div></form>`}
 window.bulkSave=async(e,oid)=>{e.preventDefault();const ids=[...document.querySelectorAll("input[name=bk]:checked")].map(x=>x.value);if(!ids.length){toast("チェックがありません");return}
  const o=DB.offices.find(x=>x.id===oid),today=new Date().toLocaleDateString("sv-SE");
  const ops=ids.map(id=>{const c=DB.cms.find(x=>x.id===id);return {table:"cms",row:{id,status:"退職",history:(c.history?c.history+"\n":"")+today+" "+o.name+"を退職"}}});
- try{await persist(ops);S.bulk=false;toast(ids.length+"名を退職にしました");render()}catch(err){toast("保存できませんでした："+errText(err))}};
+ const bt=$("#bk-go");bt.disabled=true;bt.innerHTML='<span class="spin"></span> 保存中…';
+ try{await persist(ops);S.bulk=false;buzz([60,60,60]);toast(ids.length+"名を退職にしました（下の「退職・異動したケアマネ」から戻せます）");render()}catch(err){bt.disabled=false;bt.textContent="退職にする";toast("保存できませんでした："+errText(err))}};
 function recordForm(o,cms){
  const today=new Date().toLocaleDateString("sv-SE");
  return `<form class="form" id="recForm" onsubmit="addRecord(event,'${o.id}')">
@@ -608,7 +628,48 @@ function listRows(){
 function listHtml(){const rows=listRows(),show=rows.slice(0,150);
  return `<div class="meta" style="margin-bottom:6px">${rows.length}件${rows.length>150?"（近い順に150件まで表示。検索で絞り込めます）":""}</div>
  <div class="olist">${show.map(officeRow).join("")||`<div class="empty">${S.mine?"自分の担当の居宅がありません。「自分の担当だけ」のチェックを外すと全部表示します。":"該当する居宅がありません"}</div>`}</div>`}
-window.renderListOnly=()=>{const el=$("#listBox");if(el)el.innerHTML=listHtml()};
+window.renderListOnly=()=>{const el=$("#listBox");if(!el)return;if(S.listMode==="map"){drawMap();return}el.innerHTML=listHtml()};
+/* ===== 実績配布（毎月24日〜翌月4日に表示） ===== */
+const JK_FROM=24,JK_TO=4;
+const JK_LABEL={"配布":"実績配布","連携":"データ連携","両方":"実績配布＋データ連携"};
+function jkMonth(){const d=new Date(),day=d.getDate();if(day>=JK_FROM)return d.toLocaleDateString("sv-SE").slice(0,7);
+ if(day<=JK_TO)return new Date(d.getFullYear(),d.getMonth()-1,15).toLocaleDateString("sv-SE").slice(0,7);return null}
+function jkOf(o,m){return DB.jisseki.find(x=>x.office===o.id&&x.month===m)}
+function jkTodo(o,m){return !!(m&&o.jisseki&&ost(o)==="稼働"&&(jkOf(o,m)||{}).state!=="済")}
+function jkBox(o){const m=jkMonth();if(!m||!o.jisseki||ost(o)!=="稼働")return "";const k=jkOf(o,m)||{},done=k.state==="済";
+ return `<div class="notice" style="margin-top:12px;${done?"background:var(--accent-soft);border-left-color:var(--accent)":""}"><div class="from" style="${done?"color:var(--accent)":""}">${+m.slice(5)}月分の実績 ・ ${JK_LABEL[o.jisseki]} ・ ${done?"済（"+esc(k.date||"")+(k.by?" "+esc(k.by):"")+"）":"未"}</div>
+ <div style="margin-top:6px">${done?`<button class="btn sm" type="button" onclick="jkSet('${o.id}',false,this)">未に戻す</button>`:`<button class="btn sm primary" type="button" onclick="jkSet('${o.id}',true,this)">済にする</button>`}</div></div>`}
+window.jkSet=async(oid,done,b)=>{const o=DB.offices.find(x=>x.id===oid),m=jkMonth();if(!o||!m)return;if(b){b.disabled=true;b.innerHTML='<span class="spin"></span>'}
+ const row={id:m+"-"+oid,month:m,office:oid,method:o.jisseki,state:done?"済":"",date:done?today():"",by:done?(USER?USER.name:"デモ"):""};
+ try{await persist([{table:"jisseki",row}]);buzz(60);toast(done?"実績を済にしました":"未に戻しました");render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
+window.setJkMethod=async(oid,v,sel)=>{if(sel)sel.disabled=true;
+ try{await persist([{table:"offices",row:{id:oid,jisseki:v}}]);buzz(40);toast(v?"実績の渡し方を「"+JK_LABEL[v]+"」にしました":"実績の渡し方を未設定にしました");render()}catch(e){if(sel)sel.disabled=false;toast("保存できませんでした："+errText(e))}};
+function jkPanel(){const m=jkMonth();if(!m)return "";
+ const os=DB.offices.filter(o=>ost(o)==="稼働"&&(!S.mine||isMine(o)));
+ const g=Object.keys(JK_LABEL).map(k=>{const all=os.filter(o=>o.jisseki===k);return {k,all,todo:all.filter(o=>jkTodo(o,m))}});
+ const head=`<div class="section-t"><h2>${+m.slice(5)}月分の実績</h2><span class="meta">${JK_TO}日まで${S.mine?" ・ 自分の担当":""}</span></div>`;
+ if(!g.some(x=>x.all.length))return head+`<div class="notice" style="margin-bottom:10px">居宅ごとの実績の渡し方がまだ登録されていません。居宅の画面の「実績の渡し方」で選ぶと、ここに出ます。</div>`;
+ return head+`<div class="jk" style="margin-bottom:12px">${g.map(x=>`<div class="form"><b>${JK_LABEL[x.k]}</b><span class="meta">済 <b class="num">${x.all.length-x.todo.length}</b> / ${x.all.length}件${x.todo.length?" ・ 残り "+x.todo.length+"件":" ・ 完了"}</span>
+  ${x.todo.slice(0,40).map(o=>`<button class="btn sm" type="button" style="text-align:left" onclick="S.office='${o.id}';S.view='visit';S.recOpen=false;render();scrollTo(0,0)">${esc(o.name)}</button>`).join("")}${x.todo.length>40?`<span class="meta">ほか${x.todo.length-40}件</span>`:""}</div>`).join("")}</div>`}
+/* ===== 地図 ===== */
+let MAP=null;
+function loadLeaflet(){return new Promise((res,rej)=>{if(window.L)return res();
+ const c=document.createElement("link");c.rel="stylesheet";c.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";document.head.appendChild(c);
+ const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";sc.onload=res;sc.onerror=()=>rej(new Error("地図の部品を読み込めません"));document.head.appendChild(sc)})}
+function mapHtml(){return `<div id="map"><div class="progress" style="padding:16px"><span class="spin"></span>地図を読み込み中…</div></div>
+ <div class="meta" style="margin-top:6px"><span style="color:#c0392b">●</span> 訪問が${GAP_DAYS}日以上空いている　<span style="color:#d68910">●</span> 実績が未　<span style="color:#0d6e62">●</span> 問題なし　<span style="color:#8a8a8a">●</span> 休止など　<span style="color:#1a73e8">●</span> 現在地</div>`}
+window.openOffice=id=>{S.office=id;S.view="visit";S.selCm=null;S.recOpen=false;render();scrollTo(0,0)};
+async function drawMap(){const el=$("#map");if(!el)return;try{await loadLeaflet()}catch(e){el.textContent=e.message;return}
+ if(!$("#map"))return;if(MAP){try{MAP.remove()}catch(e){}MAP=null}el.innerHTML="";
+ MAP=L.map(el);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(MAP);
+ const m=jkMonth(),pts=[];
+ listRows().filter(r=>r.o.lat!=null).forEach(({o})=>{const l=lastVisit(o),gap=!l||daysSince(l)>=GAP_DAYS,jk=jkTodo(o,m);
+  const col=ost(o)!=="稼働"?"#8a8a8a":gap?"#c0392b":jk?"#d68910":"#0d6e62";
+  L.circleMarker([o.lat,o.lng],{radius:9,color:"#fff",weight:2,fillColor:col,fillOpacity:.95}).addTo(MAP)
+   .bindPopup(`<b>${esc(o.name)}</b><br>担当 ${esc(staffNames(o))}<br>${l?"最終訪問 "+daysSince(l)+"日前":"訪問記録なし"}${jk?"<br>実績 未":""}<br><button type="button" class="btn sm" style="margin-top:6px" onclick="openOffice('${o.id}')">この居宅を開く</button>`);
+  pts.push([o.lat,o.lng])});
+ if(S.pos){L.circleMarker([S.pos.lat,S.pos.lng],{radius:8,color:"#fff",weight:3,fillColor:"#1a73e8",fillOpacity:1}).addTo(MAP).bindPopup("現在地");pts.push([S.pos.lat,S.pos.lng])}
+ if(pts.length)MAP.fitBounds(pts,{padding:[30,30],maxZoom:15});else MAP.setView([34.486,133.362],12)}
 /* ===== 状態（居宅：稼働/休止/非表示、CM：在籍/退職/異動） ===== */
 const CAL_YEAR="2027";   /* 取込データのカレンダー年 */
 function ost(o){return o.status||"稼働"}
@@ -634,70 +695,14 @@ function viewList(){
  return `<div class="section-t"><h2>居宅一覧</h2><span class="meta">${S.pos?"近い順":"登録順"} ・ 全${DB.offices.length}件</span></div>
  <input class="search" id="lq" placeholder="事業所名・住所・法人名で検索" value="${esc(S.lq||"")}" oninput="S.lq=this.value;renderListOnly()">
  <div style="display:flex;gap:6px 16px;flex-wrap:wrap;align-items:center;margin:-4px 0 10px;font-size:14px">
-  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="mine" ${S.mine?"checked":""} onchange="S.mine=this.checked;renderListOnly()"> 自分の担当だけ</label>
-  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="showall" ${S.showAll?"checked":""} onchange="S.showAll=this.checked;renderListOnly()"> 休止中も表示</label>
-  ${canAdmin()?`<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${S.showAll==="all"?"checked":""} onchange="S.showAll=this.checked?'all':false;render()"> 非表示も表示</label>`:""}
-  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${S.gap?"checked":""} onchange="S.gap=this.checked;renderListOnly()"> 訪問が${GAP_DAYS}日以上空いている</label>
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="mine" ${S.mine?"checked":""} onchange="S.mine=this.checked;saveUI();renderListOnly()"> 自分の担当だけ</label>
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${S.gap?"checked":""} onchange="S.gap=this.checked;saveUI();renderListOnly()"> 訪問が${GAP_DAYS}日以上空いている</label>
   ${activeItems().length?`<select class="sim" onchange="S.distf=this.value;renderListOnly()"><option value="">配布物：すべて</option>${activeItems().map(i=>`<option value="todo:${i.id}" ${S.distf==="todo:"+i.id?"selected":""}>${esc(i.name)} 未配布</option><option value="done:${i.id}" ${S.distf==="done:"+i.id?"selected":""}>${esc(i.name)} 配布済</option>`).join("")}</select>`:""}
  </div>
- <div id="listBox">${listHtml()}</div>
- ${canAdmin()?`
- ${itemsAdmin()}
- ${MODE==="live"?`<div class="section-t"><h2>新規契約データ（紹介実績）</h2></div>
- <div class="form"><div class="meta">ケアレンツから書き出した新規契約のExcelを選ぶと、ケアマネごとの紹介件数を記録します。何度取り込んでも重複しません。紹介したケアマネは<b>最初に取り込んだときのまま</b>残り、あとで包括から居宅に移って担当CMが変わっても書き換わりません。利用者名はこの端末で暗号化し、送信しません。</div>
-  <div><label class="btn primary" for="kc-file" style="display:inline-flex">新規契約のExcelを選ぶ</label><input type="file" id="kc-file" accept=".xlsx,.xls,.csv" onchange="pickContracts(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div>
-  <div id="kc-area" class="meta"></div></div>
- <div class="section-t"><h2>集計シート</h2></div>
- <div class="form"><div class="meta">スプレッドシートの「集計_営業別」「集計_訪問間隔」「集計_配布」「集計_紹介」は毎朝6時に自動で更新されます。今すぐ更新したいときは押してください。</div>
-  <div><button class="btn" type="button" onclick="runReports(this)">集計を更新</button> <span id="rp-st" class="meta"></span></div></div>`:""}
- ${MODE==="live"?`<div class="section-t"><h2>ケアレンツのマスターから作成</h2></div>
- <div class="form">
-  <div class="meta">会社のスプレッドシートの「マスター_ケアマネ」「マスター_利用者」シートに、ケアレンツから書き出した表を貼り付けてから押してください。居宅名を照合して、居宅・ケアマネ・利用者・担当営業をまとめて作ります。何度押しても重複しません。照合の結果はスプレッドシートの「居宅照合」シートで確認・修正できます。</div>
-  <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:14px"><b>利用者名の表示：</b>
-   <label style="display:flex;gap:4px;align-items:center"><input type="radio" name="mfmt" id="mfmt-full" checked> 町名＋姓＋名（例：引野町 K藤 恭子 様）</label>
-   <label style="display:flex;gap:4px;align-items:center"><input type="radio" name="mfmt"> 町名＋姓のみ（例：引野町 K藤 様）</label></div>
-  <div><button class="btn primary" type="button" onclick="buildMaster(this)">マスターから作成・更新</button></div>
-  <div id="ms-st" class="meta"></div>
- </div>`:""}
- <div class="section-t"><h2>取込データ（居宅・ケアマネ・カレンダー）</h2></div>
- <div class="form">
-  <div class="meta">Claudeが作った「居宅・ケアマネ取込データ.xlsx」（シート：居宅／ケアマネ／カレンダー${CAL_YEAR}）を選ぶと、まとめて登録・更新します。何度読み込んでも重複しません。</div>
-  <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px"><input type="checkbox" id="bd-hide" style="width:auto" checked> このファイルに載っていない居宅（厚労省データ由来など）は「非表示」にする</label>
-  <div><label class="btn primary" for="bd-file" style="display:inline-flex">取込データを選ぶ</label>
-   <input type="file" id="bd-file" accept=".xlsx" onchange="pickBundle(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div>
-  <div id="bd-area" class="meta"></div>
- </div>
- <div class="section-t"><h2>居宅とケアマネをExcelで一括登録</h2></div>
- <div class="form">
-  <div class="meta">1行に「居宅名・ケアマネ氏名」を書いたExcel（.xlsx）かCSVを選ぶと、居宅とケアマネをまとめて登録します。すでにある居宅・同じ名前のケアマネは重複して登録しません。</div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap">
-   <label class="btn primary" for="xl-file" style="display:inline-flex">Excelファイルを選ぶ</label>
-   <input type="file" id="xl-file" accept=".xlsx,.xls,.csv" onchange="pickExcel(this)" style="position:absolute;opacity:0;width:1px;height:1px">
-  </div>
-  <div class="meta">列名：<b>居宅名</b>（必須）・<b>ケアマネ氏名</b>・ふりがな・役職・経験年数・担当件数・特徴・メモ・住所・電話・<b>担当営業</b>・担当営業2</div>
-  <div id="xl-area">${xlAreaHtml()}</div>
- </div>
- <div class="section-t"><h2>利用者をExcelで一括登録</h2></div>
- <div class="form">
-  <div class="meta">顧客一覧のExcel（.xlsx）かCSVを選ぶと、居宅名を自動で照合し、氏名を「町名＋一部イニシャル」（例：加藤 恭子 → 引野町 K藤 恭子）に変換して登録します。<b>変換はこの端末の中で行い、フルネーム・住所・フリガナは送信しません。</b></div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-   <label class="btn primary" for="cl-file" style="display:inline-flex">利用者のExcelを選ぶ</label>
-   <input type="file" id="cl-file" accept=".xlsx,.xls,.csv" onchange="pickClients(this)" style="position:absolute;opacity:0;width:1px;height:1px">
-  </div>
-  <div class="meta">列名：<b>居宅名</b>（大まかでOK）・<b>利用者氏名</b>・<b>フリガナ</b>・住所・担当ケアマネ・要介護度・利用中の用具・状態・近況</div>
-  <div id="cl-area">${clAreaHtml()}</div>
- </div>
- <div class="section-t"><h2>福山市の居宅データを取り込む</h2></div>
- <div class="form">
-  <div class="meta">厚生労働省「介護サービス情報公表システム」のオープンデータ（居宅介護支援・全国CSV、毎年6月末・12月末時点）から、福山市の事業所だけを取り込みます。住所・電話・位置（緯度経度）も入るので、到着時の自動表示にそのまま使えます。${imp?`<br>前回の取り込み：<span class="num">${esc(imp)}</span>`:""}</div>
-  ${MODE==="demo"?`<label style="flex-direction:row;display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="imp-drop" style="width:auto" ${DB.offices.some(o=>/^o\d$/.test(o.id))?"checked":""}> ダミーの居宅（試作用）を削除して置き換える</label>`:""}
-  <div style="display:flex;gap:8px;flex-wrap:wrap">
-   ${MODE==="live"?`<button class="btn primary" type="button" onclick="importViaGas(this)">自動で取り込む</button>`:""}
-   <label class="btn" for="imp-file" style="display:inline-flex;color:var(--ink)">CSVファイルを選ぶ</label>
-   <input type="file" id="imp-file" accept=".csv,text/csv" onchange="importCsvFile(this)" style="position:absolute;opacity:0;width:1px;height:1px">
-  </div>
-  <div id="imp-st" class="meta">CSVは <a href="https://www.mhlw.go.jp/stf/kaigo-kouhyou_opendata.html" target="_blank" rel="noopener">厚労省のオープンデータのページ</a> の「居宅介護支援」からダウンロードできます。</div>
- </div>`:""}`;
+ ${jkPanel()}
+ <div style="margin:4px 0 10px" class="seg"><button type="button" class="${S.listMode!=="map"?"on":""}" onclick="S.listMode='list';saveUI();render()">一覧</button><button type="button" class="${S.listMode==="map"?"on":""}" onclick="S.listMode='map';saveUI();render()">地図</button></div>
+ <div id="listBox">${S.listMode==="map"?mapHtml():listHtml()}</div>
+`;
 }
 
 window.buildMaster=async b=>{const st=$("#ms-st");b.disabled=true;st.innerHTML='<span class="spin"></span>マスターを照合中…（件数が多いと1分ほど）';
@@ -1061,6 +1066,75 @@ ${audio?"":"--- 文字起こし ---\n"+tr.slice(0,20000)}`,audio);
  }catch(e){st.textContent="要約できませんでした："+errText(e)}
  btn.disabled=false;};
 
+function viewSettings(){const imp=DB.importedAt;
+ return `<div class="section-t"><h2>設定</h2></div>
+ <div class="form"><b>表示</b>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" ${S.showAll?"checked":""} onchange="S.showAll=this.checked?(S.showAll==='all'?'all':true):false;saveUI();render()"> 休止中の居宅も表示する</label>
+  ${canAdmin()?`<label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" ${S.showAll==="all"?"checked":""} onchange="S.showAll=this.checked?'all':false;saveUI();render()"> 非表示の居宅も表示する（管理者）</label>`:""}
+  <div class="meta">この設定はこの端末に覚えておきます。</div></div>
+ ${MODE==="demo"?`<p style="margin-top:16px"><button class="btn sm" onclick="resetDemo(this)">ダミーデータに戻す</button></p>`:`<div class="section-t"><h2>アカウント</h2></div>
+ <div class="form"><div>${esc(USER?USER.name:"")}<span class="meta"> ${esc(USER?USER.email:"")}${USER&&USER.role==="admin"?" ・ 管理者":""}</span></div>
+ <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" onclick="reloadAll(this)">最新のデータに更新</button><button class="btn" type="button" onclick="logout()">ログアウト</button></div></div>`}
+ <div class="section-t"><h2>ページ送りボタン</h2></div>
+ <div class="form"><label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px"><input type="checkbox" style="width:auto" ${S.keyTest?"checked":""} onchange="S.keyTest=this.checked"> 確認モード（押すと届いたキーの名前が出ます）</label></div>
+ ${canAdmin()?`<div class="section-t" style="margin-top:28px"><h2 style="font-size:18px">管理者メニュー</h2></div>
+ ${itemsAdmin()}
+ ${MODE==="live"?`<div class="section-t"><h2>新規契約データ（紹介実績）</h2></div>
+ <div class="form"><div class="meta">ケアレンツから書き出した新規契約のExcelを選ぶと、ケアマネごとの紹介件数を記録します。何度取り込んでも重複しません。紹介したケアマネは<b>最初に取り込んだときのまま</b>残り、あとで包括から居宅に移って担当CMが変わっても書き換わりません。利用者名はこの端末で暗号化し、送信しません。</div>
+  <div><label class="btn primary" for="kc-file" style="display:inline-flex">新規契約のExcelを選ぶ</label><input type="file" id="kc-file" accept=".xlsx,.xls,.csv" onchange="pickContracts(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div>
+  <div id="kc-area" class="meta"></div></div>
+ <div class="section-t"><h2>集計シート</h2></div>
+ <div class="form"><div class="meta">スプレッドシートの「集計_営業別」「集計_訪問間隔」「集計_配布」「集計_紹介」は毎朝6時に自動で更新されます。今すぐ更新したいときは押してください。</div>
+  <div><button class="btn" type="button" onclick="runReports(this)">集計を更新</button> <span id="rp-st" class="meta"></span></div></div>`:""}
+ ${MODE==="live"?`<div class="section-t"><h2>ケアレンツのマスターから作成</h2></div>
+ <div class="form">
+  <div class="meta">会社のスプレッドシートの「マスター_ケアマネ」「マスター_利用者」シートに、ケアレンツから書き出した表を貼り付けてから押してください。居宅名を照合して、居宅・ケアマネ・利用者・担当営業をまとめて作ります。何度押しても重複しません。照合の結果はスプレッドシートの「居宅照合」シートで確認・修正できます。</div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:14px"><b>利用者名の表示：</b>
+   <label style="display:flex;gap:4px;align-items:center"><input type="radio" name="mfmt" id="mfmt-full" checked> 町名＋姓＋名（例：引野町 K藤 恭子 様）</label>
+   <label style="display:flex;gap:4px;align-items:center"><input type="radio" name="mfmt"> 町名＋姓のみ（例：引野町 K藤 様）</label></div>
+  <div><button class="btn primary" type="button" onclick="buildMaster(this)">マスターから作成・更新</button></div>
+  <div id="ms-st" class="meta"></div>
+ </div>`:""}
+ <div class="section-t"><h2>取込データ（居宅・ケアマネ・カレンダー）</h2></div>
+ <div class="form">
+  <div class="meta">Claudeが作った「居宅・ケアマネ取込データ.xlsx」（シート：居宅／ケアマネ／カレンダー${CAL_YEAR}）を選ぶと、まとめて登録・更新します。何度読み込んでも重複しません。</div>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px"><input type="checkbox" id="bd-hide" style="width:auto" checked> このファイルに載っていない居宅（厚労省データ由来など）は「非表示」にする</label>
+  <div><label class="btn primary" for="bd-file" style="display:inline-flex">取込データを選ぶ</label>
+   <input type="file" id="bd-file" accept=".xlsx" onchange="pickBundle(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div>
+  <div id="bd-area" class="meta"></div>
+ </div>
+ <div class="section-t"><h2>居宅とケアマネをExcelで一括登録</h2></div>
+ <div class="form">
+  <div class="meta">1行に「居宅名・ケアマネ氏名」を書いたExcel（.xlsx）かCSVを選ぶと、居宅とケアマネをまとめて登録します。すでにある居宅・同じ名前のケアマネは重複して登録しません。</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+   <label class="btn primary" for="xl-file" style="display:inline-flex">Excelファイルを選ぶ</label>
+   <input type="file" id="xl-file" accept=".xlsx,.xls,.csv" onchange="pickExcel(this)" style="position:absolute;opacity:0;width:1px;height:1px">
+  </div>
+  <div class="meta">列名：<b>居宅名</b>（必須）・<b>ケアマネ氏名</b>・ふりがな・役職・経験年数・担当件数・特徴・メモ・住所・電話・<b>担当営業</b>・担当営業2</div>
+  <div id="xl-area">${xlAreaHtml()}</div>
+ </div>
+ <div class="section-t"><h2>利用者をExcelで一括登録</h2></div>
+ <div class="form">
+  <div class="meta">顧客一覧のExcel（.xlsx）かCSVを選ぶと、居宅名を自動で照合し、氏名を「町名＋一部イニシャル」（例：加藤 恭子 → 引野町 K藤 恭子）に変換して登録します。<b>変換はこの端末の中で行い、フルネーム・住所・フリガナは送信しません。</b></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+   <label class="btn primary" for="cl-file" style="display:inline-flex">利用者のExcelを選ぶ</label>
+   <input type="file" id="cl-file" accept=".xlsx,.xls,.csv" onchange="pickClients(this)" style="position:absolute;opacity:0;width:1px;height:1px">
+  </div>
+  <div class="meta">列名：<b>居宅名</b>（大まかでOK）・<b>利用者氏名</b>・<b>フリガナ</b>・住所・担当ケアマネ・要介護度・利用中の用具・状態・近況</div>
+  <div id="cl-area">${clAreaHtml()}</div>
+ </div>
+ <div class="section-t"><h2>福山市の居宅データを取り込む</h2></div>
+ <div class="form">
+  <div class="meta">厚生労働省「介護サービス情報公表システム」のオープンデータ（居宅介護支援・全国CSV、毎年6月末・12月末時点）から、福山市の事業所だけを取り込みます。住所・電話・位置（緯度経度）も入るので、到着時の自動表示にそのまま使えます。${imp?`<br>前回の取り込み：<span class="num">${esc(imp)}</span>`:""}</div>
+  ${MODE==="demo"?`<label style="flex-direction:row;display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="imp-drop" style="width:auto" ${DB.offices.some(o=>/^o\d$/.test(o.id))?"checked":""}> ダミーの居宅（試作用）を削除して置き換える</label>`:""}
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+   ${MODE==="live"?`<button class="btn primary" type="button" onclick="importViaGas(this)">自動で取り込む</button>`:""}
+   <label class="btn" for="imp-file" style="display:inline-flex;color:var(--ink)">CSVファイルを選ぶ</label>
+   <input type="file" id="imp-file" accept=".csv,text/csv" onchange="importCsvFile(this)" style="position:absolute;opacity:0;width:1px;height:1px">
+  </div>
+  <div id="imp-st" class="meta">CSVは <a href="https://www.mhlw.go.jp/stf/kaigo-kouhyou_opendata.html" target="_blank" rel="noopener">厚労省のオープンデータのページ</a> の「居宅介護支援」からダウンロードできます。</div>
+ </div>`:""}`;
+}
 function viewLog(){
  const recs=[...DB.records].sort((a,b)=>b.date.localeCompare(a.date));
  const todo=recs.filter(r=>r.next);
@@ -1068,10 +1142,7 @@ function viewLog(){
  <div class="log">${recs.map(logItem).join("")}</div></div>
  <div><div class="section-t"><h2>次回アクション</h2><span class="meta">${todo.length}件</span></div>
  <div class="log">${todo.map(r=>`<div class="logi"><b>${esc(r.next)}</b><div class="meta">${esc((DB.offices.find(o=>o.id===r.office)||{name:""}).name)} ・ ${r.date}</div></div>`).join("")}</div>
- ${MODE==="demo"?`<p style="margin-top:24px"><button class="btn sm" onclick="resetDemo(this)">ダミーデータに戻す</button></p>`:`<div class="section-t"><h2>アカウント</h2></div>
- <div class="form"><div>${esc(USER?USER.name:"")}<span class="meta"> ${esc(USER?USER.email:"")}${USER&&USER.role==="admin"?" ・ 管理者":""}</span></div>
- <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" onclick="reloadAll(this)">最新のデータに更新</button><button class="btn" type="button" onclick="logout()">ログアウト</button></div>
- <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px"><input type="checkbox" style="width:auto" ${S.keyTest?"checked":""} onchange="S.keyTest=this.checked"> ページ送りボタンの確認（押すと届いたキーの名前が出ます）</label></div>`}</div></div>`;
+ </div></div>`;
 }
 window.reloadAll=async b=>{b.disabled=true;try{await loadAll();fillSim();toast("最新のデータにしました");render()}catch(e){b.disabled=false;toast("更新できませんでした："+errText(e))}};
 window.resetDemo=b=>{if(b.dataset.c!=="1"){b.dataset.c="1";b.textContent="もう一度押すと初期化します";return}
@@ -1107,9 +1178,11 @@ function render(){
  if(MODE==="setup"){$("#app").innerHTML=viewSetup();return}
  if(gated){$("#app").innerHTML=viewLogin();renderGisButton();return}
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));
- const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog}[S.view]();
+ const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog,settings:viewSettings}[S.view]();
+ if(MAP&&!(S.view==="list"&&S.listMode==="map")){try{MAP.remove()}catch(e){}MAP=null}
  $("#app").innerHTML=v+(MODE==="demo"?`<p class="demo">デモ：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`:`<p class="demo">データは会社のスプレッドシートに保存されます。この端末には残りません。</p>`);
 }
+const _render=render;render=function(){_render();if(S.view==="list"&&S.listMode==="map"&&$("#map"))drawMap()};
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{S.view=t.dataset.v;S.cmEdit=null;render();scrollTo(0,0)});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classList?.contains("cm"))e.target.click()});
 
