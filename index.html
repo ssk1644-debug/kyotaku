@@ -233,15 +233,15 @@ const SEED = {
 
 const KEY="kyotaku-proto-v1";
 const clone=o=>JSON.parse(JSON.stringify(o));
-let DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[]};
-if(MODE==="demo"){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}DB=d||clone(SEED);if(!DB.users)DB.users=clone(SEED.users);if(!DB.calendar)DB.calendar=[];
+let DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[]};
+if(MODE==="demo"){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}DB=d||clone(SEED);if(!DB.users)DB.users=clone(SEED.users);["calendar","items","dist","visits","contracts"].forEach(k=>{if(!DB[k])DB[k]=[]});
  DB.cms.forEach(c=>{if(c.count==null&&c["担当"]!=null)c.count=c["担当"]})}
 function save(){if(MODE!=="demo")return;try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast("この端末には保存できませんでした（容量不足の可能性）")}}
 const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 /* ===== サーバー（GAS＋スプレッドシート）との通信 ===== */
 let USER=null,SESSION=null;
-try{SESSION=sessionStorage.getItem("kyotaku-s")}catch(e){}
+try{SESSION=localStorage.getItem("kyotaku-s")}catch(e){}   /* ログインは30日保持（サーバー側で期限・利用停止を確認） */
 async function api(action,payload){
  let res;
  try{res=await fetch(setupCfg().gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(Object.assign({action,session:SESSION},payload||{}))})}
@@ -268,10 +268,11 @@ async function persist(ops){
  if(MODE==="live"){const d=await api("batch",{ops:ops.map(o=>({table:o.table,row:toServer(o.table,o.row)}))});
   d.rows.forEach((r,i)=>applyOp(ops[i].table,fromServer(ops[i].table,r)))}
  else{ops.forEach(o=>applyOp(o.table,o.row));save()}}
-async function loadAll(){const d=await api("load");
+async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.offices=d.offices.map(r=>fromServer("offices",r,d.notices||[]));
  DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r));
- DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[]}
+ DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[];
+ ["items","dist","visits","contracts"].forEach(k=>DB[k]=d[k]||[])}
 
 /* ===== Googleログイン ===== */
 function initGis(){if(window.google&&google.accounts){gisReady();return}
@@ -281,17 +282,17 @@ function gisReady(){try{google.accounts.id.initialize({client_id:setupCfg().clie
  renderGisButton();if(!SESSION)google.accounts.id.prompt()}catch(e){S.loginMsg="ログインの準備に失敗しました："+e.message;render()}}
 function renderGisButton(){const el=$("#gbtn");if(el&&window.google&&google.accounts&&google.accounts.id)google.accounts.id.renderButton(el,{theme:"outline",size:"large",text:"signin_with",locale:"ja",width:280})}
 async function onCredential(resp){S.loginMsg="確認中…";render();
- try{const d=await api("login",{idToken:resp.credential});SESSION=d.session;try{sessionStorage.setItem("kyotaku-s",SESSION)}catch(e){}
+ try{const d=await api("login",{idToken:resp.credential});SESSION=d.session;try{localStorage.setItem("kyotaku-s",SESSION)}catch(e){}
   USER=d.user;S.loginMsg="";await boot()}
  catch(e){USER=null;S.loginMsg=errText(e);render()}}
 async function boot(){S.loading=true;render();
- try{if(!USER){USER=(await api("me")).user}await loadAll();S.loading=false;fillSim();
+ try{await loadAll();S.loading=false;fillSim();
   if(!DB.offices.some(o=>o.id===S.office))S.office=null;render()}
  catch(e){S.loading=false;if(e.code!=="auth")S.loginMsg="データを読み込めません："+errText(e);render()}}
-window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{sessionStorage.removeItem("kyotaku-s")}catch(e){}
+window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{localStorage.removeItem("kyotaku-s")}catch(e){}
  try{google.accounts.id.disableAutoSelect()}catch(e){}
  if(s&&typeof msg!=="string")fetch(setupCfg().gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"logout",session:s})}).catch(()=>{});
- DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render()};
+ DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render();initGis()};
 
 const ARRIVE_M=150; // この距離以内で「到着」とみなす
 const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:"",cmEdit:null,loginMsg:"",loading:false,mine:true,recOpen:false};
@@ -384,23 +385,24 @@ function viewVisit(){
    <button class="btn sm" onclick="S.recOpen=true;render()">面談を記録する</button></div>`:""}
  <div class="ohead"><h1>${esc(o.name)}</h1>${o.kind&&o.kind!=="居宅支援"?`<span class="badge">${esc(o.kind)}</span>`:""}${ost(o)!=="稼働"?`<span class="status st-alert">${esc(ost(o))}</span>`:""}
   <span class="meta">${esc(o.addr)} ・ <span class="num">${esc(o.tel)}</span>${d!==null?" ・ "+fmtD(d):""}</span>
-  <span class="meta">最終訪問 <span class="num">${recs[0]?recs[0].date:"記録なし"}</span></span>
+  <span class="meta">${(l=>`最終訪問 <span class="num" style="${l&&daysSince(l)>=GAP_DAYS?"color:var(--alert);font-weight:700":""}">${l?l+"（"+daysSince(l)+"日前）":"記録なし"}</span> ・ 直近3か月 <span class="num">${visits90(o)}</span>回`)(lastVisit(o))}${(n=>n?` ・ 新規契約（12か月） <span class="num">${n}</span>件`:"")(DB.contracts.filter(c=>c.office===o.id&&c.date>=ago(365)).length)}</span>
   <span class="meta">担当：<b style="color:var(--ink)">${esc(staffNames(o))}</b>${canAdmin()&&!S.staffEdit?` <button class="btn sm" type="button" onclick="S.staffEdit=true;render()">変更</button>`:""}</span>
   ${canAdmin()?`<span class="meta">状態 <select class="sim" onchange="setOfficeStatus('${o.id}',this.value)">${["稼働","休止","非表示"].map(v=>`<option ${v===ost(o)?"selected":""}>${v}</option>`).join("")}</select></span>`:""}
   ${o.lat==null?`<span class="meta">位置が未登録です ${S.pos?`<button class="btn sm" onclick="setOfficePos('${o.id}')">今いる場所を登録</button>`:"（現在地が取れると登録できます）"}</span>`:""}</div>
 
  ${(sib=>sib.length?`<div class="meta" style="margin-top:4px">同じ場所：${sib.map(x=>`<button class="btn sm" type="button" style="margin:2px" onclick="S.office='${x.id}';S.selCm=null;S.recOpen=false;S.autoOpened='${x.id}';render()">${esc(x.name)}${x.kind&&x.kind!=="居宅支援"?"（"+esc(x.kind)+"）":""}</button>`).join("")}</div>`:"")(o.lat==null?[]:DB.offices.filter(x=>x.id!==o.id&&x.lat!=null&&ost(x)!=="非表示"&&dist(o.lat,o.lng,x.lat,x.lng)<40))}
- <div style="margin:8px 0 4px">${S.recOpen?recordForm(o,cms):`<button class="btn primary" type="button" style="width:100%;padding:12px;font-size:16px" onclick="S.recOpen=true;render()">＋ 面談を記録する</button>`}</div>
+ <div style="margin:8px 0 4px;display:grid;gap:8px">${(c=>c?`<div class="meta">チェックイン済 ${new Date(c.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}（ボタンをもう一度押すと録音の開始・停止）</div>`:`<button class="btn" type="button" style="width:100%;padding:10px;font-size:15px" onclick="checkin()">チェックイン（訪問を記録）</button>`)(myCheckin(o))}
+  ${S.recOpen?recordForm(o,cms):`<button class="btn primary" type="button" style="width:100%;padding:12px;font-size:16px" onclick="S.recOpen=true;render()">＋ 面談を記録する</button>`}</div>
  ${S.staffEdit&&canAdmin()?staffForm(o):""}
  ${o.notices.length?`<div class="section-t"><h2>連絡事項・今日伝えること</h2><span class="meta">${o.notices.length}件</span></div>
   <div class="notices">${o.notices.map(n=>`<div class="notice"><div class="from">${esc(n.from)}</div>${esc(n.text)}</div>`).join("")}</div>`:""}
 
- ${S.calEditing===o.id?calForm(o):calBox(o)}
+ ${distBox(o)}
  <div class="section-t"><h2>在籍ケアマネジャー</h2><span class="meta">${cms.length}名 ・ 名前をタップで詳しく</span>
   <button class="btn sm" type="button" onclick="S.cmEdit='new';render()">＋ ケアマネを追加</button>
   ${cms.length?`<button class="btn sm" type="button" onclick="S.bulk=!S.bulk;render()">${S.bulk?"整理をやめる":"退職者をまとめて整理"}</button>`:""}</div>
  ${S.cmEdit?cmForm(o):""}
- ${S.bulk?bulkForm(o,cms):cms.length?`<div class="chips" style="gap:8px">${cms.map(c=>`<button type="button" class="btn sm" style="font-size:15px;padding:7px 12px;${S.selCm===c.id?"background:var(--accent);color:var(--surface);border-color:var(--accent)":""}" onclick="S.selCm=S.selCm==='${c.id}'?null:'${c.id}';render()">${esc(c.name)}</button>`).join("")}</div>
+ ${S.bulk?bulkForm(o,cms):cms.length?`<div class="chips" style="gap:8px">${cms.map(c=>`<button type="button" class="btn sm" style="font-size:15px;padding:7px 12px;${S.selCm===c.id?"background:var(--accent);color:var(--surface);border-color:var(--accent)":""}" onclick="S.selCm=S.selCm==='${c.id}'?null:'${c.id}';render()">${esc(c.name)}${(n=>n?` <span class="num" title="直近12か月の紹介">（紹介${n}）</span>`:"")(refCount(c.id,365))}</button>`).join("")}</div>
   ${S.selCm&&cms.some(c=>c.id===S.selCm)?`<div class="cms" style="margin-top:10px">${cmCard(cms.find(c=>c.id===S.selCm))}</div>`:""}`:'<div class="empty">登録されたCMがいません。「＋ ケアマネを追加」か、名刺の読み取りで登録できます。</div>'}
  ${gone.length?`<details style="margin-top:10px"><summary class="meta">退職・異動したケアマネ（${gone.length}名）</summary><div class="log" style="margin-top:6px">${gone.map(c=>`<div class="logi"><b>${esc(c.name)}</b> <span class="status st-warn">${esc(cst(c))}</span> <button class="btn sm" type="button" onclick="S.cmEdit='${c.id}';render()">編集</button>${c.history?`<div class="meta" style="white-space:pre-wrap">${esc(c.history)}</div>`:""}</div>`).join("")}</div></details>`:""}
 
@@ -427,6 +429,7 @@ function cmCard(c){
   <div class="chips">${c.traits.map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
   <dl class="kv"><dt>担当件数</dt><dd class="num">${c.count!=null&&c.count!==""?c.count+"件":"—"}（当社 ${n}件）</dd>
    ${c.note?`<dt>傾向</dt><dd>${esc(c.note)}</dd>`:""}${c.likes?`<dt>話題</dt><dd>${esc(c.likes)}</dd>`:""}</dl>
+  ${(y=>y.length?`<div class="meta">紹介（新規契約）：直近12か月 <b class="num">${y.filter(x=>x.date>=ago(365)).length}</b>件 ・ 累計 <span class="num">${y.length}</span>件 ・ 最終 <span class="num">${y.map(x=>x.date).sort().pop()}</span></div>`:"")(DB.contracts.filter(x=>x.cm===c.id))}
   ${c.history?`<div class="meta" style="white-space:pre-wrap">${esc(c.history)}</div>`:""}
   ${last?`<div class="last"><div class="meta num">前回 ${last.date}</div>${esc(last.text)}${last.next?`<div class="meta">次回：${esc(last.next)}</div>`:""}</div>`:""}
  </div>`;
@@ -462,23 +465,94 @@ window.saveCm=async(e,oid)=>{e.preventDefault();const v=id=>$(id).value.trim();c
   count:v("#m-count")===""?null:Number(v("#m-count").replace(/[^0-9]/g,"")),traits:v("#m-traits").split(/[、,]/).map(x=>x.trim()).filter(Boolean),note:v("#m-note"),likes:v("#m-likes")};
  try{await persist([{table:"cms",row}]);S.cmEdit=null;toast(office!==oid?"異動を記録しました（移籍先の居宅に表示されます）":"ケアマネを保存しました");render()}
  catch(err){b.disabled=false;toast("保存できませんでした："+errText(err))}};
-function calBox(o){const k=calOf(o);
- if(!k)return canAdmin()?`<div class="meta" style="margin-top:10px">${CAL_YEAR}カレンダー：予定なし <button class="btn sm" type="button" onclick="calEdit('${o.id}')">予定を作る</button></div>`:"";
- const it=[["卓上","desk"],["1カ月","m1"],["3カ月","m3"],["新年メモ","memo"]].filter(([l,f])=>+k[f]).map(([l,f])=>`${l} <b class="num">${k[f]}</b>`).join("・")||"数の指定なし";
- const done=k.state==="配布済";
- return `<div class="notice" style="margin-top:12px;${done?"background:var(--accent-soft);border-left-color:var(--accent)":""}"><div class="from" style="${done?"color:var(--accent)":""}">${CAL_YEAR}カレンダー ・ ${done?"配布済"+(k.date?"（"+esc(k.date)+(k.by?" "+esc(k.by):"")+"）":""):"未配布"}</div>${it}${k.note?`<div class="meta">${esc(k.note)}</div>`:""}
- <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${done?`<button class="btn sm" type="button" onclick="calSet('${k.id}',false)">未配布に戻す</button>`:`<button class="btn sm primary" type="button" onclick="calSet('${k.id}',true)">配布済にする</button>`}${canAdmin()?`<button class="btn sm" type="button" onclick="calEdit('${o.id}')">数を変更</button>`:""}</div></div>`}
-window.calSet=async(id,done)=>{const k=DB.calendar.find(x=>x.id===id);const row={id,state:done?"配布済":"未配布",date:done?new Date().toLocaleDateString("sv-SE"):"",by:done&&USER?USER.name:""};
- try{if(MODE==="live")await persist([{table:"calendar",row}]);else{Object.assign(k,row);save()}toast(done?"配布済にしました":"未配布に戻しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
-window.calEdit=oid=>{S.calEditing=oid;render()};
-function calForm(o){const k=calOf(o)||{};return `<form class="form" onsubmit="calSave(event,'${o.id}')" style="margin-top:8px"><b>${CAL_YEAR}カレンダーの予定数</b>
- <div class="row2"><label>卓上<input id="k-desk" inputmode="numeric" value="${esc(k.desk||"")}"></label><label>1カ月<input id="k-m1" inputmode="numeric" value="${esc(k.m1||"")}"></label></div>
- <div class="row2"><label>3カ月<input id="k-m3" inputmode="numeric" value="${esc(k.m3||"")}"></label><label>新年メモ<input id="k-memo" inputmode="numeric" value="${esc(k.memo||"")}"></label></div>
- <label>メモ<input id="k-note" value="${esc(k.note||"")}"></label>
- <div style="display:flex;gap:8px"><button class="btn primary" type="submit">保存</button><button class="btn" type="button" onclick="S.calEditing=null;render()">やめる</button></div></form>`}
-window.calSave=async(e,oid)=>{e.preventDefault();const v=id=>$(id).value.trim();const ex=calOf({id:oid});
- const row={id:CAL_YEAR+"-"+oid,office:oid,year:CAL_YEAR,desk:v("#k-desk"),m1:v("#k-m1"),m3:v("#k-m3"),memo:v("#k-memo"),note:v("#k-note"),state:ex?ex.state||"未配布":"未配布"};
- try{if(MODE==="live")await persist([{table:"calendar",row}]);else{ex?Object.assign(ex,row):DB.calendar.push(row);save()}S.calEditing=null;toast("保存しました");render()}catch(err){toast("保存できませんでした："+errText(err))}};
+/* ===== 配布物（カレンダー・カタログ・チラシなど） ===== */
+function activeItems(){const t=today();return DB.items.filter(i=>(!i.start||String(i.start).slice(0,10)<=t)&&(!i.end||String(i.end).slice(0,10)>=t))}
+function distOf(item,o){return DB.dist.find(d=>d.item===item.id&&d.office===o.id)}
+function itemFor(item,o){return item.target==="all"?ost(o)!=="非表示":!!distOf(item,o)}
+function distBox(o){const its=activeItems().filter(i=>itemFor(i,o));if(!its.length)return "";
+ return `<div class="section-t"><h2>配布物</h2><span class="meta">期間中のもの</span></div><div class="notices">${its.map(i=>{const d=distOf(i,o)||{};const done=d.state==="配布済";
+  const q=String(d.qty||"").split(",").filter(x=>x&&x.includes(":")).map(x=>{const [k,v]=x.split(":");return `${esc(k)} <b class="num">${esc(v)}</b>`}).join("・");
+  return `<div class="notice" style="${done?"background:var(--accent-soft);border-left-color:var(--accent)":""}"><div class="from" style="${done?"color:var(--accent)":""}">${esc(i.name)} ・ ${done?"配布済"+(d.date?"（"+esc(d.date)+(d.by?" "+esc(d.by):"")+"）":""):"未配布"}</div>${q}${d.note?`<div class="meta">${esc(d.note)}</div>`:""}
+  <div style="margin-top:6px">${done?`<button class="btn sm" type="button" onclick="distSet('${i.id}','${o.id}',false)">未配布に戻す</button>`:`<button class="btn sm primary" type="button" onclick="distSet('${i.id}','${o.id}',true)">配布済にする</button>`}</div></div>`}).join("")}</div>`}
+window.distSet=async(item,office,done)=>{const row={id:item+"-"+office,item,office,state:done?"配布済":"未配布",date:done?today():"",by:done?(USER?USER.name:"デモ"):""};
+ try{await persist([{table:"dist",row}]);toast(done?"配布済にしました":"未配布に戻しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
+function itemsAdmin(){const t=today();
+ return `<div class="section-t"><h2>配布物（カレンダー・カタログ・チラシなど）</h2></div>
+ <div class="form"><div class="meta">配布期間中だけ、居宅の画面に「配布済にする」ボタンが出ます。集計はスプレッドシートの「集計_配布」シートで見られます。居宅ごとの数を決めたいときは、スプレッドシートの「配布記録」シートに行を入れてください。</div>
+ <div class="log">${DB.items.slice().sort((a,b)=>String(b.start).localeCompare(String(a.start))).map(i=>`<div class="logi"><b>${esc(i.name)}</b> <span class="meta num">${esc(String(i.start).slice(0,10))}〜${esc(String(i.end).slice(0,10))} ・ ${i.target==="all"?"全居宅":"指定の居宅"}${String(i.end).slice(0,10)<t?" ・ 終了":""}</span> <button class="btn sm" type="button" onclick="S.itemEdit='${i.id}';render()">編集</button></div>`).join("")||'<div class="meta">まだありません</div>'}</div>
+ ${S.itemEdit?itemForm():`<div><button class="btn" type="button" onclick="S.itemEdit='new';render()">＋ 配布物を追加</button></div>`}</div>`}
+function itemForm(){const i=S.itemEdit==="new"?{name:"",start:today(),end:"",target:"all",note:""}:DB.items.find(x=>x.id===S.itemEdit)||{};
+ return `<form onsubmit="saveItem(event)" style="display:grid;gap:8px;border-top:1px solid var(--line);padding-top:10px">
+  <label>名前<input id="it-name" required value="${esc(i.name)}" placeholder="例：春の新商品チラシ"></label>
+  <div class="row2"><label>配布開始<input type="date" id="it-start" required value="${esc(String(i.start||"").slice(0,10))}"></label><label>配布終了<input type="date" id="it-end" required value="${esc(String(i.end||"").slice(0,10))}"></label></div>
+  <label>配る居宅<select id="it-target"><option value="all" ${i.target==="all"?"selected":""}>稼働中の全居宅</option><option value="list" ${i.target==="list"?"selected":""}>「配布記録」シートで指定した居宅だけ</option></select></label>
+  <label>メモ<input id="it-note" value="${esc(i.note||"")}"></label>
+  <div style="display:flex;gap:8px"><button class="btn primary" type="submit">保存</button><button class="btn" type="button" onclick="S.itemEdit=null;render()">やめる</button></div></form>`}
+window.saveItem=async e=>{e.preventDefault();const v=id=>$(id).value.trim();if(v("#it-end")<v("#it-start")){toast("終了日が開始日より前です");return}
+ const row={id:S.itemEdit==="new"?newId("i"):S.itemEdit,name:v("#it-name"),start:v("#it-start"),end:v("#it-end"),target:v("#it-target"),note:v("#it-note")};
+ try{await persist([{table:"items",row}]);S.itemEdit=null;toast("配布物を保存しました");render()}catch(err){toast("保存できませんでした："+errText(err))}};
+/* ===== 訪問（チェックイン・訪問間隔） ===== */
+const GAP_DAYS=30;   // この日数以上訪問が空いたら「訪問が空いている」
+const today=()=>new Date().toLocaleDateString("sv-SE");
+const ago=n=>new Date(Date.now()-n*864e5).toLocaleDateString("sv-SE");
+function daysSince(d){return d?Math.round((new Date(today())-new Date(String(d).slice(0,10)))/864e5):null}
+function visitDays(o){const s=new Set();DB.records.forEach(r=>{if(r.office===o.id&&r.date)s.add(String(r.date).slice(0,10))});DB.visits.forEach(v=>{if(v.office===o.id&&v.at)s.add(new Date(v.at).toLocaleDateString("sv-SE"))});return s}
+function lastVisit(o){let d="";visitDays(o).forEach(x=>{if(x>d)d=x});return d}
+function visits90(o){const lim=ago(90);let n=0;visitDays(o).forEach(x=>{if(x>=lim)n++});return n}
+function myId(){return USER?USER.email:"demo"}
+function myCheckin(o){const t=today();return DB.visits.find(v=>v.office===o.id&&v.staff===myId()&&new Date(v.at).toLocaleDateString("sv-SE")===t)}
+function buzz(p){try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}}
+window.checkin=async()=>{const o=DB.offices.find(x=>x.id===S.office);if(!o||S.view!=="visit"){toast("居宅の画面を開いてから押してください");return}
+ if(myCheckin(o)){toast("今日はチェックイン済みです");return}
+ const row={id:newId("v"),office:o.id,staff:myId(),name:USER?USER.name:"デモ",at:new Date().toISOString(),lat:S.pos?S.pos.lat:"",lng:S.pos?S.pos.lng:""};
+ try{await persist([{table:"visits",row}]);buzz(150);toast("チェックインしました");render()}catch(e){toast("チェックインできませんでした："+errText(e))}};
+/* ページ送りボタン（Tab・矢印・PageDownとして届く）：1回目＝チェックイン、2回目以降＝録音の開始・停止 */
+const CLICK_KEYS=["Tab","PageDown","PageUp","ArrowRight","ArrowLeft","ArrowDown","ArrowUp"];
+document.addEventListener("keydown",e=>{
+ if(S.keyTest){e.preventDefault();toast("届いたキー："+(e.key===" "?"Space":e.key));return}
+ if(!CLICK_KEYS.includes(e.key)||e.ctrlKey||e.altKey||e.metaKey)return;
+ const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&e.key!=="Tab"&&!/^Page/.test(e.key))return;
+ if(MODE==="setup"||(MODE==="live"&&(!USER||S.loading)))return;
+ e.preventDefault();if(e.repeat)return;
+ const now=Date.now();if(now-(S.lastPress||0)<800)return;S.lastPress=now;
+ const o=DB.offices.find(x=>x.id===S.office);
+ if(!o||S.view!=="visit"){toast("居宅の画面で押してください");return}
+ if(!myCheckin(o)){checkin();return}
+ const was=RC.on;if(!S.recOpen&&!was){S.recOpen=true;render()}
+ setTimeout(()=>{toggleRec();buzz(was?[80,80,80]:250)},60)},true);
+/* ===== 紹介実績（ケアレンツの新規契約データ） ===== */
+let KC=null;
+async function sha(x){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("asport-kyotaku|"+x));return [...new Uint8Array(b)].slice(0,8).map(v=>v.toString(16).padStart(2,"0")).join("")}
+window.pickContracts=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;const a=$("#kc-area");a.innerHTML='<span class="spin"></span>読み込み中…';
+ try{const rows=await readSheetRows(f);
+  const hi=rows.findIndex(r=>r.some(c=>/契約|開始/.test(String(c)))&&r.some(c=>/居宅|ケアマネ|事業所/.test(String(c))));if(hi<0)throw new Error("見出しの行（契約日・居宅など）が見つかりません");
+  const h=rows[hi].map(x=>String(x).normalize("NFKC").trim());
+  const find=(re,not)=>h.findIndex(x=>re.test(x)&&!(not&&not.test(x)));
+  const I={date:find(/契約日|開始日|貸与開始|受付日|契約開始/),okr:find(/居宅.*(コード|CD)/),oname:find(/居宅|支援事業所/,/コード|CD|番号/),
+   cmc:find(/(ケアマネ|介護支援専門員).*(コード|CD)/),cmn:find(/ケアマネ|介護支援専門員|担当CM/,/コード|CD|カナ|ｶﾅ/),
+   item:find(/商品名|品名|用具|品目/,/コード|CD/),ck:find(/(利用者|顧客|契約者).*(コード|CD|番号)/),cn:find(/利用者|顧客|契約者/,/コード|CD|番号|カナ|ｶﾅ|フリガナ/)};
+  if(I.date<0||(I.ck<0&&I.cn<0)||(I.okr<0&&I.oname<0))throw new Error("必要な列（契約日・利用者・居宅）が見つかりません。見つかった列："+h.filter(Boolean).join("、"));
+  const g=(r,k)=>I[k]>=0?String(r[I[k]]??"").trim():"";
+  const out=[];let noOff=0,noCm=0;
+  for(const r of rows.slice(hi+1)){const key=g(r,"ck")||g(r,"cn").replace(/[\s　]/g,"");if(!key)continue;
+   const m=g(r,"date").normalize("NFKC").match(/(\d{4})\D(\d{1,2})\D(\d{1,2})/);if(!m)continue;const date=m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+   const okr=g(r,"okr"),on=g(r,"oname");
+   const o=(okr&&DB.offices.find(x=>String(x.krCode)===okr))||(on&&(DB.offices.find(x=>x.name===on)||guessOffice(on)))||null;
+   let cm=null;if(o){const cc=g(r,"cmc"),cn=g(r,"cmn").replace(/[\s　]/g,"");
+    cm=(cc&&DB.cms.find(c=>c.krCode===String(o.krCode)+"_"+cc))||(cn&&DB.cms.find(c=>c.office===o.id&&String(c.name).replace(/[\s　]/g,"")===cn))||null}
+   if(!o)noOff++;else if(!cm)noCm++;
+   out.push({key:await sha(key),date,office:o?o.id:"",cm:cm?cm.id:"",item:g(r,"item")})}
+  if(!out.length)throw new Error("取り込める行がありませんでした");
+  KC=out;const cl=new Set(out.map(x=>x.key)).size;
+  a.innerHTML=`<div class="match">${out.length}行（利用者 ${cl}名）を読み込みました。${noOff?`居宅が見つからない行 ${noOff}。`:""}${noCm?`ケアマネが見つからない行 ${noCm}。`:""}<br><span class="meta">使った列：${["date","okr","oname","cmc","cmn","item","ck","cn"].filter(k=>I[k]>=0).map(k=>esc(h[I[k]])).join("、")}</span></div>
+  <div style="margin-top:8px"><button class="btn primary" type="button" onclick="commitContracts(this)">この内容で取り込む</button></div>`}
+ catch(e){a.textContent="読み込めませんでした："+(e.message||e)}};
+window.commitContracts=async b=>{if(!KC)return;b.disabled=true;b.textContent="取り込み中…";
+ try{const d=await api("importContracts",{rows:KC});await loadAll();KC=null;render();toast(`新規 ${d.add}名・更新 ${d.upd}名を取り込みました`)}
+ catch(e){b.disabled=false;b.textContent="この内容で取り込む";toast("取り込めませんでした："+errText(e))}};
+window.runReports=async b=>{b.disabled=true;const st=$("#rp-st");st.innerHTML='<span class="spin"></span>集計中…';
+ try{const d=await api("reports",{});st.textContent="集計シートを更新しました（"+d.at+"）"}catch(e){st.textContent="更新できませんでした："+errText(e)}b.disabled=false};
+function refCount(cmId,days){const lim=ago(days);return DB.contracts.filter(c=>c.cm===cmId&&c.date>=lim).length}
 window.setOfficeStatus=async(id,st)=>{if(st==="非表示"&&!S.confirmHide){S.confirmHide=true;toast("もう一度「非表示」を選ぶと非表示にします");render();return}S.confirmHide=false;
  try{await persist([{table:"offices",row:{id,status:st}}]);toast("状態を「"+st+"」にしました");if(st==="非表示"){S.office=null}render()}catch(e){toast("保存できませんでした："+errText(e))}};
 function bulkForm(o,cms){return `<form class="form" onsubmit="bulkSave(event,'${o.id}')"><b>辞めたケアマネにチェックを入れて「退職にする」を押してください</b>
@@ -518,7 +592,7 @@ window.addRecord=async(e,oid)=>{e.preventDefault();
 
 function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").length;
  return `<button class="oitem" onclick="S.office='${o.id}';S.view='visit';S.selCm=null;S.recOpen=false;render();scrollTo(0,0)">
- <div class="t"><b>${esc(o.name)}${o.kind&&o.kind!=="居宅支援"?`<span class="badge">${esc(o.kind)}</span>`:""}${ost(o)!=="稼働"?`<span class="badge st-alert">${esc(ost(o))}</span>`:""}${o.notices.length?`<span class="badge">連絡${o.notices.length}</span>`:""}${(k=>k?`<span class="badge ${k.state==="配布済"?"st-ok":""}">${k.state==="配布済"?"ｶﾚﾝﾀﾞｰ済":"ｶﾚﾝﾀﾞｰ未"}</span>`:"")(calOf(o))}</b><span class="meta">${esc(o.addr)} ・ CM ${cms}名 ・ 担当 ${esc(staffNames(o))}</span></div>
+ <div class="t"><b>${esc(o.name)}${o.kind&&o.kind!=="居宅支援"?`<span class="badge">${esc(o.kind)}</span>`:""}${ost(o)!=="稼働"?`<span class="badge st-alert">${esc(ost(o))}</span>`:""}${o.notices.length?`<span class="badge">連絡${o.notices.length}</span>`:""}${(n=>n?`<span class="badge">配布未${n}</span>`:"")(activeItems().filter(i=>itemFor(i,o)&&(distOf(i,o)||{}).state!=="配布済").length)}</b><span class="meta">${esc(o.addr)} ・ CM ${cms}名 ・ 担当 ${esc(staffNames(o))} ・ ${(l=>l?`<span style="${daysSince(l)>=GAP_DAYS?"color:var(--alert);font-weight:700":""}">最終訪問 ${daysSince(l)}日前</span>`:`<span style="color:var(--alert)">訪問記録なし</span>`)(lastVisit(o))}</span></div>
  ${d!=null?`<span class="dist num">${fmtD(d)}</span>`:""}</button>`}
 function listRows(){
  const q=(S.lq||"").trim();
@@ -526,8 +600,9 @@ function listRows(){
  if(q)rows=rows.filter(r=>(r.o.name+" "+(r.o.kana||"")+" "+r.o.addr+" "+(r.o.corp||"")).includes(q));
  if(S.mine)rows=rows.filter(r=>isMine(r.o));
  if(!S.showAll)rows=rows.filter(r=>ost(r.o)==="稼働");else rows=rows.filter(r=>ost(r.o)!=="非表示"||S.showAll==="all");
- if(S.calf==="todo")rows=rows.filter(r=>{const k=calOf(r.o);return k&&k.state!=="配布済"});
- if(S.calf==="done")rows=rows.filter(r=>{const k=calOf(r.o);return k&&k.state==="配布済"});
+ if(S.gap)rows=rows.filter(r=>{const l=lastVisit(r.o);return !l||daysSince(l)>=GAP_DAYS});
+ if(S.distf){const [st,id]=S.distf.split(":");const it=DB.items.find(i=>i.id===id);
+  if(it)rows=rows.filter(r=>itemFor(it,r.o)&&((distOf(it,r.o)||{}).state==="配布済")===(st==="done"))}
  return rows;
 }
 function listHtml(){const rows=listRows(),show=rows.slice(0,150);
@@ -535,11 +610,9 @@ function listHtml(){const rows=listRows(),show=rows.slice(0,150);
  <div class="olist">${show.map(officeRow).join("")||`<div class="empty">${S.mine?"自分の担当の居宅がありません。「自分の担当だけ」のチェックを外すと全部表示します。":"該当する居宅がありません"}</div>`}</div>`}
 window.renderListOnly=()=>{const el=$("#listBox");if(el)el.innerHTML=listHtml()};
 /* ===== 状態（居宅：稼働/休止/非表示、CM：在籍/退職/異動） ===== */
-const CAL_YEAR="2027";
+const CAL_YEAR="2027";   /* 取込データのカレンダー年 */
 function ost(o){return o.status||"稼働"}
 function cst(c){return c.status||"在籍"}
-function calOf(o){return DB.calendar.find(k=>k.office===o.id&&String(k.year)===CAL_YEAR)}
-function calTotal(k){return ["desk","m1","m3","memo"].reduce((a,f)=>a+(+k[f]||0),0)}
 /* ===== 担当営業 ===== */
 function me(){return MODE==="live"?(USER&&USER.email):(DB.users[0]&&DB.users[0].email)}
 function isMine(o){const s=staffOf(o);if(!USER&&MODE==="demo")return s.includes(me());return !!USER&&(s.includes(USER.email)||s.includes(USER.name))}
@@ -555,11 +628,6 @@ function staffForm(o){const s=staffOf(o);const names=[...new Set(DB.offices.flat
   <div style="display:flex;gap:8px"><button class="btn primary" type="submit">保存</button><button class="btn" type="button" onclick="S.staffEdit=false;render()">やめる</button></div></form>`}
 window.saveStaff=async(e,id)=>{e.preventDefault();const v=[$("#st1").value,$("#st2").value].filter(Boolean);
  try{await persist([{table:"offices",row:{id,staff:[...new Set(v)].join(",")}}]);S.staffEdit=false;toast("担当を保存しました");render()}catch(err){toast("保存できませんでした："+errText(err))}};
-function calSummary(){const ks=DB.calendar.filter(k=>String(k.year)===CAL_YEAR&&(o=>o&&ost(o)==="稼働")(DB.offices.find(o=>o.id===k.office)));if(!ks.length)return "";
- const by={};ks.forEach(k=>{const o=DB.offices.find(x=>x.id===k.office);const st=staffNames(o);(by[st]=by[st]||{t:0,d:0});by[st].t++;if(k.state==="配布済")by[st].d++});
- const done=ks.filter(k=>k.state==="配布済").length;
- return `<details class="form" style="margin-bottom:12px"><summary><b>${CAL_YEAR}カレンダー配布状況</b>　<span class="num">${done} / ${ks.length}</span> 件 配布済</summary>
- <table class="cltab" style="margin-top:8px"><thead><tr><th>担当</th><th>配布済</th><th>予定</th></tr></thead><tbody>${Object.keys(by).sort().map(n=>`<tr><td>${esc(n)}</td><td class="num">${by[n].d}</td><td class="num">${by[n].t}</td></tr>`).join("")}</tbody></table></details>`}
 function canAdmin(){return MODE==="demo"||(USER&&USER.role==="admin")}
 function viewList(){
  const imp=DB.importedAt;
@@ -569,11 +637,19 @@ function viewList(){
   <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="mine" ${S.mine?"checked":""} onchange="S.mine=this.checked;renderListOnly()"> 自分の担当だけ</label>
   <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="showall" ${S.showAll?"checked":""} onchange="S.showAll=this.checked;renderListOnly()"> 休止中も表示</label>
   ${canAdmin()?`<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${S.showAll==="all"?"checked":""} onchange="S.showAll=this.checked?'all':false;render()"> 非表示も表示</label>`:""}
-  <label style="display:flex;gap:6px;align-items:center">${CAL_YEAR}カレンダー <select class="sim" id="calf" onchange="S.calf=this.value;renderListOnly()"><option value="">すべて</option><option value="todo" ${S.calf==="todo"?"selected":""}>未配布だけ</option><option value="done" ${S.calf==="done"?"selected":""}>配布済だけ</option></select></label>
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${S.gap?"checked":""} onchange="S.gap=this.checked;renderListOnly()"> 訪問が${GAP_DAYS}日以上空いている</label>
+  ${activeItems().length?`<select class="sim" onchange="S.distf=this.value;renderListOnly()"><option value="">配布物：すべて</option>${activeItems().map(i=>`<option value="todo:${i.id}" ${S.distf==="todo:"+i.id?"selected":""}>${esc(i.name)} 未配布</option><option value="done:${i.id}" ${S.distf==="done:"+i.id?"selected":""}>${esc(i.name)} 配布済</option>`).join("")}</select>`:""}
  </div>
- ${calSummary()}
  <div id="listBox">${listHtml()}</div>
  ${canAdmin()?`
+ ${itemsAdmin()}
+ ${MODE==="live"?`<div class="section-t"><h2>新規契約データ（紹介実績）</h2></div>
+ <div class="form"><div class="meta">ケアレンツから書き出した新規契約のExcelを選ぶと、ケアマネごとの紹介件数を記録します。何度取り込んでも重複しません。紹介したケアマネは<b>最初に取り込んだときのまま</b>残り、あとで包括から居宅に移って担当CMが変わっても書き換わりません。利用者名はこの端末で暗号化し、送信しません。</div>
+  <div><label class="btn primary" for="kc-file" style="display:inline-flex">新規契約のExcelを選ぶ</label><input type="file" id="kc-file" accept=".xlsx,.xls,.csv" onchange="pickContracts(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div>
+  <div id="kc-area" class="meta"></div></div>
+ <div class="section-t"><h2>集計シート</h2></div>
+ <div class="form"><div class="meta">スプレッドシートの「集計_営業別」「集計_訪問間隔」「集計_配布」「集計_紹介」は毎朝6時に自動で更新されます。今すぐ更新したいときは押してください。</div>
+  <div><button class="btn" type="button" onclick="runReports(this)">集計を更新</button> <span id="rp-st" class="meta"></span></div></div>`:""}
  ${MODE==="live"?`<div class="section-t"><h2>ケアレンツのマスターから作成</h2></div>
  <div class="form">
   <div class="meta">会社のスプレッドシートの「マスター_ケアマネ」「マスター_利用者」シートに、ケアレンツから書き出した表を貼り付けてから押してください。居宅名を照合して、居宅・ケアマネ・利用者・担当営業をまとめて作ります。何度押しても重複しません。照合の結果はスプレッドシートの「居宅照合」シートで確認・修正できます。</div>
@@ -905,7 +981,7 @@ function errText(e){return {auth:"ログインが必要です",not_allowed:"こ�
 function b64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(blob)})}
 async function aiJson(prompt,blob,onMsg){
  if(MODE==="live"){onMsg&&onMsg("AIで読み取り中…（5〜15秒）");
-  return {route:"GAS",data:await api("json",{prompt,image:blob?await b64(blob):null})}}
+  return {route:"GAS",data:await api("json",{prompt,image:blob?await b64(blob):null,mime:blob?(blob.type||"image/jpeg").split(";")[0]:null})}}
  const ai=await getSample();
  if(ai){let canImg=true;
   if(blob){try{const lim=await ai.limits();canImg=!!(lim&&lim.images)}catch(e){canImg=false}}
@@ -948,15 +1024,16 @@ async function startRec(){
  catch(e){st.innerHTML=`<span class="warnTxt">マイクが使えません。</span>Claudeの画面上ではマイクが制限されています。サーバーに置いた版をスマホ・iPadで開くと録音できます。ここでは下の欄に文字起こしを貼り付けて要約を試せます。`;return}
  RC.on=true;RC.finalText=$("#f-trans").value?$("#f-trans").value+"\n":"";
  const chunks=[];try{RC.rec=new MediaRecorder(RC.stream);RC.rec.ondataavailable=e=>chunks.push(e.data);
-  RC.rec.onstop=()=>{RC.audioUrl=URL.createObjectURL(new Blob(chunks,{type:RC.rec.mimeType}));const a=$("#recAudio");if(a){a.src=RC.audioUrl;a.hidden=false}};RC.rec.start()}catch(e){}
- const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  RC.rec.onstop=()=>{RC.blob=new Blob(chunks,{type:RC.rec.mimeType||"audio/webm"});RC.audioUrl=URL.createObjectURL(RC.blob);const a=$("#recAudio");if(a){a.src=RC.audioUrl;a.hidden=false}};RC.rec.start()}catch(e){}
+ RC.blob=null;
+ const SR=MODE==="live"?null:(window.SpeechRecognition||window.webkitSpeechRecognition);   /* 本番は録音をAIで文字起こし（スマホの「ピロン」音が鳴らない） */
  if(SR){const sr=new SR();sr.lang="ja-JP";sr.continuous=true;sr.interimResults=true;
   sr.onresult=ev=>{let interim="";for(let i=ev.resultIndex;i<ev.results.length;i++){const r=ev.results[i];
     if(r.isFinal)RC.finalText+=r[0].transcript+"。\n";else interim+=r[0].transcript}
    $("#f-trans").value=RC.finalText+interim};
   sr.onend=()=>{if(RC.on)try{sr.start()}catch(e){}};sr.onerror=()=>{};RC.sr=sr;try{sr.start()}catch(e){}}
  RC.t0=Date.now();RC.timer=setInterval(()=>{const s=Math.floor((Date.now()-RC.t0)/1000);
-  st.innerHTML=`<span class="recdot"></span>録音中 <span class="num">${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}</span>${SR?" ・ 文字起こし中":" ・ この端末は自動文字起こし非対応"}`},500);
+  st.innerHTML=`<span class="recdot"></span>録音中 <span class="num">${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}</span>${SR?" ・ 文字起こし中":MODE==="live"?" ・ 止めたあと「AIで要約」で文字起こしします":" ・ この端末は自動文字起こし非対応"}`},500);
  $("#recBtn").classList.add("rec");$("#recBtn").textContent="■ 録音を止める";
 }
 function stopRec(){RC.on=false;clearInterval(RC.timer);
@@ -964,20 +1041,21 @@ function stopRec(){RC.on=false;clearInterval(RC.timer);
  RC.stream&&RC.stream.getTracks().forEach(t=>t.stop());
  $("#recBtn").classList.remove("rec");$("#recBtn").textContent="● 録音を開始";
  $("#recState").textContent="録音を止めました。「AIで要約」を押すと、話した内容と次回アクションに入ります。";}
-window.summarize=async(btn)=>{const tr=$("#f-trans").value.trim();const st=$("#recState");
- if(!tr){st.textContent="文字起こしが空です。録音するか、文字を貼り付けてください。";return}
+window.summarize=async(btn)=>{if(RC.on){stopRec();await new Promise(r=>setTimeout(r,600))}
+ const tr=$("#f-trans").value.trim();const st=$("#recState");const audio=!tr&&RC.blob&&MODE==="live"?RC.blob:null;
+ if(!tr&&!audio){st.textContent="録音するか、文字起こし欄に文字を貼り付けてください。";return}
  const o=DB.offices.find(x=>x.id===S.office);const cmName=$("#f-cm").selectedOptions[0]?.text||"";
  const names=DB.clients.filter(u=>DB.cms.some(c=>c.id===u.cm&&c.office===o.id)).map(u=>u.name).join("、");
- btn.disabled=true;st.innerHTML=`<span class="spin"></span>要約中…`;
+ btn.disabled=true;st.innerHTML=`<span class="spin"></span>${audio?"録音を文字起こしして要約中…（30秒〜1分）":"要約中…"}`;
  try{const rr=await aiJson(
- `福祉用具貸与事業所（アスポート）の営業担当が、居宅介護支援事業所「${o.name}」のケアマネジャー（${cmName}）と面談したときの文字起こしです。音声認識のため誤字があります。
+ `福祉用具貸与事業所（アスポート）の営業担当が、居宅介護支援事業所「${o.name}」のケアマネジャー（${cmName}）と面談したときの${audio?"録音です。まず会話を日本語で文字起こしし":"文字起こしです。音声認識のため誤字があります"}。
 営業日報向けに要約し、次のキーだけのJSONで返してください。
-{"summary":"話した内容の要約（箇条書き風に3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。1〜2行）","clients":["話題に出た利用者名"]}
+{${audio?'"trans":"会話の文字起こし（話者が変わるごとに改行）",':""}"summary":"話した内容の要約（箇条書き風に3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。1〜2行）","clients":["話題に出た利用者名"]}
 参考：この居宅の当社利用者は ${names||"なし"}。
---- 文字起こし ---
-${tr.slice(0,20000)}`,null);
+${audio?"":"--- 文字起こし ---\n"+tr.slice(0,20000)}`,audio);
   if(!rr){st.textContent="この画面ではAI要約が使えません。";btn.disabled=false;return}
   const r=rr.data;
+  if(r.trans&&!$("#f-trans").value)$("#f-trans").value=r.trans;
   $("#f-text").value=r.summary||"";$("#f-next").value=r.next||"";
   st.textContent="要約を入れました。確認して「記録を保存」を押してください。"+(r.clients&&r.clients.length?"（話題の利用者："+r.clients.join("、")+"）":"");
  }catch(e){st.textContent="要約できませんでした："+errText(e)}
@@ -992,7 +1070,8 @@ function viewLog(){
  <div class="log">${todo.map(r=>`<div class="logi"><b>${esc(r.next)}</b><div class="meta">${esc((DB.offices.find(o=>o.id===r.office)||{name:""}).name)} ・ ${r.date}</div></div>`).join("")}</div>
  ${MODE==="demo"?`<p style="margin-top:24px"><button class="btn sm" onclick="resetDemo(this)">ダミーデータに戻す</button></p>`:`<div class="section-t"><h2>アカウント</h2></div>
  <div class="form"><div>${esc(USER?USER.name:"")}<span class="meta"> ${esc(USER?USER.email:"")}${USER&&USER.role==="admin"?" ・ 管理者":""}</span></div>
- <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" onclick="reloadAll(this)">最新のデータに更新</button><button class="btn" type="button" onclick="logout()">ログアウト</button></div></div>`}</div></div>`;
+ <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" onclick="reloadAll(this)">最新のデータに更新</button><button class="btn" type="button" onclick="logout()">ログアウト</button></div>
+ <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px"><input type="checkbox" style="width:auto" ${S.keyTest?"checked":""} onchange="S.keyTest=this.checked"> ページ送りボタンの確認（押すと届いたキーの名前が出ます）</label></div>`}</div></div>`;
 }
 window.reloadAll=async b=>{b.disabled=true;try{await loadAll();fillSim();toast("最新のデータにしました");render()}catch(e){b.disabled=false;toast("更新できませんでした："+errText(e))}};
 window.resetDemo=b=>{if(b.dataset.c!=="1"){b.dataset.c="1";b.textContent="もう一度押すと初期化します";return}
@@ -1037,7 +1116,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classList?.
 /* 起動 */
 startGps();
 if(MODE==="demo"){S.office=DB.offices.some(o=>o.id==="o1")?"o1":null;render()}
-else if(MODE==="live"){render();initGis();if(SESSION)boot()}
+else if(MODE==="live"){if(SESSION)boot();else{render();initGis()}}
 else render();
 setTimeout(()=>{if(S.gps==="wait"){S.gps="off";renderGps()}},6000);
 </script>
