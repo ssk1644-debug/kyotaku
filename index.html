@@ -401,7 +401,7 @@ function viewVisit(){
   <span class="meta">${esc(o.addr)} ・ <span class="num">${esc(o.tel)}</span>${d!==null?" ・ "+fmtD(d):""}</span>
   <span class="meta">${(l=>`最終訪問 <span class="num" style="${l&&daysSince(l)>=GAP_DAYS?"color:var(--alert);font-weight:700":""}">${l?l+"（"+daysSince(l)+"日前）":"記録なし"}</span> ・ 直近3か月 <span class="num">${visits90(o)}</span>回`)(lastVisit(o))}${(n=>n?` ・ 新規契約（12か月） <span class="num">${n}</span>件`:"")(DB.contracts.filter(c=>c.office===o.id&&c.date>=ago(365)).length)}</span>
   <span class="meta">担当：<b style="color:var(--ink)">${esc(staffNames(o))}</b>${canAdmin()&&!S.staffEdit?` <button class="btn sm" type="button" onclick="S.staffEdit=true;render()">変更</button>`:""}</span>
-  <span class="meta">実績の渡し方 <select class="sim" onchange="setJkMethod('${o.id}',this.value,this)"><option value="">未設定</option>${Object.keys(JK_LABEL).map(k=>`<option value="${k}" ${o.jisseki===k?"selected":""}>${JK_LABEL[k]}</option>`).join("")}</select></span>
+  <span class="meta">実績の渡し方 <select class="sim" onchange="setJkMethod('${o.id}',this.value,this)">${Object.keys(JK_LABEL).map(k=>`<option value="${k}" ${jkm(o)===k?"selected":""}>${JK_LABEL[k]}</option>`).join("")}</select></span>
   ${canAdmin()?`<span class="meta">状態 <select class="sim" onchange="setOfficeStatus('${o.id}',this.value,this)">${["稼働","休止","非表示"].map(v=>`<option ${v===ost(o)?"selected":""}>${v}</option>`).join("")}</select></span>`:""}
   ${o.lat==null?`<span class="meta">位置が未登録です ${S.pos?`<button class="btn sm" onclick="setOfficePos('${o.id}')">今いる場所を登録</button>`:"（現在地が取れると登録できます）"}</span>`:""}</div>
 
@@ -631,24 +631,24 @@ function listHtml(){const rows=listRows(),show=rows.slice(0,150);
 window.renderListOnly=()=>{const el=$("#listBox");if(!el)return;if(S.listMode==="map"){drawMap();return}el.innerHTML=listHtml()};
 /* ===== 実績配布（毎月24日〜翌月4日に表示） ===== */
 const JK_FROM=24,JK_TO=4;
-const JK_LABEL={"配布":"実績配布","連携":"データ連携","両方":"実績配布＋データ連携"};
+const JK_LABEL={"配布":"実績配布","連携":"データ連携","両方":"データ連携＋実績配布"};
+const jkm=o=>JK_LABEL[o.jisseki]?o.jisseki:"配布";   /* 未選択の居宅は「実績配布」 */
 function jkMonth(){const d=new Date(),day=d.getDate();if(day>=JK_FROM)return d.toLocaleDateString("sv-SE").slice(0,7);
  if(day<=JK_TO)return new Date(d.getFullYear(),d.getMonth()-1,15).toLocaleDateString("sv-SE").slice(0,7);return null}
 function jkOf(o,m){return DB.jisseki.find(x=>x.office===o.id&&x.month===m)}
-function jkTodo(o,m){return !!(m&&o.jisseki&&ost(o)==="稼働"&&(jkOf(o,m)||{}).state!=="済")}
-function jkBox(o){const m=jkMonth();if(!m||!o.jisseki||ost(o)!=="稼働")return "";const k=jkOf(o,m)||{},done=k.state==="済";
- return `<div class="notice" style="margin-top:12px;${done?"background:var(--accent-soft);border-left-color:var(--accent)":""}"><div class="from" style="${done?"color:var(--accent)":""}">${+m.slice(5)}月分の実績 ・ ${JK_LABEL[o.jisseki]} ・ ${done?"済（"+esc(k.date||"")+(k.by?" "+esc(k.by):"")+"）":"未"}</div>
+function jkTodo(o,m){return !!(m&&ost(o)==="稼働"&&(jkOf(o,m)||{}).state!=="済")}
+function jkBox(o){const m=jkMonth();if(!m||ost(o)!=="稼働")return "";const k=jkOf(o,m)||{},done=k.state==="済";
+ return `<div class="notice" style="margin-top:12px;${done?"background:var(--accent-soft);border-left-color:var(--accent)":""}"><div class="from" style="${done?"color:var(--accent)":""}">${+m.slice(5)}月分の実績 ・ ${JK_LABEL[jkm(o)]} ・ ${done?"済（"+esc(k.date||"")+(k.by?" "+esc(k.by):"")+"）":"未"}</div>
  <div style="margin-top:6px">${done?`<button class="btn sm" type="button" onclick="jkSet('${o.id}',false,this)">未に戻す</button>`:`<button class="btn sm primary" type="button" onclick="jkSet('${o.id}',true,this)">済にする</button>`}</div></div>`}
 window.jkSet=async(oid,done,b)=>{const o=DB.offices.find(x=>x.id===oid),m=jkMonth();if(!o||!m)return;if(b){b.disabled=true;b.innerHTML='<span class="spin"></span>'}
- const row={id:m+"-"+oid,month:m,office:oid,method:o.jisseki,state:done?"済":"",date:done?today():"",by:done?(USER?USER.name:"デモ"):""};
+ const row={id:m+"-"+oid,month:m,office:oid,method:jkm(o),state:done?"済":"",date:done?today():"",by:done?(USER?USER.name:"デモ"):""};
  try{await persist([{table:"jisseki",row}]);buzz(60);toast(done?"実績を済にしました":"未に戻しました");render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
 window.setJkMethod=async(oid,v,sel)=>{if(sel)sel.disabled=true;
- try{await persist([{table:"offices",row:{id:oid,jisseki:v}}]);buzz(40);toast(v?"実績の渡し方を「"+JK_LABEL[v]+"」にしました":"実績の渡し方を未設定にしました");render()}catch(e){if(sel)sel.disabled=false;toast("保存できませんでした："+errText(e))}};
+ try{await persist([{table:"offices",row:{id:oid,jisseki:v}}]);buzz(40);toast("実績の渡し方を「"+JK_LABEL[v]+"」にしました");render()}catch(e){if(sel)sel.disabled=false;toast("保存できませんでした："+errText(e))}};
 function jkPanel(){const m=jkMonth();if(!m)return "";
  const os=DB.offices.filter(o=>ost(o)==="稼働"&&(!S.mine||isMine(o)));
- const g=Object.keys(JK_LABEL).map(k=>{const all=os.filter(o=>o.jisseki===k);return {k,all,todo:all.filter(o=>jkTodo(o,m))}});
+ const g=Object.keys(JK_LABEL).map(k=>{const all=os.filter(o=>jkm(o)===k);return {k,all,todo:all.filter(o=>jkTodo(o,m))}});
  const head=`<div class="section-t"><h2>${+m.slice(5)}月分の実績</h2><span class="meta">${JK_TO}日まで${S.mine?" ・ 自分の担当":""}</span></div>`;
- if(!g.some(x=>x.all.length))return head+`<div class="notice" style="margin-bottom:10px">居宅ごとの実績の渡し方がまだ登録されていません。居宅の画面の「実績の渡し方」で選ぶと、ここに出ます。</div>`;
  return head+`<div class="jk" style="margin-bottom:12px">${g.map(x=>`<div class="form"><b>${JK_LABEL[x.k]}</b><span class="meta">済 <b class="num">${x.all.length-x.todo.length}</b> / ${x.all.length}件${x.todo.length?" ・ 残り "+x.todo.length+"件":" ・ 完了"}</span>
   ${x.todo.slice(0,40).map(o=>`<button class="btn sm" type="button" style="text-align:left" onclick="S.office='${o.id}';S.view='visit';S.recOpen=false;render();scrollTo(0,0)">${esc(o.name)}</button>`).join("")}${x.todo.length>40?`<span class="meta">ほか${x.todo.length-40}件</span>`:""}</div>`).join("")}</div>`}
 /* ===== 地図 ===== */
@@ -656,17 +656,18 @@ let MAP=null;
 function loadLeaflet(){return new Promise((res,rej)=>{if(window.L)return res();
  const c=document.createElement("link");c.rel="stylesheet";c.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";document.head.appendChild(c);
  const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";sc.onload=res;sc.onerror=()=>rej(new Error("地図の部品を読み込めません"));document.head.appendChild(sc)})}
-function mapHtml(){return `<div id="map"><div class="progress" style="padding:16px"><span class="spin"></span>地図を読み込み中…</div></div>
- <div class="meta" style="margin-top:6px"><span style="color:#c0392b">●</span> 訪問が${GAP_DAYS}日以上空いている　<span style="color:#d68910">●</span> 実績が未　<span style="color:#0d6e62">●</span> 問題なし　<span style="color:#8a8a8a">●</span> 休止など　<span style="color:#1a73e8">●</span> 現在地</div>`}
+function mapColor(){return S.mapColor||(jkMonth()?"jk":"visit")}
+function mapHtml(){const mc=mapColor(),m=jkMonth();return `${m?`<div class="seg" style="margin-bottom:8px"><button type="button" class="${mc==="jk"?"on":""}" onclick="S.mapColor='jk';render()">色分け：実績</button><button type="button" class="${mc==="visit"?"on":""}" onclick="S.mapColor='visit';render()">色分け：訪問</button></div>`:""}<div id="map"><div class="progress" style="padding:16px"><span class="spin"></span>地図を読み込み中…</div></div>
+ <div class="meta" style="margin-top:6px">${mc==="jk"?`<span style="color:#c0392b">●</span> ${+m.slice(5)}月分の実績が未　<span style="color:#0d6e62">●</span> 実績 済`:`<span style="color:#c0392b">●</span> 訪問が${GAP_DAYS}日以上空いている　<span style="color:#0d6e62">●</span> 訪問OK`}　<span style="color:#8a8a8a">●</span> 休止など　<span style="color:#1a73e8">●</span> 現在地</div>`}
 window.openOffice=id=>{S.office=id;S.view="visit";S.selCm=null;S.recOpen=false;render();scrollTo(0,0)};
 async function drawMap(){const el=$("#map");if(!el)return;try{await loadLeaflet()}catch(e){el.textContent=e.message;return}
  if(!$("#map"))return;if(MAP){try{MAP.remove()}catch(e){}MAP=null}el.innerHTML="";
  MAP=L.map(el);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(MAP);
- const m=jkMonth(),pts=[];
+ const m=jkMonth(),mc=mapColor(),pts=[];
  listRows().filter(r=>r.o.lat!=null).forEach(({o})=>{const l=lastVisit(o),gap=!l||daysSince(l)>=GAP_DAYS,jk=jkTodo(o,m);
-  const col=ost(o)!=="稼働"?"#8a8a8a":gap?"#c0392b":jk?"#d68910":"#0d6e62";
+  const col=ost(o)!=="稼働"?"#8a8a8a":(mc==="jk"?jk:gap)?"#c0392b":"#0d6e62";
   L.circleMarker([o.lat,o.lng],{radius:9,color:"#fff",weight:2,fillColor:col,fillOpacity:.95}).addTo(MAP)
-   .bindPopup(`<b>${esc(o.name)}</b><br>担当 ${esc(staffNames(o))}<br>${l?"最終訪問 "+daysSince(l)+"日前":"訪問記録なし"}${jk?"<br>実績 未":""}<br><button type="button" class="btn sm" style="margin-top:6px" onclick="openOffice('${o.id}')">この居宅を開く</button>`);
+   .bindPopup(`<b>${esc(o.name)}</b><br>担当 ${esc(staffNames(o))}<br>${l?"最終訪問 "+daysSince(l)+"日前":"訪問記録なし"}${m?`<br>${+m.slice(5)}月分の実績 ${jk?"未":"済"}`:""}<br><button type="button" class="btn sm" style="margin-top:6px" onclick="openOffice('${o.id}')">この居宅を開く</button>`);
   pts.push([o.lat,o.lng])});
  if(S.pos){L.circleMarker([S.pos.lat,S.pos.lng],{radius:8,color:"#fff",weight:3,fillColor:"#1a73e8",fillOpacity:1}).addTo(MAP).bindPopup("現在地");pts.push([S.pos.lat,S.pos.lng])}
  if(pts.length)MAP.fitBounds(pts,{padding:[30,30],maxZoom:15});else MAP.setView([34.486,133.362],12)}
@@ -903,12 +904,15 @@ window.importViaGas=async b=>{const st=$("#imp-st");
  catch(e){st.textContent="取り込めませんでした："+errText(e)}
  b.disabled=false};
 
+const ckind=c=>c.kind==="service"?"service":"kyotaku";
+function cardText(c){const cl=c.client&&DB.clients.find(u=>u.id===c.client);return [c.name,c.org,c.title,c.memo,c.stype,c.placeNote,cl?cl.name:""].join(" ")}
+function cardList(){const q=S.q.trim(),t=S.cardTab||"kyotaku";return DB.cards.filter(c=>ckind(c)===t&&(!q||cardText(c).includes(q)))}
 function viewCards(){
- const q=S.q.trim();
- const list=DB.cards.filter(c=>!q||[c.name,c.org,c.title,c.memo].join(" ").includes(q));
+ const t=S.cardTab||"kyotaku",n=k=>DB.cards.filter(c=>ckind(c)===k).length;
  return `<div class="section-t"><h2>名刺</h2><span class="meta">${DB.cards.length}枚</span></div>
- <input class="search" id="q" placeholder="名前・事業所で検索" value="${esc(S.q)}" oninput="S.q=this.value;renderCardsOnly()">
- <div id="cardList">${cardGrid(list)}</div>
+ <div class="seg" style="margin-bottom:10px"><button type="button" class="${t==="kyotaku"?"on":""}" onclick="S.cardTab='kyotaku';render()">居宅（${n("kyotaku")}）</button><button type="button" class="${t==="service"?"on":""}" onclick="S.cardTab='service';render()">サービス事業所（${n("service")}）</button></div>
+ <input class="search" id="q" placeholder="${t==="service"?"名前・事業所・種類・利用者様の名前で検索":"名前・事業所で検索"}" value="${esc(S.q)}" oninput="S.q=this.value;renderCardsOnly()">
+ <div id="cardList">${cardGrid(cardList())}</div>
  <div class="section-t"><h2>名刺を読み取る</h2></div>
  <div class="form">
   <label class="scan" for="c-photo"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3.2"/></svg>
@@ -922,17 +926,22 @@ function viewCards(){
 function scanAreaHtml(){
  if(SC.stage==="idle") return "";
  if(SC.stage==="reading") return `<img class="prev" src="${SC.photo}" alt=""><div class="progress"><span class="spin"></span>${esc(SC.msg||"名刺を読み取り中…")}</div>`;
- const f=SC.fields, m=matchOffice(f.org);
+ const f=SC.fields, m=matchOffice(f.org), svc=SC.kind==="service";
  return `<img class="prev" src="${SC.photo}" alt="">
+ <div class="seg"><button type="button" class="${!svc?"on":""}" onclick="scKeep();SC.kind='kyotaku';renderScan()">居宅（ケアマネ）</button><button type="button" class="${svc?"on":""}" onclick="scKeep();SC.kind='service';renderScan()">サービス事業所</button></div>
  ${SC.err?`<div class="notice">${esc(SC.err)}</div>`:`<div class="meta">AIの読み取り結果です。違っていれば直してから登録してください。</div>`}
  <form class="form" style="padding:0;border:0" onsubmit="commitCard(event)">
   <div class="row2"><label>氏名<input id="c-name" required value="${esc(f.name)}"></label><label>ふりがな<input id="c-kana" value="${esc(f.kana)}"></label></div>
   <div class="row2"><label>事業所名<input id="c-org" value="${esc(f.org)}" oninput="SC.fields.org=this.value;updMatch()"></label><label>役職・資格<input id="c-title" value="${esc(f.title)}"></label></div>
   <label>住所<input id="c-addr" value="${esc(f.addr)}"></label>
   <div class="row2"><label>電話<input id="c-tel" inputmode="tel" value="${esc(f.tel)}"></label><label>メール<input id="c-email" type="email" value="${esc(f.email)}"></label></div>
-  <label>メモ<input id="c-memo" placeholder="例：新任。前職は病院のMSW"></label>
-  <div id="matchBox" class="match">${matchHtml(m)}</div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit" id="c-save">居宅・CMに登録</button><button class="btn" type="button" onclick="SC.stage='idle';renderScan()">やめる</button></div>
+  ${svc?`<label>サービスの種類<input id="c-stype" value="${esc(f.stype||"")}" placeholder="例：デイサービス、訪問介護、訪問看護"></label>
+  <div><b style="font-size:14px">どこで一緒になった？</b><div class="seg" style="margin-top:4px"><button type="button" class="${SC.place==="client"?"on":""}" onclick="scKeep();SC.place='client';renderScan()">〇〇様宅</button><button type="button" class="${SC.place==="seminar"?"on":""}" onclick="scKeep();SC.place='seminar';renderScan()">研修会</button></div></div>
+  ${SC.place==="client"?`<label>利用者様（登録済みの方から選ぶか、「K藤」のように頭文字で入力）<input id="c-pnote" list="clientNames" value="${esc(SC.pnote||"")}" placeholder="例：K藤（音声入力も可）"></label>
+   <datalist id="clientNames">${DB.clients.map(u=>`<option value="${esc(u.name)}">`).join("")}</datalist>`:SC.place==="seminar"?`<label>研修会の名前（任意）<input id="c-pnote" value="${esc(SC.pnote||"")}" placeholder="例：福山市 地域ケア会議"></label>`:""}`:""}
+  <label>メモ<input id="c-memo" value="${esc(f.memo||"")}" placeholder="${svc?"例：入浴の受け入れが柔軟":"例：新任。前職は病院のMSW"}"></label>
+  ${svc?`<div class="match"><b>登録先：</b>サービス事業所の名刺として保存します（居宅・ケアマネには登録しません）</div>`:`<div id="matchBox" class="match">${matchHtml(m)}</div>`}
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit" id="c-save">${svc?"名刺を保存":"居宅・CMに登録"}</button><button class="btn" type="button" onclick="SC.stage='idle';renderScan()">やめる</button></div>
  </form>`;
 }
 function matchHtml(m){
@@ -940,22 +949,27 @@ function matchHtml(m){
  if(m) return `<b>登録先：</b>既存の居宅「${esc(m.name)}」に CM として追加`;
  return `<b>登録先：</b>新しい居宅「${esc(SC.fields.org)}」を作成し、CM として追加<br><span class="meta">${S.pos?"今いる場所を居宅の位置として登録します（到着時の自動表示に使います）":"現在地が取れないため位置は未登録。あとで居宅画面から登録できます"}</span>`;
 }
-window.updMatch=()=>{$("#matchBox").innerHTML=matchHtml(matchOffice(SC.fields.org))};
+window.updMatch=()=>{const b=$("#matchBox");if(b)b.innerHTML=matchHtml(matchOffice(SC.fields.org))};
+window.scKeep=()=>{if(!SC.fields)return;const g=id=>{const e=$(id);return e?e.value:undefined};
+ [["name","#c-name"],["kana","#c-kana"],["org","#c-org"],["title","#c-title"],["addr","#c-addr"],["tel","#c-tel"],["email","#c-email"],["memo","#c-memo"],["stype","#c-stype"]].forEach(([k,id])=>{const v=g(id);if(v!==undefined)SC.fields[k]=v});
+ const pn=g("#c-pnote");if(pn!==undefined)SC.pnote=pn};
 const norm=s=>String(s||"").replace(/株式会社|有限会社|合同会社|医療法人(社団)?|社会福祉法人|一般社団法人|居宅介護支援事業所|[\s　・（）()]/g,"");
 function matchOffice(org){const n=norm(org);if(n.length<3)return null;
  return DB.offices.find(o=>{const a=norm(o.name);return a===n||a.includes(n)||n.includes(a)})||null}
 function cardGrid(list){return list.length?`<div class="cards">${list.map(c=>`<div class="bcard">
   <div class="ph">${!c.photo?"写真なし":String(c.photo).startsWith("data:")?`<img src="${c.photo}" alt="${esc(c.name)}の名刺">`:PH[c.photo]?`<img src="${PH[c.photo]}" alt="">`:`<button class="btn sm" type="button" onclick="loadPhoto(this,'${esc(c.photo)}')">名刺画像を表示</button>`}</div>
   <div class="bd"><b>${esc(c.name)}</b><span class="meta">${esc(c.org)} ${esc(c.title)}</span>
+  ${c.stype?`<span class="chip" style="justify-self:start">${esc(c.stype)}</span>`:""}
+  ${(cl=>c.place==="client"?`<span class="meta">${esc(cl?cl.name.replace(/ 様$/,""):c.placeNote)}様宅で一緒になった${cl&&c.placeNote?"（"+esc(c.placeNote)+"）":""}</span>`:c.place==="seminar"?`<span class="meta">研修会でもらった${c.placeNote?"："+esc(c.placeNote):""}</span>`:"")(c.client&&DB.clients.find(u=>u.id===c.client))}
   <span class="num">${esc(c.tel)}</span><span>${esc(c.email)}</span>${c.memo?`<span class="meta">${esc(c.memo)}</span>`:""}
   ${c.cm?`<span class="chip" style="justify-self:start">CM登録あり</span>`:""}</div></div>`).join("")}</div>`:'<div class="empty">該当する名刺がありません</div>'}
 const PH={};
 window.loadPhoto=async(b,id)=>{b.disabled=true;b.textContent="読み込み中…";
  try{PH[id]=(await api("photo",{id})).dataUrl;b.parentNode.innerHTML=`<img src="${PH[id]}" alt="">`}catch(e){b.disabled=false;b.textContent="表示できません"}};
-window.renderCardsOnly=()=>{const q=S.q.trim();$("#cardList").innerHTML=cardGrid(DB.cards.filter(c=>!q||[c.name,c.org,c.title,c.memo].join(" ").includes(q)))};
+window.renderCardsOnly=()=>{$("#cardList").innerHTML=cardGrid(cardList())};
 /* ===== 名刺スキャン（OCR） ===== */
-const SC={stage:"idle",photo:"",fields:null,err:"",msg:""};
-const EMPTY_F={name:"",kana:"",org:"",title:"",addr:"",tel:"",email:""};
+const SC={stage:"idle",photo:"",fields:null,err:"",msg:"",kind:"kyotaku",place:"",pnote:""};
+const EMPTY_F={name:"",kana:"",org:"",title:"",addr:"",tel:"",email:"",stype:"",memo:""};
 function renderScan(){const a=$("#scanArea");if(a)a.innerHTML=scanAreaHtml()}
 function shrink(file,W){return new Promise((res,rej)=>{const rd=new FileReader();rd.onerror=rej;
  rd.onload=()=>{const img=new Image();img.onerror=rej;img.onload=()=>{const s=Math.min(1,W/Math.max(img.width,img.height));
@@ -969,7 +983,7 @@ window.scanCard=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;
  processCard(blob,url);
 };
 const CARD_PROMPT=`これは日本の介護業界（居宅介護支援事業所など）の名刺の写真です。傾きや縦書き、ロゴ・顔写真に注意して、記載内容を一字ずつ正確に読み取り、次のキーだけを持つJSONで返してください。読めない項目は空文字。
-{"name":"氏名（姓と名の間に半角スペース）","kana":"ふりがな（ひらがな。記載がなければ空）","org":"事業所名（法人名ではなく居宅介護支援事業所などの事業所名を優先）","title":"役職・資格（例：主任介護支援専門員）","addr":"事業所の住所","tel":"電話番号（携帯より事業所の固定電話を優先）","email":"メールアドレス"}`;
+{"name":"氏名（姓と名の間に半角スペース）","kana":"ふりがな（ひらがな。記載がなければ空）","org":"事業所名（法人名ではなく居宅介護支援事業所などの事業所名を優先）","title":"役職・資格（例：主任介護支援専門員）","addr":"事業所の住所","tel":"電話番号（携帯より事業所の固定電話を優先）","email":"メールアドレス","kind":"居宅介護支援事業所・地域包括支援センターのケアマネジャーなら kyotaku、それ以外のサービス事業所（デイサービス、訪問介護、訪問看護、福祉用具、施設など）なら service","stype":"kind が service のとき、サービスの種類（例：デイサービス、訪問介護、訪問看護）。kyotaku なら空"}`;
 async function processCard(blob,url){
  SC.stage="reading";SC.photo=url;SC.err="";SC.msg="名刺を読み取り中…";renderScan();
  let fields=null,route="";
@@ -978,7 +992,8 @@ async function processCard(blob,url){
   if(r){fields=r.data;route=r.route}
   else SC.err="この画面ではAI読み取りが使えません。手で入力して登録できます。";
  }catch(e){SC.err="自動で読み取れませんでした（"+(e.route||route||"AI")+"）："+errText(e)+"。手で入力して登録できます。"}
- SC.fields=Object.assign({},EMPTY_F,fields||{});SC.stage="confirm";SC.route=route;renderScan();
+ SC.fields=Object.assign({},EMPTY_F,fields||{});SC.kind=SC.fields.kind==="service"?"service":"kyotaku";SC.place="";SC.pnote="";
+ SC.stage="confirm";SC.route=route;renderScan();
 }
 function errText(e){return {auth:"ログインが必要です",not_allowed:"このGoogleアカウントは登録されていません。管理者に追加を依頼してください",bad_login:"Googleログインを確認できませんでした。もう一度お試しください",forbidden:"この操作は管理者だけができます",not_granted:"AIの利用が許可されていません。もう一度試すと許可の確認が出ます",rate_limited:"AIが混み合っています。少し待って再度お試しください",invalid_json:"AIの返答を読み取れませんでした。もう一度お試しください",bad_token:"合言葉が違います（設定を確認）",no_key:"GAS側にAPIキーが設定されていません",network:"GASに接続できません（URLと通信を確認）"}[e.code]||e.message||e.code||"不明なエラー"}
 
@@ -999,6 +1014,12 @@ async function aiJson(prompt,blob,onMsg){
 window.commitCard=async e=>{e.preventDefault();
  const v=id=>$(id).value.trim();
  const f={name:v("#c-name"),kana:v("#c-kana"),org:v("#c-org"),title:v("#c-title"),addr:v("#c-addr"),tel:v("#c-tel"),email:v("#c-email"),memo:v("#c-memo")};
+ if(SC.kind==="service"){const pn=$("#c-pnote")?v("#c-pnote"):"";const cl=SC.place==="client"&&pn?DB.clients.find(u=>u.name===pn):null;
+  const row={id:newId("b"),kind:"service",stype:$("#c-stype")?v("#c-stype"):"",place:SC.place||"",client:cl?cl.id:"",placeNote:cl?"":pn.replace(/\s*様(宅)?$/,""),
+   name:f.name,kana:f.kana,org:f.org,title:f.title,addr:f.addr,tel:f.tel,email:f.email,memo:f.memo,cm:"",office:"",photo:SC.photo};
+  const b=$("#c-save");b.disabled=true;b.innerHTML='<span class="spin"></span> 保存中…';
+  try{await persist([{table:"cards",row}])}catch(err){b.disabled=false;b.textContent="名刺を保存";toast("保存できませんでした："+errText(err));return}
+  SC.stage="idle";S.cardTab="service";buzz(60);toast("サービス事業所の名刺を保存しました");render();return}
  const ops=[];let o=matchOffice(f.org),made="";
  if(!o&&f.org){o={id:newId("o"),name:f.org,addr:f.addr||"住所未登録",tel:f.tel,lat:S.pos?S.pos.lat:null,lng:S.pos?S.pos.lng:null,notices:[]};ops.push({table:"offices",row:o});made="居宅を新規登録・"}
  let cm=null;
@@ -1183,6 +1204,22 @@ function render(){
  $("#app").innerHTML=v+(MODE==="demo"?`<p class="demo">デモ：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`:`<p class="demo">データは会社のスプレッドシートに保存されます。この端末には残りません。</p>`);
 }
 const _render=render;render=function(){_render();if(S.view==="list"&&S.listMode==="map"&&$("#map"))drawMap()};
+/* スマホの「戻る」でアプリ内のひとつ前の画面に戻る（最初の画面では2回押すと終了） */
+let NAV_LAST=null,NAV_POP=false,EXIT_AT=0;
+const navKey=()=>S.view+"|"+(S.view==="visit"?(S.office||""):"");
+const _render2=render;render=function(){_render2();
+ if(MODE==="setup"||(MODE==="live"&&(!USER||S.loading)))return;
+ const k=navKey();
+ try{if(NAV_LAST===null){history.replaceState({root:1},"");history.pushState({k,v:S.view,o:S.office},"")}
+  else if(k!==NAV_LAST&&!NAV_POP)history.pushState({k,v:S.view,o:S.office},"")}catch(e){}
+ NAV_LAST=k;NAV_POP=false};
+window.addEventListener("popstate",e=>{const st=e.state||{};
+ if(st.root){if(Date.now()-EXIT_AT<2500){history.back();return}EXIT_AT=Date.now();toast("もう一度「戻る」を押すと終了します");
+  try{history.pushState({k:NAV_LAST,v:S.view,o:S.office},"")}catch(err){}return}
+ if(!st.v)return;
+ if(RC.on)stopRec();
+ NAV_POP=true;S.view=st.v;S.office=st.o||null;S.recOpen=false;S.cmEdit=null;S.bulk=false;
+ if(S.view==="visit"&&S.office)S.autoOpened=S.office;render();scrollTo(0,0)});
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{S.view=t.dataset.v;S.cmEdit=null;render();scrollTo(0,0)});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classList?.contains("cm"))e.target.click()});
 
