@@ -382,13 +382,14 @@ function viewVisit(){
  return `
  ${here?`<div class="arrive"><div><b>${esc(o.name)} に到着</b><div style="font-size:13px">現在地から ${fmtD(d)}</div></div>
    <button class="btn sm" onclick="S.recOpen=true;render()">面談を記録する</button></div>`:""}
- <div class="ohead"><h1>${esc(o.name)}</h1>${ost(o)!=="稼働"?`<span class="status st-alert">${esc(ost(o))}</span>`:""}
+ <div class="ohead"><h1>${esc(o.name)}</h1>${o.kind&&o.kind!=="居宅支援"?`<span class="badge">${esc(o.kind)}</span>`:""}${ost(o)!=="稼働"?`<span class="status st-alert">${esc(ost(o))}</span>`:""}
   <span class="meta">${esc(o.addr)} ・ <span class="num">${esc(o.tel)}</span>${d!==null?" ・ "+fmtD(d):""}</span>
   <span class="meta">最終訪問 <span class="num">${recs[0]?recs[0].date:"記録なし"}</span></span>
   <span class="meta">担当：<b style="color:var(--ink)">${esc(staffNames(o))}</b>${canAdmin()&&!S.staffEdit?` <button class="btn sm" type="button" onclick="S.staffEdit=true;render()">変更</button>`:""}</span>
   ${canAdmin()?`<span class="meta">状態 <select class="sim" onchange="setOfficeStatus('${o.id}',this.value)">${["稼働","休止","非表示"].map(v=>`<option ${v===ost(o)?"selected":""}>${v}</option>`).join("")}</select></span>`:""}
   ${o.lat==null?`<span class="meta">位置が未登録です ${S.pos?`<button class="btn sm" onclick="setOfficePos('${o.id}')">今いる場所を登録</button>`:"（現在地が取れると登録できます）"}</span>`:""}</div>
 
+ ${(sib=>sib.length?`<div class="meta" style="margin-top:4px">同じ場所：${sib.map(x=>`<button class="btn sm" type="button" style="margin:2px" onclick="S.office='${x.id}';S.selCm=null;S.recOpen=false;S.autoOpened='${x.id}';render()">${esc(x.name)}${x.kind&&x.kind!=="居宅支援"?"（"+esc(x.kind)+"）":""}</button>`).join("")}</div>`:"")(o.lat==null?[]:DB.offices.filter(x=>x.id!==o.id&&x.lat!=null&&ost(x)!=="非表示"&&dist(o.lat,o.lng,x.lat,x.lng)<40))}
  <div style="margin:8px 0 4px">${S.recOpen?recordForm(o,cms):`<button class="btn primary" type="button" style="width:100%;padding:12px;font-size:16px" onclick="S.recOpen=true;render()">＋ 面談を記録する</button>`}</div>
  ${S.staffEdit&&canAdmin()?staffForm(o):""}
  ${o.notices.length?`<div class="section-t"><h2>連絡事項・今日伝えること</h2><span class="meta">${o.notices.length}件</span></div>
@@ -517,7 +518,7 @@ window.addRecord=async(e,oid)=>{e.preventDefault();
 
 function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").length;
  return `<button class="oitem" onclick="S.office='${o.id}';S.view='visit';S.selCm=null;S.recOpen=false;render();scrollTo(0,0)">
- <div class="t"><b>${esc(o.name)}${ost(o)!=="稼働"?`<span class="badge st-alert">${esc(ost(o))}</span>`:""}${o.notices.length?`<span class="badge">連絡${o.notices.length}</span>`:""}${(k=>k?`<span class="badge ${k.state==="配布済"?"st-ok":""}">${k.state==="配布済"?"ｶﾚﾝﾀﾞｰ済":"ｶﾚﾝﾀﾞｰ未"}</span>`:"")(calOf(o))}</b><span class="meta">${esc(o.addr)} ・ CM ${cms}名 ・ 担当 ${esc(staffNames(o))}</span></div>
+ <div class="t"><b>${esc(o.name)}${o.kind&&o.kind!=="居宅支援"?`<span class="badge">${esc(o.kind)}</span>`:""}${ost(o)!=="稼働"?`<span class="badge st-alert">${esc(ost(o))}</span>`:""}${o.notices.length?`<span class="badge">連絡${o.notices.length}</span>`:""}${(k=>k?`<span class="badge ${k.state==="配布済"?"st-ok":""}">${k.state==="配布済"?"ｶﾚﾝﾀﾞｰ済":"ｶﾚﾝﾀﾞｰ未"}</span>`:"")(calOf(o))}</b><span class="meta">${esc(o.addr)} ・ CM ${cms}名 ・ 担当 ${esc(staffNames(o))}</span></div>
  ${d!=null?`<span class="dist num">${fmtD(d)}</span>`:""}</button>`}
 function listRows(){
  const q=(S.lq||"").trim();
