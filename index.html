@@ -161,7 +161,7 @@ select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);backgr
 <header class="locbar">
   <div class="locbar-in">
     <div class="brand">居宅営業管理システム<small id="brandSub">アスポート 営業用</small></div>
-    <span id="gpsPill" class="pill"><span class="dot"></span><span id="gpsText">位置を確認中…</span></span>
+    <button id="gpsPill" class="pill" type="button" onclick="S.gpsHelp=!S.gpsHelp;S.view='visit';S.office=null;render()"><span class="dot"></span><span id="gpsText">位置を確認中…</span></button>
     <select id="sim" class="sim" aria-label="位置を試す">
       <option value="">📍 位置を試す（デモ）</option>
     </select>
@@ -294,7 +294,7 @@ window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{sessionStorage.re
  DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render()};
 
 const ARRIVE_M=150; // この距離以内で「到着」とみなす
-const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:"",cmEdit:null,loginMsg:"",loading:false};
+const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:"",cmEdit:null,loginMsg:"",loading:false,mine:true,recOpen:false};
 
 /* ===== 位置 ===== */
 function dist(a,b,c,d){const R=6371000,r=Math.PI/180,x=(c-a)*r,y=(d-b)*r;
@@ -306,7 +306,7 @@ function hereId(){const n=nearest()[0];return n&&n.d<=ARRIVE_M?n.o.id:null}
 /* 入力中・入力途中の内容がある間は、画面を作り直さない */
 function typing(){const a=document.activeElement;
  if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest("#app"))return true;
- return !!(S.cmEdit||S.calEditing||S.bulk||($("#f-text")&&$("#f-text").value)||($("#f-trans")&&$("#f-trans").value))}
+ return !!(S.cmEdit||S.calEditing||S.bulk||S.recOpen||($("#f-text")&&$("#f-text").value)||($("#f-trans")&&$("#f-trans").value))}
 function onPos(lat,lng,src){
  const before=hereId(),first=!S.pos;
  S.pos={lat,lng}; S.gps=src;
@@ -316,7 +316,9 @@ function onPos(lat,lng,src){
  renderGps();
  if(src==="sim"){render();return}
  if(typing()||SC.stage!=="idle"||RC.on)return;
- if(opened||first||S.view==="list"||(S.view==="visit"&&(!S.office||before!==hereId())))render();
+ let moved=true;if(S.view==="list"&&!opened&&!first){const lp=S.lastListPos;moved=!lp||dist(lp.lat,lp.lng,lat,lng)>50}
+ if(S.view==="list"&&moved)S.lastListPos={lat,lng};
+ if(opened||first||(S.view==="list"&&moved)||(S.view==="visit"&&(!S.office||before!==hereId())))render();
 }
 function startGps(){
  if(!navigator.geolocation){S.gps="off";renderGps();return}
@@ -343,20 +345,33 @@ function renderGps(){
  const p=$("#gpsPill"),t=$("#gpsText");p.className="pill";
  const n=nearest()[0];
  if(S.gps==="gps"||S.gps==="sim"){p.classList.add("on");
-   t.textContent=(S.gps==="sim"?"デモ位置":"GPS")+(n?" ・ 最寄り "+fmtD(n.d):"");}
- else if(S.gps==="off"){p.classList.add("off");t.textContent="GPSが使えません";}
+   t.textContent=(S.gps==="sim"?"テスト位置":"現在地OK")+(n?" ・ 一番近い居宅 "+fmtD(n.d):"");}
+ else if(S.gps==="off"){p.classList.add("off");t.textContent="現在地が取れません（タップで説明）";}
  else t.textContent="位置を確認中…";
 }
 
+function gpsHelpHtml(noPos,total){
+ const st=S.gps==="gps"?`<b style="color:var(--accent)">現在地は取れています。</b>`:S.gps==="off"?`<b style="color:var(--alert)">現在地が取れていません。</b>`:`<b>現在地を確認中です…</b>`;
+ const how=S.gps==="off"||S.gpsHelp?`<div style="margin-top:6px">位置情報を許可してください：<br>・iPhone：設定 → プライバシーとセキュリティ → 位置情報サービス → Safari（またはChrome）→「使用中のみ」、「正確な位置情報」をオン<br>・Android：Chromeのアドレス欄の左のマーク → 権限 → 位置情報 → 許可<br>許可したら、このページを読み込み直してください。</div>`:"";
+ return `<div class="form" style="margin-top:12px;font-size:14px">${st}
+  ${noPos?`<div>位置が登録されていない居宅が <b class="num">${noPos}</b> 件あります（全${total}件中）。この居宅は近づいても自動で開きません。${canAdmin()&&MODE==="live"?` <button class="btn sm" type="button" onclick="geocodeAll(this)">住所から位置を登録する</button><span id="geo-st" class="meta"></span>`:"居宅の画面の「今いる場所を登録」で登録できます。"}</div>`:""}
+  ${how}</div>`}
+window.geocodeAll=async b=>{b.disabled=true;const st=$("#geo-st");let done=0,fail=[];
+ try{for(let i=0;i<10;i++){st.innerHTML=` <span class="spin"></span>住所から位置を調べています…（${done}件完了）`;
+   const d=await api("geocode",{});done+=d.done;fail=d.failed||fail;if(!d.remaining)break}
+  await loadAll();fillSim();toast(done+"件の位置を登録しました");render();
+  if(fail.length)setTimeout(()=>{const x=$("#geo-st");if(x)x.textContent=" 位置が見つからなかった居宅："+fail.join("、")},50)}
+ catch(e){b.disabled=false;st.textContent=" 登録できませんでした："+errText(e)}};
 function viewVisit(){
  const o=DB.offices.find(x=>x.id===S.office);
  if(!o){
-  const near=nearest().slice(0,3);
+  const near=nearest().slice(0,5);
+  const act=DB.offices.filter(x=>ost(x)!=="非表示"),noPos=act.filter(x=>x.lat==null).length;
   return `<div class="empty" style="margin-top:16px">
    <h2 style="font-size:17px;margin-bottom:6px">居宅に近づくと、ここに自動で表示されます</h2>
-   <p style="margin:0">半径${ARRIVE_M}m以内に入ると、在籍CM・利用者の近況・連絡事項が開きます。<br>
-   ${S.gps==="off"?"この画面ではGPSが使えないため、右上の「位置を試す」で動きを確認できます。":""}</p></div>
-   ${near.length?`<div class="section-t"><h2>近くの居宅</h2></div><div class="olist">${near.map(officeRow).join("")}</div>`:""}`;
+   <p style="margin:0">居宅から${ARRIVE_M}m以内に入ると、その居宅の画面（在籍CM・利用者の近況・連絡事項）が自動で開きます。</p></div>
+   ${gpsHelpHtml(noPos,act.length)}
+   ${near.length?`<div class="section-t"><h2>近くの居宅</h2><span class="meta">タップで開きます</span></div><div class="olist">${near.map(officeRow).join("")}</div>`:""}`;
  }
  const allCms=DB.cms.filter(c=>c.office===o.id),cms=allCms.filter(c=>cst(c)==="在籍"),gone=allCms.filter(c=>cst(c)==="退職"||cst(c)==="異動");
  const d=S.pos&&o.lat!=null?dist(S.pos.lat,S.pos.lng,o.lat,o.lng):null;
@@ -366,7 +381,7 @@ function viewVisit(){
  const clients=DB.clients.filter(u=>(cmIds.includes(u.cm)||u.office===o.id)&&(!S.selCm||u.cm===S.selCm));
  return `
  ${here?`<div class="arrive"><div><b>${esc(o.name)} に到着</b><div style="font-size:13px">現在地から ${fmtD(d)}</div></div>
-   <button class="btn sm" onclick="document.getElementById('f-text').focus()">面談を記録する</button></div>`:""}
+   <button class="btn sm" onclick="S.recOpen=true;render()">面談を記録する</button></div>`:""}
  <div class="ohead"><h1>${esc(o.name)}</h1>${ost(o)!=="稼働"?`<span class="status st-alert">${esc(ost(o))}</span>`:""}
   <span class="meta">${esc(o.addr)} ・ <span class="num">${esc(o.tel)}</span>${d!==null?" ・ "+fmtD(d):""}</span>
   <span class="meta">最終訪問 <span class="num">${recs[0]?recs[0].date:"記録なし"}</span></span>
@@ -374,16 +389,18 @@ function viewVisit(){
   ${canAdmin()?`<span class="meta">状態 <select class="sim" onchange="setOfficeStatus('${o.id}',this.value)">${["稼働","休止","非表示"].map(v=>`<option ${v===ost(o)?"selected":""}>${v}</option>`).join("")}</select></span>`:""}
   ${o.lat==null?`<span class="meta">位置が未登録です ${S.pos?`<button class="btn sm" onclick="setOfficePos('${o.id}')">今いる場所を登録</button>`:"（現在地が取れると登録できます）"}</span>`:""}</div>
 
+ <div style="margin:8px 0 4px">${S.recOpen?recordForm(o,cms):`<button class="btn primary" type="button" style="width:100%;padding:12px;font-size:16px" onclick="S.recOpen=true;render()">＋ 面談を記録する</button>`}</div>
  ${S.staffEdit&&canAdmin()?staffForm(o):""}
  ${o.notices.length?`<div class="section-t"><h2>連絡事項・今日伝えること</h2><span class="meta">${o.notices.length}件</span></div>
   <div class="notices">${o.notices.map(n=>`<div class="notice"><div class="from">${esc(n.from)}</div>${esc(n.text)}</div>`).join("")}</div>`:""}
 
  ${S.calEditing===o.id?calForm(o):calBox(o)}
- <div class="section-t"><h2>在籍ケアマネジャー</h2><span class="meta">${cms.length}名 ・ タップで担当利用者を絞り込み</span>
+ <div class="section-t"><h2>在籍ケアマネジャー</h2><span class="meta">${cms.length}名 ・ 名前をタップで詳しく</span>
   <button class="btn sm" type="button" onclick="S.cmEdit='new';render()">＋ ケアマネを追加</button>
   ${cms.length?`<button class="btn sm" type="button" onclick="S.bulk=!S.bulk;render()">${S.bulk?"整理をやめる":"退職者をまとめて整理"}</button>`:""}</div>
  ${S.cmEdit?cmForm(o):""}
- ${S.bulk?bulkForm(o,cms):`<div class="cms">${cms.map(cmCard).join("")||'<div class="empty">登録されたCMがいません。「＋ ケアマネを追加」か、名刺の読み取りで登録できます。</div>'}</div>`}
+ ${S.bulk?bulkForm(o,cms):cms.length?`<div class="chips" style="gap:8px">${cms.map(c=>`<button type="button" class="btn sm" style="font-size:15px;padding:7px 12px;${S.selCm===c.id?"background:var(--accent);color:var(--surface);border-color:var(--accent)":""}" onclick="S.selCm=S.selCm==='${c.id}'?null:'${c.id}';render()">${esc(c.name)}</button>`).join("")}</div>
+  ${S.selCm&&cms.some(c=>c.id===S.selCm)?`<div class="cms" style="margin-top:10px">${cmCard(cms.find(c=>c.id===S.selCm))}</div>`:""}`:'<div class="empty">登録されたCMがいません。「＋ ケアマネを追加」か、名刺の読み取りで登録できます。</div>'}
  ${gone.length?`<details style="margin-top:10px"><summary class="meta">退職・異動したケアマネ（${gone.length}名）</summary><div class="log" style="margin-top:6px">${gone.map(c=>`<div class="logi"><b>${esc(c.name)}</b> <span class="status st-warn">${esc(cst(c))}</span> <button class="btn sm" type="button" onclick="S.cmEdit='${c.id}';render()">編集</button>${c.history?`<div class="meta" style="white-space:pre-wrap">${esc(c.history)}</div>`:""}</div>`).join("")}</div></details>`:""}
 
  <div class="split">
@@ -394,8 +411,6 @@ function viewVisit(){
      <span class="status ${c}">${l}</span><div class="recent">${esc(u.recent)}</div><div class="items">利用中：${esc(u.items)}</div></div>`}).join("")||'<div class="empty">担当利用者はいません</div>'}</div>
   </div>
   <div>
-   <div class="section-t"><h2>面談を記録</h2></div>
-   ${recordForm(o,cms)}
    <div class="section-t"><h2>これまでの面談</h2></div>
    <div class="log">${recs.map(logItem).join("")||'<div class="meta">まだ記録がありません</div>'}</div>
   </div>
@@ -475,7 +490,8 @@ window.bulkSave=async(e,oid)=>{e.preventDefault();const ids=[...document.querySe
 function recordForm(o,cms){
  const today=new Date().toLocaleDateString("sv-SE");
  return `<form class="form" id="recForm" onsubmit="addRecord(event,'${o.id}')">
-  <div class="row2"><label>面談したCM<select id="f-cm">${cms.map(c=>`<option value="${c.id}" ${S.selCm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="">（CM不在・事業所のみ）</option></select></label>
+  <div style="display:flex;justify-content:space-between;align-items:center"><b>面談を記録</b><button class="btn sm" type="button" onclick="S.recOpen=false;render()">閉じる</button></div>
+  <div class="row2"><label>面談したCM（あとで選んでもOK）<select id="f-cm"><option value="">（あとで選ぶ）</option>${cms.map(c=>`<option value="${c.id}" ${S.selCm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none">（CM不在・事業所のみ）</option></select></label>
   <label>日付<input type="date" id="f-date" value="${today}"></label></div>
   <div class="recbox">
    <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn recbtn" id="recBtn" onclick="toggleRec()">● 録音を開始</button>
@@ -489,16 +505,18 @@ function recordForm(o,cms){
   <button class="btn primary" type="submit">記録を保存</button></form>`;
 }
 function logItem(r){const cm=DB.cms.find(c=>c.id===r.cm);const o=DB.offices.find(x=>x.id===r.office);
- return `<div class="logi"><div class="meta num">${r.date} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${cm?esc(cm.name):"事業所"}${r.staff?" ・ 記録："+esc(r.staff):""}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${r.trans?`<details><summary class="meta">文字起こしを見る</summary><div class="trans">${esc(r.trans)}</div></details>`:""}</div>`}
+ const pick=!r.cm&&o?`<select class="sim" onchange="setRecCm('${r.id}',this.value)"><option value="">面談者を選ぶ</option>${DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}<option value="none">CM不在・事業所のみ</option></select>`:"";
+ return `<div class="logi"><div class="meta num">${r.date} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${cm?esc(cm.name):r.cm==="none"?"事業所":pick}${r.staff?" ・ 記録："+esc(r.staff):""}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${r.trans?`<details><summary class="meta">文字起こしを見る</summary><div class="trans">${esc(r.trans)}</div></details>`:""}</div>`}
+window.setRecCm=async(id,cm)=>{if(!cm)return;try{await persist([{table:"records",row:{id,cm}}]);toast("面談者を登録しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
 window.addRecord=async(e,oid)=>{e.preventDefault();
  const t=$("#f-text").value.trim();if(!t)return;const b=e.target.querySelector("[type=submit]");b.disabled=true;
  if(RC.on)stopRec();
  const row={id:newId("r"),office:oid,cm:$("#f-cm").value,date:$("#f-date").value,text:t,next:$("#f-next").value.trim(),trans:$("#f-trans").value.trim(),staff:USER?USER.name:""};
- try{await persist([{table:"records",row}]);$("#f-text").value="";$("#f-trans").value="";toast("面談記録を保存しました");render()}
+ try{await persist([{table:"records",row}]);$("#f-text").value="";$("#f-trans").value="";S.recOpen=false;toast("面談記録を保存しました");render()}
  catch(err){b.disabled=false;toast("保存できませんでした："+errText(err))}};
 
 function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").length;
- return `<button class="oitem" onclick="S.office='${o.id}';S.view='visit';S.selCm=null;render();scrollTo(0,0)">
+ return `<button class="oitem" onclick="S.office='${o.id}';S.view='visit';S.selCm=null;S.recOpen=false;render();scrollTo(0,0)">
  <div class="t"><b>${esc(o.name)}${ost(o)!=="稼働"?`<span class="badge st-alert">${esc(ost(o))}</span>`:""}${o.notices.length?`<span class="badge">連絡${o.notices.length}</span>`:""}${(k=>k?`<span class="badge ${k.state==="配布済"?"st-ok":""}">${k.state==="配布済"?"ｶﾚﾝﾀﾞｰ済":"ｶﾚﾝﾀﾞｰ未"}</span>`:"")(calOf(o))}</b><span class="meta">${esc(o.addr)} ・ CM ${cms}名 ・ 担当 ${esc(staffNames(o))}</span></div>
  ${d!=null?`<span class="dist num">${fmtD(d)}</span>`:""}</button>`}
 function listRows(){
@@ -513,7 +531,7 @@ function listRows(){
 }
 function listHtml(){const rows=listRows(),show=rows.slice(0,150);
  return `<div class="meta" style="margin-bottom:6px">${rows.length}件${rows.length>150?"（近い順に150件まで表示。検索で絞り込めます）":""}</div>
- <div class="olist">${show.map(officeRow).join("")||'<div class="empty">該当する居宅がありません</div>'}</div>`}
+ <div class="olist">${show.map(officeRow).join("")||`<div class="empty">${S.mine?"自分の担当の居宅がありません。「自分の担当だけ」のチェックを外すと全部表示します。":"該当する居宅がありません"}</div>`}</div>`}
 window.renderListOnly=()=>{const el=$("#listBox");if(el)el.innerHTML=listHtml()};
 /* ===== 状態（居宅：稼働/休止/非表示、CM：在籍/退職/異動） ===== */
 const CAL_YEAR="2027";
@@ -1004,7 +1022,7 @@ function viewLogin(){
 function render(){
  renderGps();
  const gated=MODE==="setup"||(MODE==="live"&&(!USER||S.loading));
- document.querySelector(".tabs").hidden=gated;sim.hidden=gated;
+ document.querySelector(".tabs").hidden=gated;sim.hidden=gated||MODE==="live";
  $("#brandSub").textContent=MODE==="demo"?"アスポート 営業用 ・ デモ（ダミーデータ）":USER?"アスポート 営業用 ・ "+USER.name:"アスポート 営業用";
  if(MODE==="setup"){$("#app").innerHTML=viewSetup();return}
  if(gated){$("#app").innerHTML=viewLogin();renderGisButton();return}
