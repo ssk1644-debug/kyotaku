@@ -1,5 +1,6 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>居宅営業管理システム</title>
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0d6e62">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap">
 </head><body>
@@ -55,6 +56,8 @@ select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);backgr
 .bkrow.on{background:var(--alert-soft);border-color:var(--alert);color:var(--alert);font-weight:700}
 .bkrow input{width:22px!important;height:22px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}.seg button{border:0;background:var(--surface);padding:7px 14px;font-weight:700}.seg button.on{background:var(--accent);color:var(--surface)}
+.flash{white-space:pre-line;position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:30;background:var(--accent);color:#fff;font-size:26px;font-weight:700;padding:22px 30px;border-radius:18px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.35);pointer-events:none;max-width:90vw}
+.flash.rec{background:#c0392b}.flash.stop{background:#34495e}
 #map{height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--line);z-index:1}
 .jk{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.jk .form{gap:6px}
 
@@ -295,7 +298,7 @@ async function onCredential(resp){S.loginMsg="確認中…";render();
   USER=d.user;S.loginMsg="";await boot()}
  catch(e){USER=null;S.loginMsg=errText(e);render()}}
 async function boot(){S.loading=true;render();
- try{await loadAll();S.loading=false;fillSim();
+ try{await loadAll();S.loading=false;fillSim();setTimeout(checkShared,300);
   if(!DB.offices.some(o=>o.id===S.office))S.office=null;render()}
  catch(e){S.loading=false;if(e.code!=="auth")S.loginMsg="データを読み込めません："+errText(e);render()}}
 window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{localStorage.removeItem("kyotaku-s")}catch(e){}
@@ -306,7 +309,7 @@ window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{localStorage.remo
 const ARRIVE_M=150; // この距離以内で「到着」とみなす
 const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:"",cmEdit:null,loginMsg:"",loading:false,mine:true,recOpen:false,listMode:"list"};
 /* 表示の設定はこの端末に覚えておく（自分の担当だけ・休止中も表示など） */
-const UIKEY="kyotaku-ui",UI_FIELDS=["mine","showAll","gap","listMode"];
+const UIKEY="kyotaku-ui",UI_FIELDS=["mine","showAll","gap","listMode","sort"];
 try{const u=JSON.parse(localStorage.getItem(UIKEY)||"{}");UI_FIELDS.forEach(k=>{if(k in u)S[k]=u[k]})}catch(e){}
 function saveUI(){try{const u={};UI_FIELDS.forEach(k=>u[k]=S[k]);localStorage.setItem(UIKEY,JSON.stringify(u))}catch(e){}}
 
@@ -406,8 +409,9 @@ function viewVisit(){
   ${o.lat==null?`<span class="meta">位置が未登録です ${S.pos?`<button class="btn sm" onclick="setOfficePos('${o.id}')">今いる場所を登録</button>`:"（現在地が取れると登録できます）"}</span>`:""}</div>
 
  ${(sib=>sib.length?`<div class="meta" style="margin-top:4px">同じ場所：${sib.map(x=>`<button class="btn sm" type="button" style="margin:2px" onclick="S.office='${x.id}';S.selCm=null;S.recOpen=false;S.autoOpened='${x.id}';render()">${esc(x.name)}${x.kind&&x.kind!=="居宅支援"?"（"+esc(x.kind)+"）":""}</button>`).join("")}</div>`:"")(o.lat==null?[]:DB.offices.filter(x=>x.id!==o.id&&x.lat!=null&&ost(x)!=="非表示"&&dist(o.lat,o.lng,x.lat,x.lng)<40))}
- <div style="margin:8px 0 4px;display:grid;gap:8px">${(c=>c?`<div class="meta">チェックイン済 ${new Date(c.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}（ボタンをもう一度押すと録音の開始・停止）</div>`:`<button class="btn" type="button" style="width:100%;padding:10px;font-size:15px" onclick="checkin()">チェックイン（訪問を記録）</button>`)(myCheckin(o))}
-  ${S.recOpen?recordForm(o,cms):`<button class="btn primary" type="button" style="width:100%;padding:12px;font-size:16px" onclick="S.recOpen=true;render()">＋ 面談を記録する</button>`}</div>
+ <div style="margin:8px 0 4px;display:grid;gap:8px">${(c=>c?`<div class="meta">チェックイン済 ${new Date(c.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}${c.away?"（離れた場所から）":""}（ボタンをもう一度押すと録音の開始・停止）</div>`:`<button class="btn" type="button" style="width:100%;padding:10px;font-size:15px" onclick="checkin()">チェックイン（訪問を記録）</button>`)(myCheckin(o))}
+  ${S.recOpen?recordForm(o,cms):`<button class="btn primary" type="button" style="width:100%;padding:12px;font-size:16px" onclick="S.recOpen=true;render()">＋ 面談を記録する</button>`}
+  ${CI.stage!=="idle"?callBox():callPickBtn()}</div>
  ${S.staffEdit&&canAdmin()?staffForm(o):""}
  ${o.notices.length?`<div class="section-t"><h2>連絡事項・今日伝えること</h2><span class="meta">${o.notices.length}件</span></div>
   <div class="notices">${o.notices.map(n=>`<div class="notice"><div class="from">${esc(n.from)}</div>${esc(n.text)}</div>`).join("")}</div>`:""}
@@ -518,10 +522,22 @@ function visits90(o){const lim=ago(90);let n=0;visitDays(o).forEach(x=>{if(x>=li
 function myId(){return USER?USER.email:"demo"}
 function myCheckin(o){const t=today();return DB.visits.find(v=>v.office===o.id&&v.staff===myId()&&new Date(v.at).toLocaleDateString("sv-SE")===t)}
 function buzz(p){try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}}
-window.checkin=async()=>{const o=DB.offices.find(x=>x.id===S.office);if(!o||S.view!=="visit"){toast("居宅の画面を開いてから押してください");return}
+/* 音で知らせる：ピッ（チェックイン）、ピー（録音開始）、ピッピッ（録音停止） */
+let ACX=null;
+function beep(pattern){try{ACX=ACX||new (window.AudioContext||window.webkitAudioContext)();if(ACX.state==="suspended")ACX.resume();let t=ACX.currentTime+0.02;
+ pattern.forEach(([hz,ms,gap])=>{const o=ACX.createOscillator(),g=ACX.createGain();o.type="sine";o.frequency.value=hz;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.35,t+0.01);g.gain.setValueAtTime(0.35,t+ms/1000-0.03);g.gain.exponentialRampToValueAtTime(0.0001,t+ms/1000);
+  o.connect(g).connect(ACX.destination);o.start(t);o.stop(t+ms/1000+0.02);t+=(ms+(gap||0))/1000})}catch(e){}}
+const SND={checkin:[[1320,140]],recStart:[[880,600]],recStop:[[1320,120,90],[1320,120]],err:[[300,350]]};
+function flash(msg,cls){const d=document.createElement("div");d.className="flash "+(cls||"");d.textContent=msg;document.body.appendChild(d);setTimeout(()=>d.remove(),1800)}
+const AWAY_M=300;   /* 居宅からこれ以上離れたチェックインには「離れた場所から」の印を付ける */
+window.checkin=async()=>{const o=DB.offices.find(x=>x.id===S.office);if(!o||S.view!=="visit"){beep(SND.err);toast("居宅の画面を開いてから押してください");return}
  if(myCheckin(o)){toast("今日はチェックイン済みです");return}
- const row={id:newId("v"),office:o.id,staff:myId(),name:USER?USER.name:"デモ",at:new Date().toISOString(),lat:S.pos?S.pos.lat:"",lng:S.pos?S.pos.lng:""};
- try{await persist([{table:"visits",row}]);buzz(150);toast("チェックインしました");render()}catch(e){toast("チェックインできませんでした："+errText(e))}};
+ if(S.ckBusy)return;S.ckBusy=true;
+ const dd=S.pos&&o.lat!=null?dist(S.pos.lat,S.pos.lng,o.lat,o.lng):null,away=dd==null||dd>AWAY_M;
+ beep(SND.checkin);buzz(150);flash(away?"チェックイン\n（離れた場所から）":"チェックイン");
+ const row={id:newId("v"),office:o.id,staff:myId(),name:USER?USER.name:"デモ",at:new Date().toISOString(),lat:S.pos?S.pos.lat:"",lng:S.pos?S.pos.lng:"",away:away?"1":""};
+ try{await persist([{table:"visits",row}]);toast(away?"チェックインしました（居宅から離れた場所からなので印が付きます）":"チェックインしました");render()}
+ catch(e){beep(SND.err);toast("チェックインできませんでした："+errText(e))}finally{S.ckBusy=false}};
 /* ページ送りボタン（Tab・矢印・PageDownとして届く）：1回目＝チェックイン、2回目以降＝録音の開始・停止 */
 const CLICK_KEYS=["Tab","PageDown","PageUp","ArrowRight","ArrowLeft","ArrowDown","ArrowUp"];
 document.addEventListener("keydown",e=>{
@@ -532,10 +548,67 @@ document.addEventListener("keydown",e=>{
  e.preventDefault();if(e.repeat)return;
  const now=Date.now();if(now-(S.lastPress||0)<800)return;S.lastPress=now;
  const o=DB.offices.find(x=>x.id===S.office);
- if(!o||S.view!=="visit"){toast("居宅の画面で押してください");return}
+ if(!o||S.view!=="visit"){beep(SND.err);toast("居宅の画面で押してください");return}
+ if(S.ckBusy)return;
  if(!myCheckin(o)){checkin();return}
  const was=RC.on;if(!S.recOpen&&!was){S.recOpen=true;render()}
- setTimeout(()=>{toggleRec();buzz(was?[80,80,80]:250)},60)},true);
+ if(was){beep(SND.recStop);buzz([80,80,80]);flash("録音を止めました","stop")}else{beep(SND.recStart);buzz(250);flash("● 録音中","rec")}
+ setTimeout(()=>toggleRec(),60)},true);
+/* ===== 通話録音の取り込み（Galaxyの通話録音ファイル「通話 名前_yymmdd_hhmmss」） ===== */
+const CI={stage:"idle"};
+function callPickBtn(){return `<label class="btn" for="ci-file" style="display:flex;justify-content:center;width:100%;padding:10px;font-size:15px">📞 通話録音を取り込む</label>
+ <input type="file" id="ci-file" accept="audio/*,.m4a" onchange="pickCall(this)" style="position:absolute;opacity:0;width:1px;height:1px">`}
+function parseCallName(n){const m=String(n||"").normalize("NFKC").match(/通話\s*(.+?)_(\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})/);
+ return m?{who:m[1].trim(),date:"20"+m[2]+"-"+m[3]+"-"+m[4]}:{who:"",date:today()}}
+const digits=x=>String(x||"").replace(/[^0-9]/g,"");
+function matchCaller(who){const w=String(who).replace(/[\s　]/g,""),d=digits(who);let cm=null,o=null;
+ if(d.length>=9){const t=d.slice(-9);o=DB.offices.find(x=>digits(x.tel).endsWith(t)||digits(x.fax).endsWith(t))||null;
+  if(!o){const card=DB.cards.find(c=>digits(c.tel).endsWith(t));if(card){cm=DB.cms.find(c=>c.id===card.cm)||null;o=card.office?DB.offices.find(x=>x.id===card.office):null}}}
+ else if(w){cm=DB.cms.find(c=>cst(c)==="在籍"&&String(c.name).replace(/[\s　]/g,"")===w)||null;
+  if(!cm){const card=DB.cards.find(c=>String(c.name).replace(/[\s　]/g,"")===w&&c.cm);if(card)cm=DB.cms.find(c=>c.id===card.cm)||null}
+  if(!cm)o=DB.offices.find(x=>String(x.name).replace(/[\s　]/g,"")===w)||matchOffice(w)}
+ if(cm&&!o)o=DB.offices.find(x=>x.id===cm.office)||null;return {o,cm}}
+window.pickCall=async inp=>{const f=inp.files&&inp.files[0];if(inp.value!==undefined)try{inp.value=""}catch(e){}if(!f)return;
+ if(f.size>19*1024*1024){toast("録音が長すぎます（20分くらいまで）");return}
+ const p=parseCallName(f.name),mt=matchCaller(p.who);
+ const o=mt.o||(S.view==="visit"&&S.office?DB.offices.find(x=>x.id===S.office):null);
+ Object.assign(CI,{stage:"confirm",file:f,who:p.who,date:p.date,office:o?o.id:"",cm:mt.cm?mt.cm.id:"",err:""});
+ if(CI.office){S.office=CI.office;S.view="visit"}else S.view="log";render();
+ setTimeout(()=>{const b=$("#callBox");b&&b.scrollIntoView({block:"center"})},80)};
+function callBox(){const o=DB.offices.find(x=>x.id===CI.office);const cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];
+ if(CI.stage==="work")return `<div class="form" id="callBox"><div class="progress"><span class="spin"></span>通話を文字起こしして要約中…（30秒〜1分）</div></div>`;
+ return `<div class="form" id="callBox" style="border-color:var(--accent)"><b>📞 通話録音の取り込み</b>
+ <div class="meta">${esc(CI.file?CI.file.name:"")}${CI.who?` ・ 相手：${esc(CI.who)}`:""}</div>
+ ${CI.err?`<div class="notice">${esc(CI.err)}</div>`:""}
+ <label>居宅<input id="ci-office" list="ciOffices" value="${esc(o?o.name:"")}" placeholder="居宅名を入力・選択" onchange="ciSetOffice(this.value)"></label>
+ <datalist id="ciOffices">${DB.offices.filter(x=>ost(x)!=="非表示").map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist>
+ <label>話したケアマネ<select id="ci-cm"><option value="">AIが会話から判断（分からなければあとで選ぶ）</option>${cms.map(c=>`<option value="${c.id}" ${CI.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none">CM不在・事業所のみ</option></select></label>
+ <label>日付<input type="date" id="ci-date" value="${esc(CI.date)}"></label>
+ <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="runCall(this)">AIで要約して保存</button><button class="btn" type="button" onclick="CI.stage='idle';render()">やめる</button></div></div>`}
+window.ciSetOffice=v=>{const o=DB.offices.find(x=>x.name===v)||matchOffice(v);CI.office=o?o.id:"";CI.cm="";render()};
+async function aiAudio(prompt,file){const ext=(String(file.name).split(".").pop()||"").toLowerCase();
+ const tries=[...new Set([(file.type||"").split(";")[0],ext==="m4a"||ext==="mp4"?"audio/mp4":"",ext==="m4a"?"audio/aac":"",ext==="mp3"?"audio/mp3":"",ext==="ogg"?"audio/ogg":"",ext==="wav"?"audio/wav":""].filter(Boolean))];
+ let last;for(const t of tries.length?tries:["audio/mp4"]){try{return await aiJson(prompt,new Blob([file],{type:t}),()=>{})}catch(e){last=e}}throw last}
+window.runCall=async b=>{const o=DB.offices.find(x=>x.id===CI.office);if(!o){toast("居宅を選んでください");return}
+ let cm=$("#ci-cm").value;CI.date=$("#ci-date").value||CI.date;CI.cm=cm;CI.stage="work";render();
+ const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>c.name).join("、");
+ const prompt=`福祉用具貸与事業所（アスポート）の営業担当と、居宅介護支援事業所「${o.name}」との電話の録音です。
+音声を聞き取り、営業日報向けに要約して、次のキーだけのJSONで返してください。
+{"summary":"話した内容の要約（3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"電話の相手のケアマネジャーの名前（会話から分かる場合。候補：${cms||"なし"}。分からなければ空）"}
+重要：利用者（高齢者）の名前は、姓の1文字目をローマ字の頭文字に置き換え、名は書かずに「K藤様」のように書くこと。住所・電話番号・生年月日は書かないこと。`;
+ try{const r=await aiAudio(prompt,CI.file);if(!r)throw new Error("この画面ではAIが使えません");const d=r.data||{};
+  if(!cm&&d.cm){const w=String(d.cm).replace(/[\s　]/g,"");const hit=w&&DB.cms.find(c=>c.office===o.id&&cst(c)==="在籍"&&(String(c.name).replace(/[\s　]/g,"")===w||String(c.name).replace(/[\s　]/g,"").startsWith(w.slice(0,2))));if(hit)cm=hit.id}
+  const row={id:newId("r"),office:o.id,cm:cm||"",date:CI.date,text:d.summary||"",next:d.next||"",trans:"",staff:USER?USER.name:"",kind:"電話"};
+  await persist([{table:"records",row}]);CI.stage="idle";beep(SND.checkin);buzz(60);
+  toast(cm?"電話の記録を保存しました":"電話の記録を保存しました（ケアマネは記録の横で選べます）");S.office=o.id;S.view="visit";render()}
+ catch(e){CI.stage="confirm";CI.err="取り込めませんでした："+errText(e);render()}};
+/* 録音アプリの「共有」から届いたファイル（ホーム画面に追加したとき） */
+async function checkShared(){if(!/[?&]shared=1/.test(location.search))return;
+ try{history.replaceState(history.state,"",location.pathname+location.hash)}catch(e){}
+ try{const c=await caches.open("kyotaku-share");const res=await c.match("shared-file");if(!res)return;await c.delete("shared-file");
+  const name=decodeURIComponent(res.headers.get("x-name")||"通話.m4a"),blob=await res.blob();
+  pickCall({files:[new File([blob],name,{type:blob.type||res.headers.get("content-type")||""})]})}catch(e){toast("共有されたファイルを読み込めませんでした")}}
+if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 /* ===== 紹介実績（ケアレンツの新規契約データ） ===== */
 let KC=null;
 async function sha(x){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("asport-kyotaku|"+x));return [...new Uint8Array(b)].slice(0,8).map(v=>v.toString(16).padStart(2,"0")).join("")}
@@ -601,7 +674,7 @@ function recordForm(o,cms){
 }
 function logItem(r){const cm=DB.cms.find(c=>c.id===r.cm);const o=DB.offices.find(x=>x.id===r.office);
  const pick=!r.cm&&o?`<select class="sim" onchange="setRecCm('${r.id}',this.value)"><option value="">面談者を選ぶ</option>${DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}<option value="none">CM不在・事業所のみ</option></select>`:"";
- return `<div class="logi"><div class="meta num">${r.date} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${cm?esc(cm.name):r.cm==="none"?"事業所":pick}${r.staff?" ・ 記録："+esc(r.staff):""}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${r.trans?`<details><summary class="meta">文字起こしを見る</summary><div class="trans">${esc(r.trans)}</div></details>`:""}</div>`}
+ return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${cm?esc(cm.name):r.cm==="none"?"事業所":pick}${r.staff?" ・ 記録："+esc(r.staff):""}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${r.trans?`<details><summary class="meta">文字起こしを見る</summary><div class="trans">${esc(r.trans)}</div></details>`:""}</div>`}
 window.setRecCm=async(id,cm)=>{if(!cm)return;try{await persist([{table:"records",row:{id,cm}}]);toast("面談者を登録しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
 window.addRecord=async(e,oid)=>{e.preventDefault();
  const t=$("#f-text").value.trim();if(!t)return;const b=e.target.querySelector("[type=submit]");b.disabled=true;
@@ -623,6 +696,10 @@ function listRows(){
  if(S.gap)rows=rows.filter(r=>{const l=lastVisit(r.o);return !l||daysSince(l)>=GAP_DAYS});
  if(S.distf){const [st,id]=S.distf.split(":");const it=DB.items.find(i=>i.id===id);
   if(it)rows=rows.filter(r=>itemFor(it,r.o)&&((distOf(it,r.o)||{}).state==="配布済")===(st==="done"))}
+ const so=S.sort||"near",ja=(a,b)=>String(a).localeCompare(String(b),"ja");
+ if(so==="addr")rows.sort((a,b)=>ja(String(a.o.addr).replace(/^.*?福山市/,""),String(b.o.addr).replace(/^.*?福山市/,"")));
+ else if(so==="gap")rows.sort((a,b)=>{const x=lastVisit(a.o),y=lastVisit(b.o);return x===y?0:!x?-1:!y?1:x<y?-1:1});
+ else if(so==="name")rows.sort((a,b)=>ja(a.o.kana||a.o.name,b.o.kana||b.o.name));
  return rows;
 }
 function listHtml(){const rows=listRows(),show=rows.slice(0,150);
@@ -664,11 +741,17 @@ async function drawMap(){const el=$("#map");if(!el)return;try{await loadLeaflet(
  if(!$("#map"))return;if(MAP){try{MAP.remove()}catch(e){}MAP=null}el.innerHTML="";
  MAP=L.map(el);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(MAP);
  const m=jkMonth(),mc=mapColor(),pts=[];
- listRows().filter(r=>r.o.lat!=null).forEach(({o})=>{const l=lastVisit(o),gap=!l||daysSince(l)>=GAP_DAYS,jk=jkTodo(o,m);
-  const col=ost(o)!=="稼働"?"#8a8a8a":(mc==="jk"?jk:gap)?"#c0392b":"#0d6e62";
-  L.circleMarker([o.lat,o.lng],{radius:9,color:"#fff",weight:2,fillColor:col,fillOpacity:.95}).addTo(MAP)
-   .bindPopup(`<b>${esc(o.name)}</b><br>担当 ${esc(staffNames(o))}<br>${l?"最終訪問 "+daysSince(l)+"日前":"訪問記録なし"}${m?`<br>${+m.slice(5)}月分の実績 ${jk?"未":"済"}`:""}<br><button type="button" class="btn sm" style="margin-top:6px" onclick="openOffice('${o.id}')">この居宅を開く</button>`);
-  pts.push([o.lat,o.lng])});
+ const rs=listRows().filter(r=>r.o.lat!=null),grp={};
+ rs.forEach(({o})=>{const k=(+o.lat).toFixed(4)+","+(+o.lng).toFixed(4);(grp[k]=grp[k]||[]).push(o)});
+ const info=o=>{const l=lastVisit(o),jk=jkTodo(o,m);return `<b>${esc(o.name)}</b>${o.kind&&o.kind!=="居宅支援"?"（"+esc(o.kind)+"）":""}<br>担当 ${esc(staffNames(o))}<br>${l?"最終訪問 "+daysSince(l)+"日前":"訪問記録なし"}${m?`<br>${+m.slice(5)}月分の実績 ${jk?"未":"済"}`:""}<br><button type="button" class="btn sm" style="margin-top:6px" onclick="openOffice('${o.id}')">この居宅を開く</button>`};
+ const colOf=o=>{const l=lastVisit(o),gap=!l||daysSince(l)>=GAP_DAYS,jk=jkTodo(o,m);return ost(o)!=="稼働"?"#8a8a8a":(mc==="jk"?jk:gap)?"#c0392b":"#0d6e62"};
+ Object.values(grp).forEach(g=>{const o=g[0],ll=[+o.lat,+o.lng];
+  if(g.length===1){L.circleMarker(ll,{radius:9,color:"#fff",weight:2,fillColor:colOf(o),fillOpacity:.95}).addTo(MAP).bindPopup(info(o))}
+  else{   /* 同じ場所の居宅（併設など）は1つの印にまとめて件数を表示。押すと両方から選べる */
+   const cs=g.map(colOf),col=cs.includes("#c0392b")?"#c0392b":cs.includes("#0d6e62")?"#0d6e62":"#8a8a8a";
+   L.marker(ll,{icon:L.divIcon({className:"",iconSize:[30,30],iconAnchor:[15,15],html:`<div style="width:30px;height:30px;border-radius:50%;background:${col};border:3px solid #fff;color:#fff;font-weight:700;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.4)">${g.length}</div>`})}).addTo(MAP)
+    .bindPopup(`<div class="meta">同じ場所に${g.length}件</div>`+g.map(x=>`<div style="border-left:5px solid ${colOf(x)};padding-left:8px;margin:6px 0">${info(x)}</div>`).join(""))}
+  pts.push(ll)});
  if(S.pos){L.circleMarker([S.pos.lat,S.pos.lng],{radius:8,color:"#fff",weight:3,fillColor:"#1a73e8",fillOpacity:1}).addTo(MAP).bindPopup("現在地");pts.push([S.pos.lat,S.pos.lng])}
  if(pts.length)MAP.fitBounds(pts,{padding:[30,30],maxZoom:15});else MAP.setView([34.486,133.362],12)}
 /* ===== 状態（居宅：稼働/休止/非表示、CM：在籍/退職/異動） ===== */
@@ -701,6 +784,7 @@ function viewList(){
   ${activeItems().length?`<select class="sim" onchange="S.distf=this.value;renderListOnly()"><option value="">配布物：すべて</option>${activeItems().map(i=>`<option value="todo:${i.id}" ${S.distf==="todo:"+i.id?"selected":""}>${esc(i.name)} 未配布</option><option value="done:${i.id}" ${S.distf==="done:"+i.id?"selected":""}>${esc(i.name)} 配布済</option>`).join("")}</select>`:""}
  </div>
  ${jkPanel()}
+ <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:8px">並び順 <select class="sim" onchange="S.sort=this.value;saveUI();renderListOnly()">${[["near","近い順"],["addr","住所順（町名ごと）"],["gap","訪問が空いている順"],["name","名前順"]].map(([v,l])=>`<option value="${v}" ${(S.sort||"near")===v?"selected":""}>${l}</option>`).join("")}</select></label>
  <div style="margin:4px 0 10px" class="seg"><button type="button" class="${S.listMode!=="map"?"on":""}" onclick="S.listMode='list';saveUI();render()">一覧</button><button type="button" class="${S.listMode==="map"?"on":""}" onclick="S.listMode='map';saveUI();render()">地図</button></div>
  <div id="listBox">${S.listMode==="map"?mapHtml():listHtml()}</div>
 `;
@@ -1158,8 +1242,9 @@ function viewSettings(){const imp=DB.importedAt;
 }
 function viewLog(){
  const recs=[...DB.records].sort((a,b)=>b.date.localeCompare(a.date));
+ const top=`<div style="margin:8px 0 4px">${CI.stage!=="idle"&&!CI.office?callBox():callPickBtn()}</div>`;
  const todo=recs.filter(r=>r.next);
- return `<div class="split"><div><div class="section-t"><h2>面談記録</h2><span class="meta">全${recs.length}件</span></div>
+ return top+`<div class="split"><div><div class="section-t"><h2>面談記録</h2><span class="meta">全${recs.length}件</span></div>
  <div class="log">${recs.map(logItem).join("")}</div></div>
  <div><div class="section-t"><h2>次回アクション</h2><span class="meta">${todo.length}件</span></div>
  <div class="log">${todo.map(r=>`<div class="logi"><b>${esc(r.next)}</b><div class="meta">${esc((DB.offices.find(o=>o.id===r.office)||{name:""}).name)} ・ ${r.date}</div></div>`).join("")}</div>
