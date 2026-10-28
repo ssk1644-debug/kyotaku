@@ -282,7 +282,7 @@ async function persist(ops){
  else{ops.forEach(o=>applyOp(o.table,o.row));save()}}
 async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.offices=d.offices.map(r=>fromServer("offices",r,d.notices||[]));
- DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r));
+ DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r)).filter(r=>r.kind!=="削除");
  DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[];
  ["items","dist","visits","contracts","jisseki"].forEach(k=>DB[k]=d[k]||[])}
 
@@ -298,7 +298,7 @@ async function onCredential(resp){S.loginMsg="確認中…";render();
   USER=d.user;S.loginMsg="";await boot()}
  catch(e){USER=null;S.loginMsg=errText(e);render()}}
 async function boot(){S.loading=true;render();
- try{await loadAll();S.loading=false;fillSim();setTimeout(checkShared,300);
+ try{await loadAll();S.loading=false;fillSim();restoreLast();setTimeout(checkShared,300);
   if(!DB.offices.some(o=>o.id===S.office))S.office=null;render()}
  catch(e){S.loading=false;if(e.code!=="auth")S.loginMsg="データを読み込めません："+errText(e);render()}}
 window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{localStorage.removeItem("kyotaku-s")}catch(e){}
@@ -424,6 +424,7 @@ function viewVisit(){
  ${S.cmEdit?cmForm(o):""}
  ${S.bulk?bulkForm(o,cms):cms.length?`<div class="chips" style="gap:8px">${cms.map(c=>`<button type="button" class="btn sm" style="font-size:15px;padding:7px 12px;${S.selCm===c.id?"background:var(--accent);color:var(--surface);border-color:var(--accent)":""}" onclick="S.selCm=S.selCm==='${c.id}'?null:'${c.id}';render()">${esc(c.name)}${(n=>n?` <span class="num" title="直近12か月の紹介">（紹介${n}）</span>`:"")(refCount(c.id,365))}</button>`).join("")}</div>
   ${S.selCm&&cms.some(c=>c.id===S.selCm)?`<div class="cms" style="margin-top:10px">${cmCard(cms.find(c=>c.id===S.selCm))}</div>`:""}`:'<div class="empty">登録されたCMがいません。「＋ ケアマネを追加」か、名刺の読み取りで登録できます。</div>'}
+ ${dupNotice(cms)}
  ${gone.length?`<details style="margin-top:10px"><summary class="meta">退職・異動したケアマネ（${gone.length}名）</summary><div class="log" style="margin-top:6px">${gone.map(c=>`<div class="logi"><b>${esc(c.name)}</b> <span class="status st-warn">${esc(cst(c))}</span> <button class="btn sm" type="button" onclick="S.cmEdit='${c.id}';render()">編集</button>${c.history?`<div class="meta" style="white-space:pre-wrap">${esc(c.history)}</div>`:""}</div>`).join("")}</div></details>`:""}
 
  <div class="split">
@@ -554,60 +555,173 @@ document.addEventListener("keydown",e=>{
  const was=RC.on;if(!S.recOpen&&!was){S.recOpen=true;render()}
  if(was){beep(SND.recStop);buzz([80,80,80]);flash("録音を止めました","stop")}else{beep(SND.recStart);buzz(250);flash("● 録音中","rec")}
  setTimeout(()=>toggleRec(),60)},true);
+/* ページが読み込み直されても（許可の確認などでAndroidが画面を作り直したとき）直前の画面に戻る */
+const LASTKEY="kyotaku-last";
+function saveLast(){try{if((S.view==="visit"&&S.office)||S.view==="log")localStorage.setItem(LASTKEY,JSON.stringify({v:S.view,o:S.office,at:Date.now()}))}catch(e){}}
+function restoreLast(){try{const l=JSON.parse(localStorage.getItem(LASTKEY)||"null");if(!l||Date.now()-l.at>30*60*1000)return;
+ if(l.v==="visit"&&DB.offices.some(o=>o.id===l.o)){S.view="visit";S.office=l.o;S.autoOpened=l.o}else if(l.v==="log")S.view="log"}catch(e){}}
 /* ===== 通話録音の取り込み（Galaxyの通話録音ファイル「通話 名前_yymmdd_hhmmss」） ===== */
 const CI={stage:"idle"};
-function callPickBtn(){return `<label class="btn" for="ci-file" style="display:flex;justify-content:center;width:100%;padding:10px;font-size:15px">📞 通話録音を取り込む</label>
- <input type="file" id="ci-file" accept="audio/*,.m4a" onchange="pickCall(this)" style="position:absolute;opacity:0;width:1px;height:1px">`}
+const CB={items:[],run:false,i:0},CB_MAX=10;
+function callPickBtn(){return `<label class="btn" for="ci-file" style="display:flex;justify-content:center;width:100%;padding:10px;font-size:15px">📞 通話録音を取り込む（複数まとめても可）</label>
+ <input type="file" id="ci-file" multiple onchange="pickCall(this)" style="position:absolute;opacity:0;width:1px;height:1px">`}
 function parseCallName(n){const m=String(n||"").normalize("NFKC").match(/通話\s*(.+?)_(\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})/);
  return m?{who:m[1].trim(),date:"20"+m[2]+"-"+m[3]+"-"+m[4]}:{who:"",date:today()}}
 const digits=x=>String(x||"").replace(/[^0-9]/g,"");
-function matchCaller(who){const w=String(who).replace(/[\s　]/g,""),d=digits(who);let cm=null,o=null;
+/* 名前の照合：「さん」「様」「CM」などを外し、ひらがなはカタカナにそろえてゆるく照らし合わせる */
+const kata=s=>String(s||"").replace(/[ぁ-ゖ]/g,ch=>String.fromCharCode(ch.charCodeAt(0)+0x60));
+const pnorm=s=>kata(String(s||"").normalize("NFKC").replace(/[\s　・]/g,"")).replace(/(サン|様|サマ|氏|先生|ケアマネージャー|ケアマネジャー|ケアマネ|CM)$/i,"");
+const onorm=s=>kata(norm(String(s||"").normalize("NFKC"))).replace(/^(居宅介護支援センター|居宅介護支援|ケアプランセンター|居宅)/,"").replace(/(居宅介護支援センター|居宅介護支援|介護支援センター|ケアプランセンター|居宅|事業所|サン|様)$/,"");
+function cmCands(who,officeId){const w=pnorm(who);if(!w)return [];
+ const pool=DB.cms.filter(c=>cst(c)==="在籍"&&(!officeId||c.office===officeId)),nm=c=>pnorm(c.name),kn=c=>pnorm(c.kana);
+ let hit=pool.filter(c=>nm(c)===w||(c.kana&&kn(c)===w));
+ if(!hit.length&&w.length>=2)hit=pool.filter(c=>nm(c).startsWith(w)||(c.kana&&kn(c).startsWith(w)));
+ return hit}
+function officeCands(v){const raw=String(v||"").trim();if(!raw)return [];
+ const list=DB.offices.filter(x=>ost(x)!=="非表示"),ex=list.filter(x=>x.name===raw);if(ex.length)return ex;
+ const n=onorm(raw);if(n.length<2)return [];
+ const eq=list.filter(x=>onorm(x.name)===n);if(eq.length)return eq;
+ return list.filter(x=>{const a=onorm(x.name),k=pnorm(x.kana);return (a&&(a.includes(n)||(a.length>=2&&n.includes(a))))||(k&&k.includes(n))})}
+function matchCaller(who){const d=digits(who);let cm=null,o=null,cc=[],oc=[];
  if(d.length>=9){const t=d.slice(-9);o=DB.offices.find(x=>digits(x.tel).endsWith(t)||digits(x.fax).endsWith(t))||null;
   if(!o){const card=DB.cards.find(c=>digits(c.tel).endsWith(t));if(card){cm=DB.cms.find(c=>c.id===card.cm)||null;o=card.office?DB.offices.find(x=>x.id===card.office):null}}}
- else if(w){cm=DB.cms.find(c=>cst(c)==="在籍"&&String(c.name).replace(/[\s　]/g,"")===w)||null;
-  if(!cm){const card=DB.cards.find(c=>String(c.name).replace(/[\s　]/g,"")===w&&c.cm);if(card)cm=DB.cms.find(c=>c.id===card.cm)||null}
-  if(!cm)o=DB.offices.find(x=>String(x.name).replace(/[\s　]/g,"")===w)||matchOffice(w)}
- if(cm&&!o)o=DB.offices.find(x=>x.id===cm.office)||null;return {o,cm}}
-window.pickCall=async inp=>{const f=inp.files&&inp.files[0];if(inp.value!==undefined)try{inp.value=""}catch(e){}if(!f)return;
- if(f.size>19*1024*1024){toast("録音が長すぎます（20分くらいまで）");return}
- const p=parseCallName(f.name),mt=matchCaller(p.who);
- const o=mt.o||(S.view==="visit"&&S.office?DB.offices.find(x=>x.id===S.office):null);
- Object.assign(CI,{stage:"confirm",file:f,who:p.who,date:p.date,office:o?o.id:"",cm:mt.cm?mt.cm.id:"",err:""});
- if(CI.office){S.office=CI.office;S.view="visit"}else S.view="log";render();
- setTimeout(()=>{const b=$("#callBox");b&&b.scrollIntoView({block:"center"})},80)};
+ else if(pnorm(who)){const w=pnorm(who);cc=cmCands(who);
+  if(!cc.length){const ids=[...new Set(DB.cards.filter(c=>c.cm&&pnorm(c.name)===w).map(c=>c.cm))];cc=ids.map(id=>DB.cms.find(c=>c.id===id&&cst(c)==="在籍")).filter(Boolean)}
+  if(cc.length===1){cm=cc[0];cc=[]}
+  else if(!cc.length){oc=officeCands(who);if(oc.length===1){o=oc[0];oc=[]}}}
+ if(cm&&!o)o=DB.offices.find(x=>x.id===cm.office)||null;return {o,cm,cc,oc}}
+/* 候補が複数のときは自動で選ばず「どれですか？」と並べる */
+function candHtml(it,onCm,onOff){let h="";const st='style="gap:6px;margin:4px 0 8px"';
+ if(it.cc&&it.cc.length>1)h+=`<div class="notice">「${esc(it.who)}」に当てはまるケアマネが${it.cc.length}名います。どれですか？</div><div class="chips" ${st}>${it.cc.map(c=>`<button type="button" class="btn sm" onclick="${onCm(c.id)}">${esc(c.name)}（${esc((DB.offices.find(x=>x.id===c.office)||{name:"居宅不明"}).name)}）</button>`).join("")}</div>`;
+ if(it.oc&&it.oc.length>1)h+=`<div class="notice">「${esc(it.ocq||it.who)}」に当てはまる居宅が${it.oc.length}件あります。どれですか？</div><div class="chips" ${st}>${it.oc.map(x=>`<button type="button" class="btn sm" onclick="${onOff(x.id)}">${esc(x.name)}</button>`).join("")}</div>`;
+ return h}
+const officeList=id=>`<datalist id="${id}">${DB.offices.filter(x=>ost(x)!=="非表示").map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist>`;
+const AUDIO_EXT=/\.(m4a|mp4|mp3|aac|amr|3gp|3ga|wav|ogg|opus|awb|flac)$/i,isAudio=f=>AUDIO_EXT.test(f.name||"")||/^audio\//.test(f.type||"");
+function callItem(f){const p=parseCallName(f.name),mt=matchCaller(p.who);
+ return {file:f,who:p.who,date:p.date,office:mt.o?mt.o.id:"",cm:mt.cm?mt.cm.id:"",cc:mt.cc,oc:mt.oc,ocq:"",err:"",state:""}}
+window.pickCall=async inp=>{let fs=[...(inp.files||[])];if(inp.value!==undefined)try{inp.value=""}catch(e){}if(!fs.length)return;
+ const msg=[];const bad=fs.filter(f=>!isAudio(f));fs=fs.filter(isAudio);if(bad.length)msg.push(bad.length+"件は録音ファイルではないので外しました");
+ const big=fs.filter(f=>f.size>19*1024*1024);fs=fs.filter(f=>f.size<=19*1024*1024);if(big.length)msg.push("長すぎる録音（20分くらいまで）を"+big.length+"件外しました");
+ if(fs.length>CB_MAX){msg.push("一度に取り込めるのは"+CB_MAX+"件までです（先頭の"+CB_MAX+"件にしました）");fs=fs.slice(0,CB_MAX)}
+ if(msg.length)toast(msg.join("。"));if(!fs.length)return;
+ if(fs.length>1){CB.items=fs.map(callItem);CB.run=false;CI.stage="idle";S.view="log";render();
+  setTimeout(()=>{const b=$("#callBatch");b&&b.scrollIntoView({block:"start"})},80);return}
+ const it=callItem(fs[0]);
+ if(!it.office&&!it.cc.length&&!it.oc.length&&S.view==="visit"&&S.office)it.office=S.office;
+ Object.assign(CI,it,{stage:"confirm"});
+ if(CI.office){S.office=CI.office;S.view="visit"}else S.view="log";render();ciScroll()};
+const ciScroll=()=>setTimeout(()=>{const b=$("#callBox");b&&b.scrollIntoView({block:"center"})},80);
 function callBox(){const o=DB.offices.find(x=>x.id===CI.office);const cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];
  if(CI.stage==="work")return `<div class="form" id="callBox"><div class="progress"><span class="spin"></span>通話を文字起こしして要約中…（30秒〜1分）</div></div>`;
+ const noMatch=CI.who&&!o&&!CI.cm&&!(CI.cc||[]).length&&!(CI.oc||[]).length&&!CI.err;
  return `<div class="form" id="callBox" style="border-color:var(--accent)"><b>📞 通話録音の取り込み</b>
  <div class="meta">${esc(CI.file?CI.file.name:"")}${CI.who?` ・ 相手：${esc(CI.who)}`:""}</div>
  ${CI.err?`<div class="notice">${esc(CI.err)}</div>`:""}
- <label>居宅<input id="ci-office" list="ciOffices" value="${esc(o?o.name:"")}" placeholder="居宅名を入力・選択" onchange="ciSetOffice(this.value)"></label>
- <datalist id="ciOffices">${DB.offices.filter(x=>ost(x)!=="非表示").map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist>
- <label>話したケアマネ<select id="ci-cm"><option value="">AIが会話から判断（分からなければあとで選ぶ）</option>${cms.map(c=>`<option value="${c.id}" ${CI.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none">CM不在・事業所のみ</option></select></label>
+ ${noMatch?`<div class="notice">「${esc(CI.who)}」は、登録されているケアマネ・居宅と一致しませんでした。居宅を選んでください。</div>`:""}
+ ${candHtml(CI,id=>`ciPickCm('${id}')`,id=>`ciPickOffice('${id}')`)}
+ <label>居宅<input id="ci-office" list="ciOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="ciSetOffice(this.value)"></label>
+ ${officeList("ciOffices")}
+ <label>話したケアマネ<select id="ci-cm"><option value="">AIが会話から判断（分からなければあとで選ぶ）</option>${cms.map(c=>`<option value="${c.id}" ${CI.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none" ${CI.cm==="none"?"selected":""}>CM不在・事業所のみ</option></select></label>
  <label>日付<input type="date" id="ci-date" value="${esc(CI.date)}"></label>
- <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="runCall(this)">AIで要約して保存</button><button class="btn" type="button" onclick="CI.stage='idle';render()">やめる</button></div></div>`}
-window.ciSetOffice=v=>{const o=DB.offices.find(x=>x.name===v)||matchOffice(v);CI.office=o?o.id:"";CI.cm="";render()};
+ <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" ${o?"":"disabled"} onclick="runCall(this)">AIで要約して保存</button><button class="btn" type="button" onclick="CI.stage='idle';render()">やめる</button></div></div>`}
+const ciKeep=()=>{const d=$("#ci-date");if(d&&d.value)CI.date=d.value};
+window.ciSetOffice=v=>{ciKeep();const oc=officeCands(v);CI.cm="";CI.cc=[];
+ if(oc.length===1){Object.assign(CI,{office:oc[0].id,oc:[],err:""});S.office=CI.office;S.view="visit"}
+ else Object.assign(CI,{office:"",oc,ocq:v,err:v&&!oc.length?"「"+v+"」に当てはまる居宅が見つかりませんでした。別の書き方で入れてください。":""});
+ render();ciScroll()};
+window.ciPickOffice=id=>{ciKeep();Object.assign(CI,{office:id,oc:[],cm:"",err:""});S.office=id;S.view="visit";render();ciScroll()};
+window.ciPickCm=id=>{ciKeep();const c=DB.cms.find(x=>x.id===id);if(!c)return;Object.assign(CI,{cm:id,cc:[],oc:[],office:c.office,err:""});S.office=c.office;S.view="visit";render();ciScroll()};
 async function aiAudio(prompt,file){const ext=(String(file.name).split(".").pop()||"").toLowerCase();
  const tries=[...new Set([(file.type||"").split(";")[0],ext==="m4a"||ext==="mp4"?"audio/mp4":"",ext==="m4a"?"audio/aac":"",ext==="mp3"?"audio/mp3":"",ext==="ogg"?"audio/ogg":"",ext==="wav"?"audio/wav":""].filter(Boolean))];
  let last;for(const t of tries.length?tries:["audio/mp4"]){try{return await aiJson(prompt,new Blob([file],{type:t}),()=>{})}catch(e){last=e}}throw last}
-window.runCall=async b=>{const o=DB.offices.find(x=>x.id===CI.office);if(!o){toast("居宅を選んでください");return}
- let cm=$("#ci-cm").value;CI.date=$("#ci-date").value||CI.date;CI.cm=cm;CI.stage="work";render();
+/* 1件の録音をAIで要約して面談記録（電話）に保存 */
+async function saveCall(it){const o=DB.offices.find(x=>x.id===it.office);if(!o)throw new Error("居宅を選んでください");
  const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>c.name).join("、");
  const prompt=`福祉用具貸与事業所（アスポート）の営業担当と、居宅介護支援事業所「${o.name}」との電話の録音です。
 音声を聞き取り、営業日報向けに要約して、次のキーだけのJSONで返してください。
 {"summary":"話した内容の要約（3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"電話の相手のケアマネジャーの名前（会話から分かる場合。候補：${cms||"なし"}。分からなければ空）"}
 重要：利用者（高齢者）の名前は、姓の1文字目をローマ字の頭文字に置き換え、名は書かずに「K藤様」のように書くこと。住所・電話番号・生年月日は書かないこと。`;
- try{const r=await aiAudio(prompt,CI.file);if(!r)throw new Error("この画面ではAIが使えません");const d=r.data||{};
-  if(!cm&&d.cm){const w=String(d.cm).replace(/[\s　]/g,"");const hit=w&&DB.cms.find(c=>c.office===o.id&&cst(c)==="在籍"&&(String(c.name).replace(/[\s　]/g,"")===w||String(c.name).replace(/[\s　]/g,"").startsWith(w.slice(0,2))));if(hit)cm=hit.id}
-  const row={id:newId("r"),office:o.id,cm:cm||"",date:CI.date,text:d.summary||"",next:d.next||"",trans:"",staff:USER?USER.name:"",kind:"電話"};
-  await persist([{table:"records",row}]);CI.stage="idle";beep(SND.checkin);buzz(60);
+ const r=await aiAudio(prompt,it.file);if(!r)throw new Error("この画面ではAIが使えません");const d=r.data||{};
+ let cm=it.cm||"";if(!cm&&d.cm){const h=cmCands(d.cm,o.id);if(h.length===1)cm=h[0].id}
+ const row={id:newId("r"),office:o.id,cm,date:it.date||today(),text:d.summary||"",next:d.next||"",trans:"",staff:USER?USER.name:"",kind:"電話"};
+ await persist([{table:"records",row}]);return {o,cm}}
+window.runCall=async b=>{if(!DB.offices.some(x=>x.id===CI.office)){toast("居宅を選んでください");return}
+ CI.cm=$("#ci-cm").value;CI.date=$("#ci-date").value||CI.date;CI.stage="work";render();
+ try{const {o,cm}=await saveCall(CI);CI.stage="idle";beep(SND.checkin);buzz(60);
   toast(cm?"電話の記録を保存しました":"電話の記録を保存しました（ケアマネは記録の横で選べます）");S.office=o.id;S.view="visit";render()}
  catch(e){CI.stage="confirm";CI.err="取り込めませんでした："+errText(e);render()}};
-/* 録音アプリの「共有」から届いたファイル（ホーム画面に追加したとき） */
+/* 複数の録音をまとめて取り込む */
+function cbBox(){if(!CB.items.length)return "";const n=CB.items.length;
+ if(CB.run)return `<div class="form" id="callBatch"><div class="progress"><span class="spin"></span>${CB.i+1} / ${n} 件目を要約して保存中…（1件30秒〜1分）</div><div class="meta">終わるまでこの画面を開いたままにしてください</div></div>`;
+ const rows=CB.items.map((it,i)=>{const o=DB.offices.find(x=>x.id===it.office);const cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];
+  if(it.state==="ok")return `<div class="logi"><div class="meta">✅ 保存しました ・ ${esc(it.who||it.file.name)} ・ ${esc(o?o.name:"")}</div></div>`;
+  return `<div class="logi"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${i+1}. ${esc(it.who||"相手不明")}</b><button class="btn sm" type="button" onclick="cbDrop(${i})">外す</button></div>
+  <div class="meta">${esc(it.file.name)}</div>
+  ${it.err?`<div class="notice">${esc(it.err)}</div>`:""}
+  ${!o&&!(it.cc||[]).length&&!(it.oc||[]).length&&!it.err?`<div class="notice">${it.who?"「"+esc(it.who)+"」は登録と一致しませんでした。":"相手が分かりませんでした。"}居宅を選んでください。</div>`:""}
+  ${candHtml(it,id=>`cbPickCm(${i},'${id}')`,id=>`cbPickOffice(${i},'${id}')`)}
+  <label>居宅<input list="cbOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="cbSetOffice(${i},this.value)"></label>
+  <div class="row2"><label>話したケアマネ<select onchange="CB.items[${i}].cm=this.value"><option value="">AIが会話から判断</option>${cms.map(c=>`<option value="${c.id}" ${it.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none" ${it.cm==="none"?"selected":""}>CM不在・事業所のみ</option></select></label>
+  <label>日付<input type="date" value="${esc(it.date)}" onchange="CB.items[${i}].date=this.value"></label></div></div>`}).join("");
+ const left=CB.items.filter(x=>x.state!=="ok"),need=left.filter(x=>!x.office).length,done=n-left.length;
+ return `<div class="form" id="callBatch" style="border-color:var(--accent)"><b>📞 通話録音をまとめて取り込む（${n}件${done?`・保存済み${done}件`:""}）</b>
+ <div class="meta">居宅とケアマネを確認してから「まとめて保存」を押してください。AIで1件ずつ要約して保存します。</div>
+ ${officeList("cbOffices")}
+ <div class="log" style="margin:8px 0">${rows}</div>
+ ${need?`<div class="notice">居宅を選んでいない録音が${need}件あります（選ぶまで保存できません。不要なものは「外す」）</div>`:""}
+ <div style="display:flex;gap:8px;flex-wrap:wrap">${left.length?`<button class="btn primary" type="button" ${need?"disabled":""} onclick="cbRun()">まとめて保存（${left.length}件）</button>`:""}<button class="btn" type="button" onclick="CB.items=[];render()">${left.length?"やめる":"閉じる"}</button></div></div>`}
+window.cbDrop=i=>{CB.items.splice(i,1);render()};
+window.cbSetOffice=(i,v)=>{const it=CB.items[i],oc=officeCands(v);it.cm="";it.cc=[];
+ if(oc.length===1)Object.assign(it,{office:oc[0].id,oc:[],err:""});
+ else Object.assign(it,{office:"",oc,ocq:v,err:v&&!oc.length?"「"+v+"」に当てはまる居宅が見つかりませんでした":""});render()};
+window.cbPickOffice=(i,id)=>{Object.assign(CB.items[i],{office:id,oc:[],cm:"",err:""});render()};
+window.cbPickCm=(i,id)=>{const c=DB.cms.find(x=>x.id===id);if(!c)return;Object.assign(CB.items[i],{cm:id,cc:[],oc:[],office:c.office,err:""});render()};
+window.cbRun=async()=>{if(CB.run)return;if(CB.items.some(x=>x.state!=="ok"&&!x.office)){toast("居宅を選んでいない録音があります");return}
+ CB.run=true;let ok=0,ng=0;
+ for(let i=0;i<CB.items.length;i++){const it=CB.items[i];if(it.state==="ok")continue;CB.i=i;render();
+  try{await saveCall(it);it.state="ok";it.err="";ok++}catch(e){it.err="取り込めませんでした："+errText(e);ng++}}
+ CB.run=false;beep(ng?SND.err:SND.checkin);buzz(60);
+ if(!ng){CB.items=[];toast(ok+"件の電話の記録を保存しました")}else toast(ok+"件保存しました。"+ng+"件は取り込めませんでした（下に理由があります）");
+ render()};
+/* 録音アプリの「共有」から届いたファイル（ホーム画面に追加したとき）。複数でも受け取る */
 async function checkShared(){if(!/[?&]shared=1/.test(location.search))return;
  try{history.replaceState(history.state,"",location.pathname+location.hash)}catch(e){}
- try{const c=await caches.open("kyotaku-share");const res=await c.match("shared-file");if(!res)return;await c.delete("shared-file");
-  const name=decodeURIComponent(res.headers.get("x-name")||"通話.m4a"),blob=await res.blob();
-  pickCall({files:[new File([blob],name,{type:blob.type||res.headers.get("content-type")||""})]})}catch(e){toast("共有されたファイルを読み込めませんでした")}}
+ try{const c=await caches.open("kyotaku-share");
+  const ks=(await c.keys()).filter(r=>/shared-file/.test(r.url)).sort((a,b)=>a.url.localeCompare(b.url,undefined,{numeric:true}));if(!ks.length)return;
+  const files=[];for(const k of ks){const res=await c.match(k);await c.delete(k);if(!res)continue;
+   const name=decodeURIComponent(res.headers.get("x-name")||"通話.m4a"),blob=await res.blob();files.push(new File([blob],name,{type:blob.type||res.headers.get("content-type")||""}))}
+  if(files.length)pickCall({files})}catch(e){toast("共有されたファイルを読み込めませんでした")}}
+/* ===== 記録の修正（居宅・ケアマネ・日付の選び直し、削除） ===== */
+const RE={id:null,office:"",cm:"",date:"",oc:[],ocq:"",err:""};
+window.recEditOpen=id=>{const r=DB.records.find(x=>x.id===id);if(!r)return;S.recEdit=id;Object.assign(RE,{id,office:r.office,cm:r.cm||"",date:r.date,oc:[],ocq:"",err:""});render();
+ setTimeout(()=>{const b=$("#recEdit");b&&b.scrollIntoView({block:"center"})},80)};
+function recEditForm(r){const o=DB.offices.find(x=>x.id===RE.office);const cms=o?DB.cms.filter(c=>c.office===o.id&&(cst(c)==="在籍"||c.id===RE.cm)):[];
+ return `<div class="form" id="recEdit" style="border-color:var(--accent);margin:6px 0"><b>記録の修正</b>${r.kind==="電話"?" 📞電話":""}
+ <div class="meta" style="white-space:pre-wrap">${esc(String(r.text||"").slice(0,80))}${String(r.text||"").length>80?"…":""}</div>
+ ${RE.err?`<div class="notice">${esc(RE.err)}</div>`:""}
+ ${candHtml({who:"",cc:[],oc:RE.oc,ocq:RE.ocq},()=>"",id=>`rePickOffice('${id}')`)}
+ <label>居宅<input list="reOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="reSetOffice(this.value)"></label>
+ ${officeList("reOffices")}
+ <div class="row2"><label>ケアマネ<select onchange="RE.cm=this.value"><option value="">未選択（あとで選ぶ）</option>${cms.map(c=>`<option value="${c.id}" ${RE.cm===c.id?"selected":""}>${esc(c.name)}${cst(c)!=="在籍"?"（"+esc(cst(c))+"）":""}</option>`).join("")}<option value="none" ${RE.cm==="none"?"selected":""}>CM不在・事業所のみ</option></select></label>
+ <label>日付<input type="date" value="${esc(RE.date)}" onchange="RE.date=this.value"></label></div>
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn primary" type="button" onclick="reSave(this)">保存</button><button class="btn" type="button" onclick="S.recEdit=null;render()">やめる</button><button class="btn" type="button" style="margin-left:auto;color:#c0392b;border-color:#c0392b" onclick="reDel(this)">この記録を削除</button></div></div>`}
+window.reSetOffice=v=>{const oc=officeCands(v);
+ if(oc.length===1){if(oc[0].id!==RE.office)RE.cm="";Object.assign(RE,{office:oc[0].id,oc:[],err:""})}
+ else Object.assign(RE,{office:"",cm:"",oc,ocq:v,err:v&&!oc.length?"「"+v+"」に当てはまる居宅が見つかりませんでした":""});render()};
+window.rePickOffice=id=>{if(id!==RE.office)RE.cm="";Object.assign(RE,{office:id,oc:[],err:""});render()};
+window.reSave=async b=>{const r=DB.records.find(x=>x.id===RE.id);if(!r)return;const o=DB.offices.find(x=>x.id===RE.office);if(!o){toast("居宅を選んでください");return}
+ const moved=o.id!==r.office;b.disabled=true;
+ try{await persist([{table:"records",row:{id:r.id,office:o.id,cm:RE.cm,date:RE.date||r.date}}]);S.recEdit=null;buzz(60);
+  toast(moved?"記録を「"+o.name+"」に移しました":"記録を修正しました");render()}
+ catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
+window.reDel=async b=>{const r=DB.records.find(x=>x.id===RE.id);if(!r)return;if(!confirm("この記録を削除しますか？"))return;b.disabled=true;
+ try{await persist([{table:"records",row:{id:r.id,kind:"削除"}}]);DB.records=DB.records.filter(x=>x.id!==r.id);if(MODE!=="live")save();S.recEdit=null;toast("記録を削除しました");render()}
+ catch(e){b.disabled=false;toast("削除できませんでした："+errText(e))}};
+/* ===== 同じ名前のケアマネが別の居宅にも「在籍」で残っていないか ===== */
+const cmDups=c=>DB.cms.filter(x=>x.id!==c.id&&cst(x)==="在籍"&&x.office!==c.office&&pnorm(x.name)&&pnorm(x.name)===pnorm(c.name));
+function dupNotice(cms){const ds=cms.map(c=>({c,d:cmDups(c)})).filter(x=>x.d.length);if(!ds.length)return "";
+ return `<div class="notice" style="margin-top:8px">⚠ 同じ名前のケアマネが別の居宅にも「在籍」で登録されています。通話録音の取り込みで居宅を間違える原因になります。異動した場合は、古い方の居宅でそのケアマネを「退職」にするか、「別の居宅へ異動」に移籍先を入れてください。
+ ${ds.map(x=>`<div style="margin-top:4px"><b>${esc(x.c.name)}</b>：${x.d.map(y=>{const yo=DB.offices.find(z=>z.id===y.office);return yo?`<button class="btn sm" type="button" style="margin:2px" onclick="S.office='${yo.id}';S.view='visit';S.selCm='${y.id}';S.autoOpened='${yo.id}';render();scrollTo(0,0)">${esc(yo.name)}を開く</button>`:"居宅不明"}).join("")}</div>`).join("")}</div>`}
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 /* ===== 紹介実績（ケアレンツの新規契約データ） ===== */
 let KC=null;
@@ -672,9 +786,9 @@ function recordForm(o,cms){
   <label>次回アクション<input id="f-next" placeholder="例：見積り提出（10/7まで）"></label>
   <button class="btn primary" type="submit">記録を保存</button></form>`;
 }
-function logItem(r){const cm=DB.cms.find(c=>c.id===r.cm);const o=DB.offices.find(x=>x.id===r.office);
+function logItem(r){if(S.recEdit===r.id)return recEditForm(r);const cm=DB.cms.find(c=>c.id===r.cm);const o=DB.offices.find(x=>x.id===r.office);
  const pick=!r.cm&&o?`<select class="sim" onchange="setRecCm('${r.id}',this.value)"><option value="">面談者を選ぶ</option>${DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}<option value="none">CM不在・事業所のみ</option></select>`:"";
- return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${cm?esc(cm.name):r.cm==="none"?"事業所":pick}${r.staff?" ・ 記録："+esc(r.staff):""}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${r.trans?`<details><summary class="meta">文字起こしを見る</summary><div class="trans">${esc(r.trans)}</div></details>`:""}</div>`}
+ return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${cm?esc(cm.name):r.cm==="none"?"事業所":pick}${r.staff?" ・ 記録："+esc(r.staff):""} <button class="btn sm" type="button" style="padding:2px 8px" onclick="recEditOpen('${r.id}')">修正</button></div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${r.trans?`<details><summary class="meta">文字起こしを見る</summary><div class="trans">${esc(r.trans)}</div></details>`:""}</div>`}
 window.setRecCm=async(id,cm)=>{if(!cm)return;try{await persist([{table:"records",row:{id,cm}}]);toast("面談者を登録しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
 window.addRecord=async(e,oid)=>{e.preventDefault();
  const t=$("#f-text").value.trim();if(!t)return;const b=e.target.querySelector("[type=submit]");b.disabled=true;
@@ -1242,7 +1356,7 @@ function viewSettings(){const imp=DB.importedAt;
 }
 function viewLog(){
  const recs=[...DB.records].sort((a,b)=>b.date.localeCompare(a.date));
- const top=`<div style="margin:8px 0 4px">${CI.stage!=="idle"&&!CI.office?callBox():callPickBtn()}</div>`;
+ const top=`<div style="margin:8px 0 4px">${cbBox()}${CB.items.length?"":CI.stage!=="idle"&&!CI.office?callBox():callPickBtn()}</div>`;
  const todo=recs.filter(r=>r.next);
  return top+`<div class="split"><div><div class="section-t"><h2>面談記録</h2><span class="meta">全${recs.length}件</span></div>
  <div class="log">${recs.map(logItem).join("")}</div></div>
@@ -1297,7 +1411,7 @@ const _render2=render;render=function(){_render2();
  const k=navKey();
  try{if(NAV_LAST===null){history.replaceState({root:1},"");history.pushState({k,v:S.view,o:S.office},"")}
   else if(k!==NAV_LAST&&!NAV_POP)history.pushState({k,v:S.view,o:S.office},"")}catch(e){}
- NAV_LAST=k;NAV_POP=false};
+ NAV_LAST=k;NAV_POP=false;saveLast()};
 window.addEventListener("popstate",e=>{const st=e.state||{};
  if(st.root){if(Date.now()-EXIT_AT<2500){history.back();return}EXIT_AT=Date.now();toast("もう一度「戻る」を押すと終了します");
   try{history.pushState({k:NAV_LAST,v:S.view,o:S.office},"")}catch(err){}return}
