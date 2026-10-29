@@ -245,8 +245,8 @@ const SEED = {
 
 const KEY="kyotaku-proto-v1";
 const clone=o=>JSON.parse(JSON.stringify(o));
-let DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[]};
-if(MODE==="demo"){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}DB=d||clone(SEED);if(!DB.users)DB.users=clone(SEED.users);["calendar","items","dist","visits","contracts","jisseki"].forEach(k=>{if(!DB[k])DB[k]=[]});
+let DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[],reqs:[]};
+if(MODE==="demo"){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}DB=d||clone(SEED);if(!DB.users)DB.users=clone(SEED.users);["calendar","items","dist","visits","contracts","jisseki","reqs"].forEach(k=>{if(!DB[k])DB[k]=[]});
  DB.cms.forEach(c=>{if(c.count==null&&c["担当"]!=null)c.count=c["担当"]})}
 function save(){if(MODE!=="demo")return;try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast("この端末には保存できませんでした（容量不足の可能性）")}}
 const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -284,7 +284,7 @@ async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.offices=d.offices.map(r=>fromServer("offices",r,d.notices||[]));
  DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r)).filter(r=>r.kind!=="削除");
  DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[];
- ["items","dist","visits","contracts","jisseki"].forEach(k=>DB[k]=d[k]||[])}
+ ["items","dist","visits","contracts","jisseki","reqs"].forEach(k=>DB[k]=d[k]||[])}
 
 /* ===== Googleログイン ===== */
 function initGis(){if(window.google&&google.accounts){gisReady();return}
@@ -304,7 +304,7 @@ async function boot(){S.loading=true;render();
 window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{localStorage.removeItem("kyotaku-s")}catch(e){}
  try{google.accounts.id.disableAutoSelect()}catch(e){}
  if(s&&typeof msg!=="string")fetch(setupCfg().gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"logout",session:s})}).catch(()=>{});
- DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render();initGis()};
+ DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[],reqs:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render();initGis()};
 
 const ARRIVE_M=150; // この距離以内で「到着」とみなす
 const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:"",cmEdit:null,loginMsg:"",loading:false,mine:true,recOpen:false,listMode:"list"};
@@ -411,7 +411,8 @@ function viewVisit(){
  ${(sib=>sib.length?`<div class="meta" style="margin-top:4px">同じ場所：${sib.map(x=>`<button class="btn sm" type="button" style="margin:2px" onclick="S.office='${x.id}';S.selCm=null;S.recOpen=false;S.autoOpened='${x.id}';render()">${esc(x.name)}${x.kind&&x.kind!=="居宅支援"?"（"+esc(x.kind)+"）":""}</button>`).join("")}</div>`:"")(o.lat==null?[]:DB.offices.filter(x=>x.id!==o.id&&x.lat!=null&&ost(x)!=="非表示"&&dist(o.lat,o.lng,x.lat,x.lng)<40))}
  <div style="margin:8px 0 4px;display:grid;gap:8px">${(c=>c?`<div class="meta">チェックイン済 ${new Date(c.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}${c.away?"（離れた場所から）":""}（ボタンをもう一度押すと録音の開始・停止）</div>`:`<button class="btn" type="button" style="width:100%;padding:10px;font-size:15px" onclick="checkin()">チェックイン（訪問を記録）</button>`)(myCheckin(o))}
   ${S.recOpen?recordForm(o,cms):`<button class="btn primary" type="button" style="width:100%;padding:12px;font-size:16px" onclick="S.recOpen=true;render()">＋ 面談を記録する</button>`}
-  ${CI.stage!=="idle"?callBox():callPickBtn()}</div>
+  ${foundBox()}${CI.stage!=="idle"?callBox():callPickBtn()}
+  <button class="btn" type="button" style="width:100%;padding:10px;font-size:15px" onclick="fdManual()">📨 事務に依頼する</button></div>
  ${S.staffEdit&&canAdmin()?staffForm(o):""}
  ${o.notices.length?`<div class="section-t"><h2>連絡事項・今日伝えること</h2><span class="meta">${o.notices.length}件</span></div>
   <div class="notices">${o.notices.map(n=>`<div class="notice"><div class="from">${esc(n.from)}</div>${esc(n.text)}</div>`).join("")}</div>`:""}
@@ -639,12 +640,12 @@ async function saveCall(it){const o=DB.offices.find(x=>x.id===it.office);if(!o)t
  const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>c.name).join("、");
  const prompt=`福祉用具貸与事業所（アスポート）の営業担当と、居宅介護支援事業所「${o.name}」との電話の録音です。
 音声を聞き取り、営業日報向けに要約して、次のキーだけのJSONで返してください。
-{"summary":"話した内容の要約（3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"電話の相手のケアマネジャーの名前（会話から分かる場合。候補：${cms||"なし"}。分からなければ空）"}
+{"summary":"話した内容の要約（3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"電話の相手のケアマネジャーの名前（会話から分かる場合。候補：${cms||"なし"}。分からなければ空）"${FIND_KEYS}}${FIND_RULE(it.date||today())}
 重要：利用者（高齢者）の名前は、姓の1文字目をローマ字の頭文字に置き換え、名は書かずに「K藤様」のように書くこと。住所・電話番号・生年月日は書かないこと。`;
  const r=await aiAudio(prompt,it.file);if(!r)throw new Error("この画面ではAIが使えません");const d=r.data||{};
  let cm=it.cm||"";if(!cm&&d.cm){const h=cmCands(d.cm,o.id);if(h.length===1)cm=h[0].id}
  const row={id:newId("r"),office:o.id,cm,date:it.date||today(),text:d.summary||"",next:d.next||"",trans:"",staff:USER?USER.name:"",kind:"電話"};
- await persist([{table:"records",row}]);return {o,cm}}
+ await persist([{table:"records",row}]);addFound(d,row.id,o.id,cm,row.date);return {o,cm}}
 window.runCall=async b=>{if(!DB.offices.some(x=>x.id===CI.office)){toast("居宅を選んでください");return}
  CI.cm=$("#ci-cm").value;CI.date=$("#ci-date").value||CI.date;CI.stage="work";render();
  try{const {o,cm}=await saveCall(CI);CI.stage="idle";beep(SND.checkin);buzz(60);
@@ -722,6 +723,64 @@ const cmDups=c=>DB.cms.filter(x=>x.id!==c.id&&cst(x)==="在籍"&&x.office!==c.of
 function dupNotice(cms){const ds=cms.map(c=>({c,d:cmDups(c)})).filter(x=>x.d.length);if(!ds.length)return "";
  return `<div class="notice" style="margin-top:8px">⚠ 同じ名前のケアマネが別の居宅にも「在籍」で登録されています。通話録音の取り込みで居宅を間違える原因になります。異動した場合は、古い方の居宅でそのケアマネを「退職」にするか、「別の居宅へ異動」に移籍先を入れてください。
  ${ds.map(x=>`<div style="margin-top:4px"><b>${esc(x.c.name)}</b>：${x.d.map(y=>{const yo=DB.offices.find(z=>z.id===y.office);return yo?`<button class="btn sm" type="button" style="margin:2px" onclick="S.office='${yo.id}';S.view='visit';S.selCm='${y.id}';S.autoOpened='${yo.id}';render();scrollTo(0,0)">${esc(yo.name)}を開く</button>`:"居宅不明"}).join("")}</div>`).join("")}</div>`}
+/* ===== AIが見つけた予定・事務への依頼（保存のあとに確認カードを出す。勝手には入れない） ===== */
+const FOUND=[];
+const wd=d=>"日月火水木金土"[new Date(String(d)+"T00:00:00").getDay()]||"";
+const FIND_KEYS=`,"events":[{"title":"予定の名前（例：担当者会議、納品、見積り提出の期限）","date":"YYYY-MM-DD","start":"HH:MM（分からなければ空）","end":"HH:MM（分からなければ空）","place":"場所（分からなければ空）"}],"requests":["事務所（事務員）にお願いすること。1件ずつ短い文で"]`;
+const FIND_RULE=date=>`
+予定（events）：日時が決まった予定・期限だけ入れる。会話した日は${date}（${wd(date)}曜日）なので、「来週火曜」などはこの日を基準に年月日に直すこと。なければ []。
+事務への依頼（requests）：書類の送付・納品や回収の日程調整・見積りや請求書の作成・商品の手配など、営業本人ではなく事務所にやってもらうべきことだけ入れる。なければ []。
+予定・依頼に利用者の名前を書くときも「K藤様」のように頭文字にすること。`;
+function addFound(d,rec,office,cm,date){d=d||{};
+ const ev=(Array.isArray(d.events)?d.events:[]).filter(e=>e&&e.title&&/^\d{4}-\d{2}-\d{2}$/.test(String(e.date||""))).map(e=>({title:String(e.title),date:String(e.date),start:String(e.start||""),end:String(e.end||""),place:String(e.place||""),added:false}));
+ const rq=(Array.isArray(d.requests)?d.requests:[]).map(x=>String(x||"").trim()).filter(Boolean).map(text=>({text,on:true}));
+ if(ev.length||rq.length)FOUND.push({id:newId("f"),rec,office,cm,date,events:ev,reqs:rq,sent:false})}
+window.fdManual=()=>{FOUND.unshift({id:newId("f"),rec:"",office:S.view==="visit"?S.office:"",cm:"",date:today(),events:[],reqs:[{text:"",on:true}],sent:false,manual:true});render();
+ setTimeout(()=>{const t=document.querySelector(".found textarea");t&&t.focus()},100)};
+function calUrl(e,o,cm){const d=e.date.replace(/-/g,""),tm=s=>{const m=String(s||"").match(/^(\d{1,2}):(\d{2})/);return m?m[1].padStart(2,"0")+m[2]+"00":""};
+ let dates;const st=tm(e.start);
+ if(st){let en=tm(e.end);if(!en||en<=st){const h=Math.min(23,+st.slice(0,2)+1);en=String(h).padStart(2,"0")+st.slice(2)}dates=d+"T"+st+"/"+d+"T"+en}
+ else{const n=new Date(e.date+"T00:00:00");n.setDate(n.getDate()+1);dates=d+"/"+n.toLocaleDateString("sv-SE").replace(/-/g,"")}
+ const q=new URLSearchParams({action:"TEMPLATE",text:e.title+(o&&o.name?"（"+o.name+"）":""),dates,details:`居宅：${o?o.name:""}${cm?"\nケアマネ："+cm.name:""}\n（居宅営業管理から追加）`,location:e.place||"",ctz:"Asia/Tokyo"});
+ return "https://calendar.google.com/calendar/render?"+q.toString()}
+function foundBox(){if(!FOUND.length)return "";
+ return FOUND.map((f,fi)=>{const o=DB.offices.find(x=>x.id===f.office);const cm=DB.cms.find(c=>c.id===f.cm);
+  const evs=f.events.length?`<div style="margin-top:8px"><b>📅 予定</b>${f.events.map((e,ei)=>`<div class="logi"><div>${esc(e.title)}</div><div class="meta">${e.date.slice(5).replace("-","/")}（${wd(e.date)}）${e.start?" "+esc(e.start)+(e.end?"〜"+esc(e.end):""):" 時間未定（終日）"}${e.place?" ・ "+esc(e.place):""}</div>
+   <a class="btn sm ${e.added?"":"primary"}" style="display:inline-block;margin-top:4px;text-decoration:none" href="${esc(calUrl(e,o,cm))}" target="_blank" rel="noopener" onclick="fdAdded(${fi},${ei})">${e.added?"✓ 追加画面を開きました（もう一度開く）":"Googleカレンダーに追加"}</a></div>`).join("")}
+   <div class="meta">押すと自分のGoogleカレンダーが開くので、内容を確かめて「保存」を押してください。</div></div>`:"";
+  const rqs=f.reqs.length?`<div style="margin-top:8px"><b>📨 事務への依頼</b>${f.sent?`<div class="meta">✅ 事務に送りました（「面談記録」の「事務への依頼」で状況が見られます）</div>`:`
+   ${f.manual?`<label>居宅<input list="fdOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="fdOffice(${fi},this.value)"></label>${officeList("fdOffices")}`:""}
+   ${f.reqs.map((q,qi)=>`<label style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">${f.reqs.length>1||!f.manual?`<input type="checkbox" style="width:auto;margin-top:12px" ${q.on?"checked":""} onchange="FOUND[${fi}].reqs[${qi}].on=this.checked">`:""}<textarea rows="2" style="flex:1" oninput="FOUND[${fi}].reqs[${qi}].text=this.value" placeholder="例：K藤様の契約書を居宅にFAXしてください">${esc(q.text)}</textarea></label>`).join("")}
+   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn primary" type="button" onclick="fdSend(${fi},this)">${f.manual?"事務に送る":"チェックした依頼を事務に送る"}</button>${f.manual?"":`<button class="btn sm" type="button" onclick="FOUND[${fi}].reqs.push({text:'',on:true});render()">＋ 依頼を足す</button>`}</div>
+   <div class="meta">事務のメールに届きます。利用者名は「K藤様」のように頭文字で書いてください。</div>`}</div>`:"";
+  return `<div class="form found" style="border-color:var(--accent);margin:8px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${f.manual?"📨 事務に依頼する":"🤖 AIが見つけたこと"}</b><button class="btn sm" type="button" onclick="fdClose(${fi})">閉じる</button></div>
+  ${f.manual?"":`<div class="meta">${esc(o?o.name:"")}${cm?" ・ "+esc(cm.name):""} ・ ${esc(f.date)} の記録から</div>`}${evs}${rqs}</div>`}).join("")}
+window.fdAdded=(fi,ei)=>{setTimeout(()=>{const f=FOUND[fi];if(f&&f.events[ei]){f.events[ei].added=true;render()}},600)};
+window.fdOffice=(fi,v)=>{const oc=officeCands(v),f=FOUND[fi];if(oc.length===1){f.office=oc[0].id;render()}else{f.office="";toast(oc.length?"候補が"+oc.length+"件あります。一覧から選んでください":"当てはまる居宅が見つかりませんでした")}};
+window.fdClose=fi=>{const f=FOUND[fi];if(!f)return;
+ if(!f.sent&&f.reqs.some(q=>q.on&&q.text.trim())&&!confirm("事務への依頼をまだ送っていません。閉じますか？"))return;FOUND.splice(fi,1);render()};
+window.fdSend=async(fi,b)=>{const f=FOUND[fi];if(!f)return;const list=f.reqs.filter(q=>(q.on||f.manual)&&q.text.trim());
+ if(!list.length){toast("送る依頼がありません");return}
+ if(!DB.offices.some(o=>o.id===f.office)){toast("居宅を選んでください");return}
+ b.disabled=true;b.innerHTML='<span class="spin"></span> 送信中…';
+ const now=new Date().toISOString();
+ const rows=list.map(q=>({id:newId("q"),office:f.office,cm:f.cm&&f.cm!=="none"?f.cm:"",rec:f.rec||"",text:q.text.trim(),staff:USER?USER.name:"デモ",state:"未対応",at:now}));
+ try{await persist(rows.map(row=>({table:"reqs",row})));f.sent=true;buzz(60);
+  const bad=MODE==="live"?rows.filter(r=>{const x=DB.reqs.find(y=>y.id===r.id);return x&&x.mail&&x.mail!=="送信済"}).length:0;
+  toast(bad?"依頼は保存しましたが、メールが送れませんでした（社長に連絡してください）":MODE==="live"?"事務に送りました":"事務に送りました（デモなのでメールは届きません）");
+  if(!f.events.length||f.events.every(e=>e.added))FOUND.splice(fi,1);render()}
+ catch(e){b.disabled=false;b.textContent="事務に送る";toast("送れませんでした："+errText(e))}};
+/* 事務への依頼の一覧（面談記録の画面） */
+function reqList(){const rs=(DB.reqs||[]).slice().sort((a,b)=>((a.state==="済")-(b.state==="済"))||String(b.at||"").localeCompare(String(a.at||"")));
+ if(!rs.length)return "";const open=rs.filter(r=>r.state!=="済").length,shown=S.reqAll?rs:rs.slice(0,10);
+ return `<div class="section-t"><h2>事務への依頼</h2><span class="meta">未対応 ${open}件</span></div>
+ <div class="log">${shown.map(r=>{const o=DB.offices.find(x=>x.id===r.office)||{name:""};const done=r.state==="済";
+  return `<div class="logi" style="${done?"opacity:.65":""}"><div class="meta">${esc(String(r.at||"").slice(5,10).replace("-","/"))} ・ ${esc(o.name)} ・ 依頼：${esc(r.staff||"")} ・ <b>${done?"済"+(r.doneBy?"（"+esc(r.doneBy)+"）":""):"未対応"}</b>${r.mail&&r.mail!=="送信済"?' ・ <span style="color:#c0392b">メール未送信</span>':""}</div>${esc(r.text)}
+  <div><button class="btn sm" type="button" onclick="reqState('${r.id}',${done?"false":"true"},this)">${done?"未対応に戻す":"済にする"}</button></div></div>`}).join("")}</div>
+ ${rs.length>shown.length?`<button class="btn sm" type="button" onclick="S.reqAll=true;render()">すべて表示（${rs.length}件）</button>`:""}`}
+window.reqState=async(id,done,b)=>{b.disabled=true;
+ try{await persist([{table:"reqs",row:{id,state:done?"済":"未対応",doneAt:done?new Date().toISOString():"",doneBy:done?(USER?USER.name:"デモ"):""}}]);render()}
+ catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 /* ===== 紹介実績（ケアレンツの新規契約データ） ===== */
 let KC=null;
@@ -794,7 +853,7 @@ window.addRecord=async(e,oid)=>{e.preventDefault();
  const t=$("#f-text").value.trim();if(!t)return;const b=e.target.querySelector("[type=submit]");b.disabled=true;
  if(RC.on)stopRec();
  const row={id:newId("r"),office:oid,cm:$("#f-cm").value,date:$("#f-date").value,text:t,next:$("#f-next").value.trim(),trans:$("#f-trans").value.trim(),staff:USER?USER.name:""};
- try{await persist([{table:"records",row}]);$("#f-text").value="";$("#f-trans").value="";S.recOpen=false;toast("面談記録を保存しました");render()}
+ try{await persist([{table:"records",row}]);if(RC.found){addFound(RC.found,row.id,oid,row.cm,row.date);RC.found=null}$("#f-text").value="";$("#f-trans").value="";S.recOpen=false;toast("面談記録を保存しました");render()}
  catch(err){b.disabled=false;toast("保存できませんでした："+errText(err))}};
 
 function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").length;
@@ -1265,7 +1324,7 @@ function stopRec(){RC.on=false;clearInterval(RC.timer);
  RC.stream&&RC.stream.getTracks().forEach(t=>t.stop());
  $("#recBtn").classList.remove("rec");$("#recBtn").textContent="● 録音を開始";
  $("#recState").textContent="録音を止めました。「AIで要約」を押すと、話した内容と次回アクションに入ります。";}
-window.summarize=async(btn)=>{if(RC.on){stopRec();await new Promise(r=>setTimeout(r,600))}
+window.summarize=async(btn)=>{RC.found=null;if(RC.on){stopRec();await new Promise(r=>setTimeout(r,600))}
  const tr=$("#f-trans").value.trim();const st=$("#recState");const audio=!tr&&RC.blob&&MODE==="live"?RC.blob:null;
  if(!tr&&!audio){st.textContent="録音するか、文字起こし欄に文字を貼り付けてください。";return}
  const o=DB.offices.find(x=>x.id===S.office);const cmName=$("#f-cm").selectedOptions[0]?.text||"";
@@ -1274,11 +1333,11 @@ window.summarize=async(btn)=>{if(RC.on){stopRec();await new Promise(r=>setTimeou
  try{const rr=await aiJson(
  `福祉用具貸与事業所（アスポート）の営業担当が、居宅介護支援事業所「${o.name}」のケアマネジャー（${cmName}）と面談したときの${audio?"録音です。まず会話を日本語で文字起こしし":"文字起こしです。音声認識のため誤字があります"}。
 営業日報向けに要約し、次のキーだけのJSONで返してください。
-{${audio?'"trans":"会話の文字起こし（話者が変わるごとに改行）",':""}"summary":"話した内容の要約（箇条書き風に3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。1〜2行）","clients":["話題に出た利用者名"]}
+{${audio?'"trans":"会話の文字起こし（話者が変わるごとに改行）",':""}"summary":"話した内容の要約（箇条書き風に3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。1〜2行）","clients":["話題に出た利用者名"]${FIND_KEYS}}${FIND_RULE($("#f-date").value||today())}
 参考：この居宅の当社利用者は ${names||"なし"}。
 ${audio?"":"--- 文字起こし ---\n"+tr.slice(0,20000)}`,audio);
   if(!rr){st.textContent="この画面ではAI要約が使えません。";btn.disabled=false;return}
-  const r=rr.data;
+  const r=rr.data;RC.found={events:r.events,requests:r.requests};
   if(r.trans&&!$("#f-trans").value)$("#f-trans").value=r.trans;
   $("#f-text").value=r.summary||"";$("#f-next").value=r.next||"";
   st.textContent="要約を入れました。確認して「記録を保存」を押してください。"+(r.clients&&r.clients.length?"（話題の利用者："+r.clients.join("、")+"）":"");
@@ -1356,9 +1415,9 @@ function viewSettings(){const imp=DB.importedAt;
 }
 function viewLog(){
  const recs=[...DB.records].sort((a,b)=>b.date.localeCompare(a.date));
- const top=`<div style="margin:8px 0 4px">${cbBox()}${CB.items.length?"":CI.stage!=="idle"&&!CI.office?callBox():callPickBtn()}</div>`;
+ const top=`<div style="margin:8px 0 4px">${foundBox()}${cbBox()}${CB.items.length?"":CI.stage!=="idle"&&!CI.office?callBox():callPickBtn()}</div>`;
  const todo=recs.filter(r=>r.next);
- return top+`<div class="split"><div><div class="section-t"><h2>面談記録</h2><span class="meta">全${recs.length}件</span></div>
+ return top+reqList()+`<div class="split"><div><div class="section-t"><h2>面談記録</h2><span class="meta">全${recs.length}件</span></div>
  <div class="log">${recs.map(logItem).join("")}</div></div>
  <div><div class="section-t"><h2>次回アクション</h2><span class="meta">${todo.length}件</span></div>
  <div class="log">${todo.map(r=>`<div class="logi"><b>${esc(r.next)}</b><div class="meta">${esc((DB.offices.find(o=>o.id===r.office)||{name:""}).name)} ・ ${r.date}</div></div>`).join("")}</div>
