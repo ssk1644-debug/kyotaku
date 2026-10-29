@@ -134,7 +134,7 @@ select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);backgr
 
 /* タブ */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
-.tabs-in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
+.tabs-in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr)}
 .tab{background:none;border:0;padding:10px 4px 12px;font-size:12.5px;color:var(--muted);display:grid;justify-items:center;gap:2px}
 .tab svg{width:22px;height:22px}
 .tab[aria-current="true"]{color:var(--accent);font-weight:700}
@@ -190,6 +190,7 @@ select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);backgr
     <button class="tab" data-v="cards" id="t-cards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14 10h4M14 13h3"/></svg>名刺</button>
     <button class="tab" data-v="settings" id="t-settings" style="order:5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>設定</button>
     <button class="tab" data-v="log" id="t-log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg>面談記録</button>
+    <button class="tab" data-v="sched" id="t-sched"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h3"/></svg>予定</button>
   </div>
 </nav>
 
@@ -247,8 +248,8 @@ const SEED = {
 
 const KEY="kyotaku-proto-v1";
 const clone=o=>JSON.parse(JSON.stringify(o));
-let DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[],reqs:[]};
-if(MODE==="demo"){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}DB=d||clone(SEED);if(!DB.users)DB.users=clone(SEED.users);["calendar","items","dist","visits","contracts","jisseki","reqs"].forEach(k=>{if(!DB[k])DB[k]=[]});
+let DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[],reqs:[],sched:[]};
+if(MODE==="demo"){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}DB=d||clone(SEED);if(!DB.users)DB.users=clone(SEED.users);["calendar","items","dist","visits","contracts","jisseki","reqs","sched"].forEach(k=>{if(!DB[k])DB[k]=[]});
  DB.cms.forEach(c=>{if(c.count==null&&c["担当"]!=null)c.count=c["担当"]})}
 function save(){if(MODE!=="demo")return;try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast("この端末には保存できませんでした（容量不足の可能性）")}}
 const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -286,7 +287,7 @@ async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.offices=d.offices.map(r=>fromServer("offices",r,d.notices||[]));
  DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r)).filter(r=>r.kind!=="削除");
  DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[];
- ["items","dist","visits","contracts","jisseki","reqs"].forEach(k=>DB[k]=d[k]||[])}
+ ["items","dist","visits","contracts","jisseki","reqs","sched"].forEach(k=>DB[k]=d[k]||[])}
 
 /* ===== Googleログイン ===== */
 function initGis(){if(window.google&&google.accounts){gisReady();return}
@@ -306,11 +307,11 @@ async function boot(){S.loading=true;render();
 window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{localStorage.removeItem("kyotaku-s")}catch(e){}
  try{google.accounts.id.disableAutoSelect()}catch(e){}
  if(s&&typeof msg!=="string")fetch(setupCfg().gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"logout",session:s})}).catch(()=>{});
- DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[],reqs:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render();initGis()};
+ DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[],reqs:[],sched:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render();initGis()};
 
 const ARRIVE_M=150; // この距離以内で「到着」とみなす
 const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:"",cmEdit:null,loginMsg:"",loading:false,mine:true,recOpen:false,listMode:"list"};
-/* 表示の設定はこの端末に覚えておく（自分の担当だけ・休止中も表示など） */
+/* 表示の設定はこの端末に覚えておく（自分の担当だけ・利用者なしも表示など） */
 const UIKEY="kyotaku-ui",UI_FIELDS=["mine","showAll","gap","listMode","sort"];
 try{const u=JSON.parse(localStorage.getItem(UIKEY)||"{}");UI_FIELDS.forEach(k=>{if(k in u)S[k]=u[k]})}catch(e){}
 function saveUI(){try{const u={};UI_FIELDS.forEach(k=>u[k]=S[k]);localStorage.setItem(UIKEY,JSON.stringify(u))}catch(e){}}
@@ -319,7 +320,7 @@ function saveUI(){try{const u={};UI_FIELDS.forEach(k=>u[k]=S[k]);localStorage.se
 function dist(a,b,c,d){const R=6371000,r=Math.PI/180,x=(c-a)*r,y=(d-b)*r;
  const h=Math.sin(x/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 function nearest(){ if(!S.pos) return [];
- return DB.offices.filter(o=>o.lat!=null&&(ost(o)==="稼働"||(S.showAll&&ost(o)==="休止")||S.showAll==="all")).map(o=>({o,d:dist(S.pos.lat,S.pos.lng,o.lat,o.lng)})).sort((a,b)=>a.d-b.d)}
+ return DB.offices.filter(o=>o.lat!=null&&(ost(o)==="稼働"||(S.showAll&&ost(o)==="利用者なし")||S.showAll==="all")).map(o=>({o,d:dist(S.pos.lat,S.pos.lng,o.lat,o.lng)})).sort((a,b)=>a.d-b.d)}
 function fmtD(m){return m<1000?Math.round(m)+" m":(m/1000).toFixed(1)+" km"}
 function hereId(){const n=nearest()[0];return n&&n.d<=ARRIVE_M?n.o.id:null}
 /* 入力中・入力途中の内容がある間は、画面を作り直さない */
@@ -386,7 +387,7 @@ function viewVisit(){
  const o=DB.offices.find(x=>x.id===S.office);
  if(!o){
   const near=nearest().slice(0,5);
-  const act=DB.offices.filter(x=>ost(x)!=="非表示"),noPos=act.filter(x=>x.lat==null).length;
+  const act=DB.offices.filter(x=>!offGone(x)),noPos=act.filter(x=>x.lat==null).length;
   return `<div class="empty" style="margin-top:16px">
    <h2 style="font-size:17px;margin-bottom:6px">居宅に近づくと、ここに自動で表示されます</h2>
    <p style="margin:0">居宅から${ARRIVE_M}m以内に入ると、その居宅の画面（在籍CM・利用者の近況・連絡事項）が自動で開きます。</p></div>
@@ -407,14 +408,15 @@ function viewVisit(){
   <span class="meta">${(l=>`最終訪問 <span class="num" style="${l&&daysSince(l)>=GAP_DAYS?"color:var(--alert);font-weight:700":""}">${l?l+"（"+daysSince(l)+"日前）":"記録なし"}</span> ・ 直近3か月 <span class="num">${visits90(o)}</span>回`)(lastVisit(o))}${(n=>n?` ・ 新規契約（12か月） <span class="num">${n}</span>件`:"")(DB.contracts.filter(c=>c.office===o.id&&c.date>=ago(365)).length)}</span>
   <span class="meta">担当：<b style="color:var(--ink)">${esc(staffNames(o))}</b>${canAdmin()&&!S.staffEdit?` <button class="btn sm" type="button" onclick="S.staffEdit=true;render()">変更</button>`:""}</span>
   <span class="meta">実績の渡し方 <select class="sim" onchange="setJkMethod('${o.id}',this.value,this)">${Object.keys(JK_LABEL).map(k=>`<option value="${k}" ${jkm(o)===k?"selected":""}>${JK_LABEL[k]}</option>`).join("")}</select></span>
-  ${canAdmin()?`<span class="meta">状態 <select class="sim" onchange="setOfficeStatus('${o.id}',this.value,this)">${["稼働","休止","非表示"].map(v=>`<option ${v===ost(o)?"selected":""}>${v}</option>`).join("")}</select></span>`:""}
+  ${canAdmin()?`<span class="meta">状態 <select class="sim" onchange="setOfficeStatus('${o.id}',this.value,this)">${["稼働","利用者なし","閉鎖","非表示"].map(v=>`<option ${v===ost(o)?"selected":""}>${v}</option>`).join("")}</select></span>`:""}
   ${o.lat==null?`<span class="meta">位置が未登録です ${S.pos?`<button class="btn sm" onclick="setOfficePos('${o.id}')">今いる場所を登録</button>`:"（現在地が取れると登録できます）"}</span>`:""}</div>
 
- ${(sib=>sib.length?`<div class="meta" style="margin-top:4px">同じ場所：${sib.map(x=>`<button class="btn sm" type="button" style="margin:2px" onclick="S.office='${x.id}';S.selCm=null;S.recOpen=false;S.autoOpened='${x.id}';render()">${esc(x.name)}${x.kind&&x.kind!=="居宅支援"?"（"+esc(x.kind)+"）":""}</button>`).join("")}</div>`:"")(o.lat==null?[]:DB.offices.filter(x=>x.id!==o.id&&x.lat!=null&&ost(x)!=="非表示"&&dist(o.lat,o.lng,x.lat,x.lng)<40))}
+ ${(sib=>sib.length?`<div class="meta" style="margin-top:4px">同じ場所：${sib.map(x=>`<button class="btn sm" type="button" style="margin:2px" onclick="S.office='${x.id}';S.selCm=null;S.recOpen=false;S.autoOpened='${x.id}';render()">${esc(x.name)}${x.kind&&x.kind!=="居宅支援"?"（"+esc(x.kind)+"）":""}</button>`).join("")}</div>`:"")(o.lat==null?[]:DB.offices.filter(x=>x.id!==o.id&&x.lat!=null&&!offGone(x)&&dist(o.lat,o.lng,x.lat,x.lng)<40))}
  <div style="margin:8px 0 4px;display:grid;gap:8px">${(c=>c?`<div class="meta">チェックイン済 ${new Date(c.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}${c.away?"（離れた場所から）":""}（ボタンをもう一度押すと録音の開始・停止）</div>`:`<button class="btn" type="button" style="width:100%;padding:10px;font-size:15px" onclick="checkin()">チェックイン（訪問を記録）</button>`)(myCheckin(o))}
   ${S.recOpen?recordForm(o,cms):`<button class="btn primary" type="button" style="width:100%;padding:12px;font-size:16px" onclick="S.recOpen=true;render()">＋ 面談を記録する</button>`}
   ${foundBox()}${CI.stage!=="idle"?callBox():callPickBtn()}
-  <button class="btn" type="button" style="width:100%;padding:10px;font-size:15px" onclick="fdManual()">📨 事務に依頼する</button></div>
+  <button class="btn" type="button" style="width:100%;padding:10px;font-size:15px" onclick="fdManual()">📨 事務に依頼する</button>
+  ${schedMini(o)}</div>
  ${S.staffEdit&&canAdmin()?staffForm(o):""}
  ${o.notices.length?`<div class="section-t"><h2>連絡事項・今日伝えること</h2><span class="meta">${o.notices.length}件</span></div>
   <div class="notices">${o.notices.map(n=>`<div class="notice"><div class="from">${esc(n.from)}</div>${esc(n.text)}</div>`).join("")}</div>`:""}
@@ -474,7 +476,7 @@ function cmForm(o){
   <label>会話の話題<input id="m-likes" value="${esc(c.likes)}"></label>
   ${S.cmEdit!=="new"?`<div class="row2"><label>状態<select id="m-status">${["在籍","退職"].map(v=>`<option ${v===(cst(c)==="異動"?"在籍":cst(c))?"selected":""}>${v}</option>`).join("")}</select></label>
    <label>別の居宅へ異動（移籍先）<input id="m-move" list="officeNames" placeholder="移籍先の居宅名を入力・選択"></label></div>
-   <datalist id="officeNames">${DB.offices.filter(x=>ost(x)!=="非表示"&&x.id!==o.id).map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist>
+   <datalist id="officeNames">${DB.offices.filter(x=>!offGone(x)&&x.id!==o.id).map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist>
    ${c.history?`<div class="meta" style="white-space:pre-wrap">これまでの経歴：${esc(c.history)}</div>`:""}`:""}
   <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit" id="m-save">保存</button><button class="btn" type="button" onclick="S.cmEdit=null;render()">やめる</button></div>
  </form>`}
@@ -493,7 +495,7 @@ window.saveCm=async(e,oid)=>{e.preventDefault();const v=id=>$(id).value.trim();c
 /* ===== 配布物（カレンダー・カタログ・チラシなど） ===== */
 function activeItems(){const t=today();return DB.items.filter(i=>(!i.start||String(i.start).slice(0,10)<=t)&&(!i.end||String(i.end).slice(0,10)>=t))}
 function distOf(item,o){return DB.dist.find(d=>d.item===item.id&&d.office===o.id)}
-function itemFor(item,o){return item.target==="all"?ost(o)!=="非表示":!!distOf(item,o)}
+function itemFor(item,o){return item.target==="all"?!offGone(o):!!distOf(item,o)}
 function distBox(o){const its=activeItems().filter(i=>itemFor(i,o));if(!its.length)return "";
  return `<div class="section-t"><h2>配布物</h2><span class="meta">期間中のもの</span></div><div class="notices">${its.map(i=>{const d=distOf(i,o)||{};const done=d.state==="配布済";
   const q=String(d.qty||"").split(",").filter(x=>x&&x.includes(":")).map(x=>{const [k,v]=x.split(":");return `${esc(k)} <b class="num">${esc(v)}</b>`}).join("・");
@@ -582,7 +584,7 @@ function cmCands(who,officeId){const w=pnorm(who);if(!w)return [];
  if(!hit.length&&w.length>=2)hit=pool.filter(c=>nm(c).startsWith(w)||(c.kana&&kn(c).startsWith(w)));
  return hit}
 function officeCands(v){const raw=String(v||"").trim();if(!raw)return [];
- const list=DB.offices.filter(x=>ost(x)!=="非表示"),ex=list.filter(x=>x.name===raw);if(ex.length)return ex;
+ const list=DB.offices.filter(x=>!offGone(x)),ex=list.filter(x=>x.name===raw);if(ex.length)return ex;
  const n=onorm(raw);if(n.length<2)return [];
  const eq=list.filter(x=>onorm(x.name)===n);if(eq.length)return eq;
  return list.filter(x=>{const a=onorm(x.name),k=pnorm(x.kana);return (a&&(a.includes(n)||(a.length>=2&&n.includes(a))))||(k&&k.includes(n))})}
@@ -599,7 +601,7 @@ function candHtml(it,onCm,onOff){let h="";const st='style="gap:6px;margin:4px 0 
  if(it.cc&&it.cc.length>1)h+=`<div class="notice">「${esc(it.who)}」に当てはまるケアマネが${it.cc.length}名います。どれですか？</div><div class="chips" ${st}>${it.cc.map(c=>`<button type="button" class="btn sm" onclick="${onCm(c.id)}">${esc(c.name)}（${esc((DB.offices.find(x=>x.id===c.office)||{name:"居宅不明"}).name)}）</button>`).join("")}</div>`;
  if(it.oc&&it.oc.length>1)h+=`<div class="notice">「${esc(it.ocq||it.who)}」に当てはまる居宅が${it.oc.length}件あります。どれですか？</div><div class="chips" ${st}>${it.oc.map(x=>`<button type="button" class="btn sm" onclick="${onOff(x.id)}">${esc(x.name)}</button>`).join("")}</div>`;
  return h}
-const officeList=id=>`<datalist id="${id}">${DB.offices.filter(x=>ost(x)!=="非表示").map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist>`;
+const officeList=id=>`<datalist id="${id}">${DB.offices.filter(x=>!offGone(x)).map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist>`;
 const AUDIO_EXT=/\.(m4a|mp4|mp3|aac|amr|3gp|3ga|wav|ogg|opus|awb|flac)$/i,isAudio=f=>AUDIO_EXT.test(f.name||"")||/^audio\//.test(f.type||"");
 function callItem(f){const p=parseCallName(f.name),mt=matchCaller(p.who);
  return {file:f,who:p.who,date:p.date,office:mt.o?mt.o.id:"",cm:mt.cm?mt.cm.id:"",cc:mt.cc,oc:mt.oc,ocq:"",err:"",state:""}}
@@ -696,26 +698,29 @@ async function checkShared(){if(!/[?&]shared=1/.test(location.search))return;
    const name=decodeURIComponent(res.headers.get("x-name")||"通話.m4a"),blob=await res.blob();files.push(new File([blob],name,{type:blob.type||res.headers.get("content-type")||""}))}
   if(files.length)pickCall({files})}catch(e){toast("共有されたファイルを読み込めませんでした")}}
 /* ===== 記録の修正（居宅・ケアマネ・日付の選び直し、削除） ===== */
-const RE={id:null,office:"",cm:"",date:"",oc:[],ocq:"",err:""};
-window.recEditOpen=id=>{const r=DB.records.find(x=>x.id===id);if(!r)return;S.recEdit=id;Object.assign(RE,{id,office:r.office,cm:r.cm||"",date:r.date,oc:[],ocq:"",err:""});render();
+const RE={id:null,office:"",cm:"",date:"",text:"",next:"",oc:[],ocq:"",err:""};
+window.recEditOpen=id=>{const r=DB.records.find(x=>x.id===id);if(!r)return;S.recEdit=id;Object.assign(RE,{id,office:r.office,cm:r.cm||"",date:r.date,text:r.text||"",next:r.next||"",oc:[],ocq:"",err:""});render();
  setTimeout(()=>{const b=$("#recEdit");b&&b.scrollIntoView({block:"center"})},80)};
 function recEditForm(r){const o=DB.offices.find(x=>x.id===RE.office);const cms=o?DB.cms.filter(c=>c.office===o.id&&(cst(c)==="在籍"||c.id===RE.cm)):[];
  return `<div class="form" id="recEdit" style="border-color:var(--accent);margin:6px 0"><b>記録の修正</b>${r.kind==="電話"?" 📞電話":""}
- <div class="meta" style="white-space:pre-wrap">${esc(String(r.text||"").slice(0,80))}${String(r.text||"").length>80?"…":""}</div>
  ${RE.err?`<div class="notice">${esc(RE.err)}</div>`:""}
  ${candHtml({who:"",cc:[],oc:RE.oc,ocq:RE.ocq},()=>"",id=>`rePickOffice('${id}')`)}
  <label>居宅<input list="reOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="reSetOffice(this.value)"></label>
  ${officeList("reOffices")}
  <div class="row2"><label>ケアマネ<select onchange="RE.cm=this.value"><option value="">未選択（あとで選ぶ）</option>${cms.map(c=>`<option value="${c.id}" ${RE.cm===c.id?"selected":""}>${esc(c.name)}${cst(c)!=="在籍"?"（"+esc(cst(c))+"）":""}</option>`).join("")}<option value="none" ${RE.cm==="none"?"selected":""}>CM不在・事業所のみ</option></select></label>
  <label>日付<input type="date" value="${esc(RE.date)}" onchange="RE.date=this.value"></label></div>
+ <label>話した内容（要約）<textarea rows="6" oninput="RE.text=this.value">${esc(RE.text)}</textarea></label>
+ <label>次回アクション<input value="${esc(RE.next)}" oninput="RE.next=this.value" placeholder="例：見積り提出（10/7まで）"></label>
+ ${r.trans?`<details><summary class="meta">文字起こしを見る（見るだけ）</summary><div class="trans">${esc(r.trans)}</div></details>`:""}
  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn primary" type="button" onclick="reSave(this)">保存</button><button class="btn" type="button" onclick="S.recEdit=null;render()">やめる</button><button class="btn" type="button" style="margin-left:auto;color:#c0392b;border-color:#c0392b" onclick="reDel(this)">この記録を削除</button></div></div>`}
 window.reSetOffice=v=>{const oc=officeCands(v);
  if(oc.length===1){if(oc[0].id!==RE.office)RE.cm="";Object.assign(RE,{office:oc[0].id,oc:[],err:""})}
  else Object.assign(RE,{office:"",cm:"",oc,ocq:v,err:v&&!oc.length?"「"+v+"」に当てはまる居宅が見つかりませんでした":""});render()};
 window.rePickOffice=id=>{if(id!==RE.office)RE.cm="";Object.assign(RE,{office:id,oc:[],err:""});render()};
 window.reSave=async b=>{const r=DB.records.find(x=>x.id===RE.id);if(!r)return;const o=DB.offices.find(x=>x.id===RE.office);if(!o){toast("居宅を選んでください");return}
+ if(!String(RE.text||"").trim()){toast("話した内容が空です");return}
  const moved=o.id!==r.office;b.disabled=true;
- try{await persist([{table:"records",row:{id:r.id,office:o.id,cm:RE.cm,date:RE.date||r.date}}]);S.recEdit=null;buzz(60);
+ try{await persist([{table:"records",row:{id:r.id,office:o.id,cm:RE.cm,date:RE.date||r.date,text:String(RE.text).trim(),next:String(RE.next||"").trim()}}]);S.recEdit=null;buzz(60);
   toast(moved?"記録を「"+o.name+"」に移しました":"記録を修正しました");render()}
  catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
 window.reDel=async b=>{const r=DB.records.find(x=>x.id===RE.id);if(!r)return;if(!confirm("この記録を削除しますか？"))return;b.disabled=true;
@@ -770,7 +775,7 @@ function calUrl(e,o,cm){const d=e.date.replace(/-/g,""),tm=s=>{const m=String(s|
 function foundBox(){if(!FOUND.length)return "";
  return FOUND.map((f,fi)=>{const o=DB.offices.find(x=>x.id===f.office);const cm=DB.cms.find(c=>c.id===f.cm);
   const evs=f.events.length?`<div style="margin-top:8px"><b>📅 予定</b>${f.events.map((e,ei)=>`<div class="logi"><div>${esc(e.title)}</div><div class="meta">${e.date.slice(5).replace("-","/")}（${wd(e.date)}）${e.start?" "+esc(e.start)+(e.end?"〜"+esc(e.end):""):" 時間未定（終日）"}${e.place?" ・ "+esc(e.place):""}</div>
-   <a class="btn sm ${e.added?"":"primary"}" style="display:inline-block;margin-top:4px;text-decoration:none" href="${esc(calUrl(e,o,cm))}" target="_blank" rel="noopener" onclick="fdAdded(${fi},${ei})">${e.added?"✓ 追加画面を開きました（もう一度開く）":"Googleカレンダーに追加"}</a></div>`).join("")}
+   <a class="btn sm ${e.added?"":"primary"}" style="display:inline-block;margin-top:4px;text-decoration:none" href="${esc(calUrl(e,o,cm))}" target="_blank" rel="noopener" onclick="fdAdded(${fi},${ei})">${e.added?"✓ 追加画面を開きました（もう一度開く）":"Googleカレンダーに追加"}</a> ${e.inApp?'<span class="meta">✓ アプリの予定に入れました</span>':`<button class="btn sm" type="button" style="margin-top:4px" onclick="fdToSched(${fi},${ei},this)">アプリの予定に入れる</button>`}</div>`).join("")}
    <div class="meta">押すと自分のGoogleカレンダーが開くので、内容を確かめて「保存」を押してください。</div></div>`:"";
   const rqs=f.reqs.length?`<div style="margin-top:8px"><b>📨 事務への依頼</b>${f.sent?`<div class="meta">✅ 事務に送りました（「面談記録」の「事務への依頼」で状況が見られます）</div>`:`
    ${f.manual&&!f.fromRec?`<label>居宅<input list="fdOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="fdOffice(${fi},this.value)"></label>${officeList("fdOffices")}`:""}
@@ -795,7 +800,7 @@ window.fdSend=async(fi,b)=>{const f=FOUND[fi];if(!f)return;const list=f.reqs.fil
  try{await persist(rows.map(row=>({table:"reqs",row})));f.sent=true;buzz(60);
   const bad=MODE==="live"?rows.filter(r=>{const x=DB.reqs.find(y=>y.id===r.id);return x&&x.mail&&x.mail!=="送信済"}).length:0;
   toast(bad?"依頼は保存しましたが、メールが送れませんでした（社長に連絡してください）":MODE==="live"?"事務に送りました":"事務に送りました（デモなのでメールは届きません）");
-  if(!f.events.length||f.events.every(e=>e.added))FOUND.splice(fi,1);render()}
+  if(!f.events.length||f.events.every(e=>e.added||e.inApp))FOUND.splice(fi,1);render()}
  catch(e){b.disabled=false;b.textContent="事務に送る";toast("送れませんでした："+errText(e))}};
 /* 事務への依頼の一覧（面談記録の画面） */
 function reqList(){const rs=(DB.reqs||[]).slice().sort((a,b)=>((a.state==="済")-(b.state==="済"))||String(b.at||"").localeCompare(String(a.at||"")));
@@ -808,6 +813,74 @@ function reqList(){const rs=(DB.reqs||[]).slice().sort((a,b)=>((a.state==="済")
 window.reqState=async(id,done,b)=>{b.disabled=true;
  try{await persist([{table:"reqs",row:{id,state:done?"済":"未対応",doneAt:done?new Date().toISOString():"",doneBy:done?(USER?USER.name:"デモ"):""}}]);render()}
  catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
+/* ===== 予定（訪問予定・書類・住宅改修・相談・電話・営業など） ===== */
+const SKINDS=[["訪問予定","#0d6e62"],["書類","#7b5ea7"],["住宅改修","#b5651d"],["相談","#2e86de"],["電話","#16a085"],["営業","#c0392b"],["その他","#7f8c8d"]];
+const skColor=k=>(SKINDS.find(x=>x[0]===k)||SKINDS[SKINDS.length-1])[1];
+const SF={};   /* 入力中の予定（画面を描き直しても消えない） */
+const addDays=(d,n)=>{const x=new Date(d+"T00:00:00");x.setDate(x.getDate()+n);return x.toLocaleDateString("sv-SE")};
+function schedMine(){const all=(DB.sched||[]).filter(s=>s.state!=="削除");
+ if(canAdmin()&&MODE==="live")return S.schedWho?all.filter(s=>String(s.email||"").toLowerCase()===S.schedWho):all;
+ return all.filter(s=>!s.email||MODE!=="live"||String(s.email).toLowerCase()===String(me()||"").toLowerCase())}
+const sortS=(a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time||"99").localeCompare(String(b.time||"99"));
+window.schedNew=(pre)=>{Object.assign(SF,{id:null,kind:"訪問予定",date:today(),time:"",office:"",cm:"",place:"",text:"",oc:[],ocq:""},pre||{});S.schedEdit="new";S.view="sched";render();scrollTo(0,0)};
+window.schedOpen=id=>{const s=(DB.sched||[]).find(x=>x.id===id);if(!s)return;Object.assign(SF,{id,kind:s.kind||"その他",date:s.date||today(),time:s.time||"",office:s.office||"",cm:s.cm||"",place:s.place||"",text:s.text||"",oc:[],ocq:""});S.schedEdit=id;S.view="sched";render();scrollTo(0,0)};
+function schedForm(){const o=DB.offices.find(x=>x.id===SF.office);const cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];
+ return `<div class="form" id="schedForm" style="border-color:var(--accent);margin-bottom:12px"><b>${SF.id?"予定を直す":"予定を入れる"}</b>
+ <div class="chips" style="gap:6px;margin:6px 0">${SKINDS.map(([k,c])=>`<button type="button" class="btn sm" style="${SF.kind===k?`background:${c};color:#fff;border-color:${c}`:`border-color:${c};color:${c}`}" onclick="SF.kind='${k}';render()">${k}</button>`).join("")}</div>
+ <div class="row2"><label>日付<input type="date" value="${esc(SF.date)}" onchange="SF.date=this.value"></label><label>時間（なくても可）<input type="time" value="${esc(SF.time)}" onchange="SF.time=this.value"></label></div>
+ <label>内容<span style="display:flex;gap:6px;align-items:flex-start"><textarea id="sf-text" rows="3" style="flex:1" oninput="SF.text=this.value" placeholder="例：K藤様の手すり取付の下見">${esc(SF.text)}</textarea><button type="button" class="btn" id="sfMic" style="padding:10px 12px;font-size:18px" onclick="schedMic()" aria-label="音声で入力">🎤</button></span></label>
+ <div class="meta" id="sfMicMsg">🎤を押して話すと、内容に文字が入ります。</div>
+ ${candHtml({who:"",cc:[],oc:SF.oc||[],ocq:SF.ocq},()=>"",id=>`sfPickOffice('${id}')`)}
+ <label>居宅（なくても可）<input list="sfOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="sfSetOffice(this.value)"></label>${officeList("sfOffices")}
+ ${o?`<label>ケアマネ（なくても可）<select onchange="SF.cm=this.value"><option value="">選ばない</option>${cms.map(c=>`<option value="${c.id}" ${SF.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}</select></label>`:""}
+ <label>場所（なくても可）<input value="${esc(SF.place)}" oninput="SF.place=this.value" placeholder="例：K藤様宅、事務所"></label>
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn primary" type="button" onclick="schedSave(this)">保存</button><button class="btn" type="button" onclick="S.schedEdit=null;render()">やめる</button>${SF.id?`<button class="btn" type="button" style="margin-left:auto;color:#c0392b;border-color:#c0392b" onclick="schedDel('${SF.id}',this)">削除</button>`:""}</div></div>`}
+window.sfSetOffice=v=>{const oc=officeCands(v);SF.cm="";if(!String(v||"").trim()){Object.assign(SF,{office:"",oc:[]});render();return}
+ if(oc.length===1)Object.assign(SF,{office:oc[0].id,oc:[]});else{Object.assign(SF,{office:"",oc,ocq:v});if(!oc.length)toast("当てはまる居宅が見つかりませんでした")}render()};
+window.sfPickOffice=id=>{Object.assign(SF,{office:id,oc:[],cm:""});render()};
+/* 音声入力（端末の音声認識を使うのでAIの費用はかからない） */
+let SMIC=null;
+window.schedMic=()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition,msg=$("#sfMicMsg"),btn=$("#sfMic");
+ if(SMIC){try{SMIC.stop()}catch(e){}return}
+ if(!SR){if(msg)msg.textContent="この端末では🎤が使えません。キーボードのマイクボタンで話して入力してください。";return}
+ const sr=new SR();sr.lang="ja-JP";sr.interimResults=true;sr.continuous=false;SMIC=sr;const base=SF.text?SF.text.replace(/\s+$/,"")+" ":"";
+ sr.onresult=ev=>{let t="";for(let i=0;i<ev.results.length;i++)t+=ev.results[i][0].transcript;SF.text=base+t;const ta=$("#sf-text");if(ta)ta.value=SF.text};
+ sr.onend=()=>{SMIC=null;const b=$("#sfMic");if(b)b.textContent="🎤";const m=$("#sfMicMsg");if(m)m.textContent="入りました。続けて話すときは、もう一度🎤を押してください。"};
+ sr.onerror=e=>{const m=$("#sfMicMsg");if(m)m.textContent=e.error==="not-allowed"?"マイクの使用が許可されていません。キーボードのマイクボタンで入力してください。":"うまく聞き取れませんでした。もう一度🎤を押してください。"};
+ try{sr.start();if(btn)btn.textContent="■";if(msg)msg.textContent="聞いています…話し終わると自動で止まります。"}catch(e){SMIC=null}};
+window.schedSave=async b=>{if(!SF.date){toast("日付を入れてください");return}if(!String(SF.text||"").trim()){toast("内容を入れてください");return}
+ b.disabled=true;const row={id:SF.id||newId("s"),kind:SF.kind,date:SF.date,time:SF.time||"",office:SF.office||"",cm:SF.cm||"",place:String(SF.place||"").trim(),text:String(SF.text).trim()};
+ if(!SF.id){row.state="";row.staff=USER?USER.name:"デモ";if(MODE!=="live")row.email=me()}
+ try{await persist([{table:"sched",row}]);S.schedEdit=null;buzz(60);toast(SF.id?"予定を直しました":"予定を入れました");render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
+window.schedDel=async(id,b)=>{if(!confirm("この予定を削除しますか？"))return;b.disabled=true;
+ try{await persist([{table:"sched",row:{id,state:"削除"}}]);S.schedEdit=null;toast("予定を削除しました");render()}catch(e){b.disabled=false;toast("削除できませんでした："+errText(e))}};
+window.schedDone=async(id,done,b)=>{if(b)b.disabled=true;
+ try{await persist([{table:"sched",row:{id,state:done?"済":"",doneAt:done?new Date().toISOString():""}}]);buzz(40);render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
+function schedItem(s,showOffice){const o=DB.offices.find(x=>x.id===s.office),cm=DB.cms.find(c=>c.id===s.cm),done=s.state==="済",col=skColor(s.kind);
+ const who=canAdmin()&&MODE==="live"&&!S.schedWho&&s.staff?` ・ ${esc(s.staff)}`:"";
+ return `<div class="logi" style="border-left-color:${col};${done?"opacity:.6":""}"><div class="meta"><span style="background:${col};color:#fff;border-radius:999px;padding:1px 8px;font-weight:700">${esc(s.kind||"その他")}</span> ${esc(String(s.date).slice(5).replace("-","/"))}（${wd(s.date)}）${s.time?" "+esc(s.time):""}${showOffice&&o?" ・ "+esc(o.name):""}${cm?" ・ "+esc(cm.name):""}${s.place?" ・ "+esc(s.place):""}${who}</div>
+ <div style="${done?"text-decoration:line-through":""}">${esc(s.text)}</div>
+ <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px"><button class="btn sm ${done?"":"primary"}" type="button" onclick="schedDone('${s.id}',${done?"false":"true"},this)">${done?"未に戻す":"✓ 済"}</button><button class="btn sm" type="button" onclick="schedOpen('${s.id}')">直す</button>
+ ${done?"":`<a class="btn sm" style="text-decoration:none" href="${esc(calUrl({title:"【"+(s.kind||"予定")+"】"+String(s.text).split("\n")[0].slice(0,40),date:s.date,start:s.time||"",end:"",place:s.place||""},o,cm))}" target="_blank" rel="noopener">Googleカレンダーに追加</a>`}</div></div>`}
+function viewSched(){const t=today(),list=schedMine(),open=list.filter(s=>s.state!=="済").sort(sortS);
+ const grp=[["期限が過ぎて未完了",s=>s.date<t],["今日",s=>s.date===t],["明日",s=>s.date===addDays(t,1)],["今週（あさって〜7日後）",s=>s.date>addDays(t,1)&&s.date<=addDays(t,7)],["来週以降",s=>s.date>addDays(t,7)]];
+ const done=list.filter(s=>s.state==="済"&&s.date>=addDays(t,-30)).sort((a,b)=>sortS(b,a));
+ const users=canAdmin()&&MODE==="live"?[...new Map((DB.sched||[]).filter(s=>s.email).map(s=>[String(s.email).toLowerCase(),s.staff||s.email])).entries()]:[];
+ return `<div class="section-t"><h2>予定</h2><button class="btn sm primary" type="button" onclick="schedNew()">＋ 予定を入れる</button></div>
+ ${users.length?`<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:8px">担当者 <select class="sim" onchange="S.schedWho=this.value;render()"><option value="">全員</option>${users.map(([e,n])=>`<option value="${esc(e)}" ${S.schedWho===e?"selected":""}>${esc(n)}</option>`).join("")}</select></label>`:""}
+ ${S.schedEdit?schedForm():""}
+ ${grp.map(([h,f])=>{const xs=open.filter(f);return xs.length?`<div class="section-t"><h2 style="font-size:16px${h.startsWith("期限")?";color:#c0392b":""}">${h}</h2><span class="meta">${xs.length}件</span></div><div class="log">${xs.map(s=>schedItem(s,true)).join("")}</div>`:""}).join("")}
+ ${open.length?"":`<div class="empty">これからの予定はありません。「＋ 予定を入れる」から入れられます。</div>`}
+ ${done.length?`<details style="margin-top:12px"><summary class="meta">済んだ予定（直近30日・${done.length}件）</summary><div class="log" style="margin-top:6px">${done.map(s=>schedItem(s,true)).join("")}</div></details>`:""}`}
+/* 居宅の画面に出す、その居宅の予定 */
+function schedMini(o){const t=today(),xs=schedMine().filter(s=>s.office===o.id&&s.state!=="済"&&s.date>=addDays(t,-30)).sort(sortS).slice(0,5);
+ return `<div style="margin-top:4px">${xs.length?`<div class="meta" style="margin-bottom:4px">この居宅の予定</div><div class="log">${xs.map(s=>schedItem(s,false)).join("")}</div>`:""}
+ <button class="btn" type="button" style="width:100%;padding:10px;font-size:15px;margin-top:6px" onclick="schedNew({office:'${o.id}'})">🗓 この居宅の予定を入れる</button></div>`}
+/* AIが見つけた予定をアプリの予定に入れる */
+const guessKind=t=>/会議|訪問|下見|面談|モニタ/.test(t)?"訪問予定":/改修|手すり|段差|工事/.test(t)?"住宅改修":/書類|見積|請求|契約|FAX|ＦＡＸ|提出/.test(t)?"書類":/電話|連絡/.test(t)?"電話":/相談/.test(t)?"相談":"その他";
+window.fdToSched=async(fi,ei,b)=>{const f=FOUND[fi];const e=f&&f.events[ei];if(!e)return;if(b)b.disabled=true;
+ const row={id:newId("s"),kind:guessKind(e.title+e.place),date:e.date,time:e.start||"",office:f.office||"",cm:f.cm&&f.cm!=="none"?f.cm:"",place:e.place||"",text:e.title,state:"",staff:USER?USER.name:"デモ"};if(MODE!=="live")row.email=me();
+ try{await persist([{table:"sched",row}]);e.inApp=true;toast("アプリの予定に入れました（"+row.kind+"）");render()}catch(err){if(b)b.disabled=false;toast("保存できませんでした："+errText(err))}};
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 /* ===== 紹介実績（ケアレンツの新規契約データ） ===== */
 let KC=null;
@@ -843,9 +916,12 @@ window.runReports=async b=>{b.disabled=true;const st=$("#rp-st");st.innerHTML='<
  try{const d=await api("reports",{});st.textContent="集計シートを更新しました（"+d.at+"）"}catch(e){st.textContent="更新できませんでした："+errText(e)}b.disabled=false};
 function refCount(cmId,days){const lim=ago(days);return DB.contracts.filter(c=>c.cm===cmId&&c.date>=lim).length}
 window.setOfficeStatus=async(id,st,sel)=>{const o=DB.offices.find(x=>x.id===id);
+ const live=st==="閉鎖"?DB.cms.filter(c=>c.office===id&&cst(c)==="在籍"):[];
  if(st==="非表示"&&!confirm((o?o.name:"")+" を非表示にしますか？\n（設定の「非表示も表示」で戻せます）")){if(sel)sel.value=ost(o);return}
+ if(st==="閉鎖"&&!confirm((o?o.name:"")+" を閉鎖にしますか？"+(live.length?"\n在籍ケアマネ"+live.length+"名（"+live.map(c=>c.name).join("、")+"）を退職にします。":"")+"\n（過去の記録は残ります）")){if(sel)sel.value=ost(o);return}
  if(sel)sel.disabled=true;
- try{await persist([{table:"offices",row:{id,status:st}}]);buzz(60);toast("「"+st+"」にしました"+(st!=="稼働"?"（一覧には出なくなります）":""));if(st==="非表示"){S.office=null}render()}
+ const d=today(),cmOps=live.map(c=>({table:"cms",row:{id:c.id,status:"退職",history:(c.history?c.history+"\n":"")+d+" "+(o?o.name:"")+"の閉鎖により退職"}}));
+ try{await persist([{table:"offices",row:{id,status:st}}].concat(cmOps));if(cmOps.length)toast("ケアマネ"+cmOps.length+"名を退職にしました");buzz(60);toast("「"+st+"」にしました"+(st!=="稼働"?"（一覧には出なくなります）":""));if(st==="非表示"||st==="閉鎖"){S.office=null}render()}
  catch(e){if(sel){sel.disabled=false;sel.value=ost(o)}toast("保存できませんでした："+errText(e))}};
 function bulkForm(o,cms){return `<form class="form" onsubmit="bulkSave(event,'${o.id}')"><b>辞めたケアマネにチェックを入れて「退職にする」を押してください</b>
  <div style="display:grid;gap:6px">${cms.map(c=>`<label class="bkrow"><input type="checkbox" name="bk" value="${c.id}" onchange="this.parentNode.classList.toggle('on',this.checked);buzz(20);const n=document.querySelectorAll('input[name=bk]:checked').length;$('#bk-go').textContent=n?n+'名を退職にする':'退職にする'"> ${esc(c.name)} <span class="meta">${esc(c.kana||"")}</span></label>`).join("")}</div>
@@ -899,7 +975,7 @@ function listRows(){
  let rows=S.pos?nearest().concat(DB.offices.filter(o=>o.lat==null).map(o=>({o,d:null}))):DB.offices.map(o=>({o,d:null}));
  if(q)rows=rows.filter(r=>(r.o.name+" "+(r.o.kana||"")+" "+r.o.addr+" "+(r.o.corp||"")).includes(q));
  if(S.mine)rows=rows.filter(r=>isMine(r.o));
- if(!S.showAll)rows=rows.filter(r=>ost(r.o)==="稼働");else rows=rows.filter(r=>ost(r.o)!=="非表示"||S.showAll==="all");
+ if(!S.showAll)rows=rows.filter(r=>ost(r.o)==="稼働");else rows=rows.filter(r=>!offGone(r.o)||S.showAll==="all");
  if(S.gap)rows=rows.filter(r=>{const l=lastVisit(r.o);return !l||daysSince(l)>=GAP_DAYS});
  if(S.distf){const [st,id]=S.distf.split(":");const it=DB.items.find(i=>i.id===id);
   if(it)rows=rows.filter(r=>itemFor(it,r.o)&&((distOf(it,r.o)||{}).state==="配布済")===(st==="done"))}
@@ -942,7 +1018,7 @@ function loadLeaflet(){return new Promise((res,rej)=>{if(window.L)return res();
  const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";sc.onload=res;sc.onerror=()=>rej(new Error("地図の部品を読み込めません"));document.head.appendChild(sc)})}
 function mapColor(){return S.mapColor||(jkMonth()?"jk":"visit")}
 function mapHtml(){const mc=mapColor(),m=jkMonth();return `${m?`<div class="seg" style="margin-bottom:8px"><button type="button" class="${mc==="jk"?"on":""}" onclick="S.mapColor='jk';render()">色分け：実績</button><button type="button" class="${mc==="visit"?"on":""}" onclick="S.mapColor='visit';render()">色分け：訪問</button></div>`:""}<div id="map"><div class="progress" style="padding:16px"><span class="spin"></span>地図を読み込み中…</div></div>
- <div class="meta" style="margin-top:6px">${mc==="jk"?`<span style="color:#c0392b">●</span> ${+m.slice(5)}月分の実績が未　<span style="color:#0d6e62">●</span> 実績 済`:`<span style="color:#c0392b">●</span> 訪問が${GAP_DAYS}日以上空いている　<span style="color:#0d6e62">●</span> 訪問OK`}　<span style="color:#8a8a8a">●</span> 休止など　<span style="color:#1a73e8">●</span> 現在地</div>`}
+ <div class="meta" style="margin-top:6px">${mc==="jk"?`<span style="color:#c0392b">●</span> ${+m.slice(5)}月分の実績が未　<span style="color:#0d6e62">●</span> 実績 済`:`<span style="color:#c0392b">●</span> 訪問が${GAP_DAYS}日以上空いている　<span style="color:#0d6e62">●</span> 訪問OK`}　<span style="color:#8a8a8a">●</span> 利用者なし・閉鎖など　<span style="color:#1a73e8">●</span> 現在地</div>`}
 window.openOffice=id=>{S.office=id;S.view="visit";S.selCm=null;S.recOpen=false;render();scrollTo(0,0)};
 async function drawMap(){const el=$("#map");if(!el)return;try{await loadLeaflet()}catch(e){el.textContent=e.message;return}
  if(!$("#map"))return;if(MAP){try{MAP.remove()}catch(e){}MAP=null}el.innerHTML="";
@@ -961,9 +1037,10 @@ async function drawMap(){const el=$("#map");if(!el)return;try{await loadLeaflet(
   pts.push(ll)});
  if(S.pos){L.circleMarker([S.pos.lat,S.pos.lng],{radius:8,color:"#fff",weight:3,fillColor:"#1a73e8",fillOpacity:1}).addTo(MAP).bindPopup("現在地");pts.push([S.pos.lat,S.pos.lng])}
  if(pts.length)MAP.fitBounds(pts,{padding:[30,30],maxZoom:15});else MAP.setView([34.486,133.362],12)}
-/* ===== 状態（居宅：稼働/休止/非表示、CM：在籍/退職/異動） ===== */
+/* ===== 状態（居宅：稼働/利用者なし/閉鎖/非表示、CM：在籍/退職/異動） ===== */
 const CAL_YEAR="2027";   /* 取込データのカレンダー年 */
-function ost(o){return o.status||"稼働"}
+function ost(o){const s=o.status||"稼働";return s==="休止"?"利用者なし":s}
+const offGone=o=>{const s=ost(o);return s==="非表示"||s==="閉鎖"};
 function cst(c){return c.status||"在籍"}
 /* ===== 担当営業 ===== */
 function me(){return MODE==="live"?(USER&&USER.email):(DB.users[0]&&DB.users[0].email)}
@@ -1400,7 +1477,7 @@ ${tr.slice(0,20000)}`);
 function viewSettings(){const imp=DB.importedAt;
  return `<div class="section-t"><h2>設定</h2></div>
  <div class="form"><b>表示</b>
-  <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" ${S.showAll?"checked":""} onchange="S.showAll=this.checked?(S.showAll==='all'?'all':true):false;saveUI();render()"> 休止中の居宅も表示する</label>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" ${S.showAll?"checked":""} onchange="S.showAll=this.checked?(S.showAll==='all'?'all':true):false;saveUI();render()"> 利用者なしの居宅も表示する</label>
   ${canAdmin()?`<label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" ${S.showAll==="all"?"checked":""} onchange="S.showAll=this.checked?'all':false;saveUI();render()"> 非表示の居宅も表示する（管理者）</label>`:""}
   <div class="meta">この設定はこの端末に覚えておきます。</div></div>
  ${MODE==="demo"?`<p style="margin-top:16px"><button class="btn sm" onclick="resetDemo(this)">ダミーデータに戻す</button></p>`:`<div class="section-t"><h2>アカウント</h2></div>
@@ -1510,7 +1587,7 @@ function render(){
  if(MODE==="setup"){$("#app").innerHTML=viewSetup();return}
  if(gated){$("#app").innerHTML=viewLogin();renderGisButton();return}
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));
- const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog,settings:viewSettings}[S.view]();
+ const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog,sched:viewSched,settings:viewSettings}[S.view]();
  if(MAP&&!(S.view==="list"&&S.listMode==="map")){try{MAP.remove()}catch(e){}MAP=null}
  $("#app").innerHTML=v+(MODE==="demo"?`<p class="demo">デモ：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`:`<p class="demo">データは会社のスプレッドシートに保存されます。この端末には残りません。</p>`);
 }
