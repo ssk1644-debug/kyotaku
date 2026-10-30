@@ -173,6 +173,7 @@ select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);backgr
 <header class="locbar">
   <div class="locbar-in">
     <button id="backBtn" class="backbtn" type="button" hidden onclick="history.back()">← 戻る</button>
+    <button id="syncBtn" class="backbtn" type="button" hidden onclick="syncNow(true)" title="最新にする" aria-label="最新にする">↻</button>
     <div class="brand">居宅営業管理システム<small id="brandSub">アスポート 営業用</small></div>
     <button id="gpsPill" class="pill" type="button" onclick="S.gpsHelp=!S.gpsHelp;S.view='visit';S.office=null;render()"><span class="dot"></span><span id="gpsText">位置を確認中…</span></button>
     <select id="sim" class="sim" aria-label="位置を試す">
@@ -280,14 +281,17 @@ function applyOp(t,row){const arr=DB[t];const i=arr.findIndex(x=>x.id===row.id);
  if(i>=0)Object.assign(arr[i],row);else if(t==="cards")arr.unshift(row);else arr.push(row)}
 /* 保存：デモはこの端末に、本番はスプレッドシートに */
 async function persist(ops){
- if(MODE==="live"){const d=await api("batch",{ops:ops.map(o=>({table:o.table,row:toServer(o.table,o.row)}))});
-  d.rows.forEach((r,i)=>applyOp(ops[i].table,fromServer(ops[i].table,r)))}
+ if(MODE==="live"){let d;
+  try{d=await api("batch",{ops:ops.map(o=>{const row=toServer(o.table,o.row),ex=Array.isArray(DB[o.table])?DB[o.table].find(x=>x.id===o.row.id):null;if(ex&&ex.updatedAt!=null)row._base=ex.updatedAt;return {table:o.table,row}})})}
+  catch(e){if(e&&e.code==="conflict")syncNow(true);throw e}
+  d.rows.forEach((r,i)=>{const v=fromServer(ops[i].table,r);if(ops[i].table==="records"){const ex=DB.records.find(x=>x.id===v.id);if(ex&&ex.trans&&!v.trans)v.trans=ex.trans;if(!v.trans&&ex&&ex.hasTrans)v.hasTrans=ex.hasTrans}applyOp(ops[i].table,v)})}
  else{ops.forEach(o=>applyOp(o.table,o.row));save()}}
 async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.offices=d.offices.map(r=>fromServer("offices",r,d.notices||[]));
  DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r)).filter(r=>r.kind!=="削除");
  DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[];
- ["items","dist","visits","contracts","jisseki","reqs","sched"].forEach(k=>DB[k]=d[k]||[])}
+ ["items","dist","visits","contracts","jisseki","reqs","sched"].forEach(k=>DB[k]=d[k]||[]);
+ DB.recCutoff=d.recCutoff||"";if(d.now)SYNC_TS=new Date(new Date(d.now).getTime()-90000).toISOString()}
 
 /* ===== Googleログイン ===== */
 function initGis(){if(window.google&&google.accounts){gisReady();return}
@@ -604,7 +608,7 @@ function candHtml(it,onCm,onOff){let h="";const st='style="gap:6px;margin:4px 0 
 const officeList=id=>`<datalist id="${id}">${DB.offices.filter(x=>!offGone(x)).map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist>`;
 const AUDIO_EXT=/\.(m4a|mp4|mp3|aac|amr|3gp|3ga|wav|ogg|opus|awb|flac)$/i,isAudio=f=>AUDIO_EXT.test(f.name||"")||/^audio\//.test(f.type||"");
 function callItem(f){const p=parseCallName(f.name),mt=matchCaller(p.who);
- return {file:f,who:p.who,date:p.date,office:mt.o?mt.o.id:"",cm:mt.cm?mt.cm.id:"",cc:mt.cc,oc:mt.oc,ocq:"",err:"",state:""}}
+ return {file:f,who:p.who,date:p.date,office:mt.o?mt.o.id:"",cm:mt.cm?mt.cm.id:"",cc:mt.cc,oc:mt.oc,ocq:"",err:"",state:"",party:"ケアマネ",client:""}}
 window.pickCall=async inp=>{let fs=[...(inp.files||[])];if(inp.value!==undefined)try{inp.value=""}catch(e){}if(!fs.length)return;
  const msg=[];const bad=fs.filter(f=>!isAudio(f));fs=fs.filter(isAudio);if(bad.length)msg.push(bad.length+"件は録音ファイルではないので外しました");
  const big=fs.filter(f=>f.size>19*1024*1024);fs=fs.filter(f=>f.size<=19*1024*1024);if(big.length)msg.push("長すぎる録音（20分くらいまで）を"+big.length+"件外しました");
@@ -625,9 +629,10 @@ function callBox(){const o=DB.offices.find(x=>x.id===CI.office);const cms=o?DB.c
  ${CI.err?`<div class="notice">${esc(CI.err)}</div>`:""}
  ${noMatch?`<div class="notice">「${esc(CI.who)}」は、登録されているケアマネ・居宅と一致しませんでした。居宅を選んでください。</div>`:""}
  ${candHtml(CI,id=>`ciPickCm('${id}')`,id=>`ciPickOffice('${id}')`)}
- <label>居宅<input id="ci-office" list="ciOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="ciSetOffice(this.value)"></label>
+ ${partyHtml(CI,"ci",CI.office)}
+ <label>${CI.party==="利用者"?"担当居宅":"居宅"}<input id="ci-office" list="ciOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="ciSetOffice(this.value)"></label>
  ${officeList("ciOffices")}
- <label>話したケアマネ<select id="ci-cm"><option value="">AIが会話から判断（分からなければあとで選ぶ）</option>${cms.map(c=>`<option value="${c.id}" ${CI.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none" ${CI.cm==="none"?"selected":""}>CM不在・事業所のみ</option></select></label>
+ <label>${CI.party==="利用者"?"担当ケアマネ":"話したケアマネ"}<select id="ci-cm"><option value="">${CI.party==="ケアマネ"||!CI.party?"AIが会話から判断（分からなければあとで選ぶ）":"選ばない"}</option>${cms.map(c=>`<option value="${c.id}" ${CI.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none" ${CI.cm==="none"?"selected":""}>CM不在・事業所のみ</option></select></label>
  <label>日付<input type="date" id="ci-date" value="${esc(CI.date)}"></label>
  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" ${o?"":"disabled"} onclick="runCall(this)">AIで要約して保存</button><button class="btn" type="button" onclick="CI.stage='idle';render()">やめる</button></div></div>`}
 const ciKeep=()=>{const d=$("#ci-date");if(d&&d.value)CI.date=d.value};
@@ -643,13 +648,15 @@ async function aiAudio(prompt,file){const ext=(String(file.name).split(".").pop(
 /* 1件の録音をAIで要約して面談記録（電話）に保存 */
 async function saveCall(it){const o=DB.offices.find(x=>x.id===it.office);if(!o)throw new Error("居宅を選んでください");
  const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>c.name).join("、");
- const prompt=`福祉用具貸与事業所（アスポート）の営業担当と、居宅介護支援事業所「${o.name}」との電話の録音です。
+ const isCl=it.party==="利用者",cl=isCl?clientOf(it.client):null;
+ if(isCl&&!cl)throw new Error("利用者を選んでください");
+ const prompt=`福祉用具貸与事業所（アスポート）の営業担当と、${isCl?"利用者（"+cl.name+"様）またはそのご家族との電話の録音です。担当の居宅介護支援事業所は「"+o.name+"」":it.party==="その他"?"居宅介護支援事業所「"+o.name+"」などの関係者との電話の録音":"居宅介護支援事業所「"+o.name+"」との電話の録音"}です。
 音声を聞き取り、営業日報向けに要約して、次のキーだけのJSONで返してください。
 {"summary":"話した内容の要約（3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"電話の相手のケアマネジャーの名前（会話から分かる場合。候補：${cms||"なし"}。分からなければ空）"${FIND_KEYS}}${FIND_RULE(it.date||today())}
 重要：利用者（高齢者）の名前は、姓の1文字目をローマ字の頭文字に置き換え、名は書かずに「K藤様」のように書くこと。住所・電話番号・生年月日は書かないこと。`;
  const r=await aiAudio(prompt,it.file);if(!r)throw new Error("この画面ではAIが使えません");const d=r.data||{};
- let cm=it.cm||"";if(!cm&&d.cm){const h=cmCands(d.cm,o.id);if(h.length===1)cm=h[0].id}
- const row={id:newId("r"),office:o.id,cm,date:it.date||today(),text:d.summary||"",next:d.next||"",trans:"",staff:USER?USER.name:"",kind:"電話"};
+ let cm=it.cm||"";if(!cm&&d.cm&&(it.party||"ケアマネ")==="ケアマネ"){const h=cmCands(d.cm,o.id);if(h.length===1)cm=h[0].id}
+ const row={id:newId("r"),office:o.id,cm,date:it.date||today(),text:d.summary||"",next:d.next||"",trans:"",staff:USER?USER.name:"",kind:"電話",party:it.party||"ケアマネ",client:isCl?it.client:""};
  await persist([{table:"records",row}]);addFound(d,row.id,o.id,cm,row.date);return {o,cm}}
 window.runCall=async b=>{if(!DB.offices.some(x=>x.id===CI.office)){toast("居宅を選んでください");return}
  CI.cm=$("#ci-cm").value;CI.date=$("#ci-date").value||CI.date;CI.stage="work";render();
@@ -666,7 +673,8 @@ function cbBox(){if(!CB.items.length)return "";const n=CB.items.length;
   ${it.err?`<div class="notice">${esc(it.err)}</div>`:""}
   ${!o&&!(it.cc||[]).length&&!(it.oc||[]).length&&!it.err?`<div class="notice">${it.who?"「"+esc(it.who)+"」は登録と一致しませんでした。":"相手が分かりませんでした。"}居宅を選んでください。</div>`:""}
   ${candHtml(it,id=>`cbPickCm(${i},'${id}')`,id=>`cbPickOffice(${i},'${id}')`)}
-  <label>居宅<input list="cbOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="cbSetOffice(${i},this.value)"></label>
+  ${partyHtml(it,"cb"+i,it.office)}
+  <label>${it.party==="利用者"?"担当居宅":"居宅"}<input list="cbOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="cbSetOffice(${i},this.value)"></label>
   <div class="row2"><label>話したケアマネ<select onchange="CB.items[${i}].cm=this.value"><option value="">AIが会話から判断</option>${cms.map(c=>`<option value="${c.id}" ${it.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none" ${it.cm==="none"?"selected":""}>CM不在・事業所のみ</option></select></label>
   <label>日付<input type="date" value="${esc(it.date)}" onchange="CB.items[${i}].date=this.value"></label></div></div>`}).join("");
  const left=CB.items.filter(x=>x.state!=="ok"),need=left.filter(x=>!x.office).length,done=n-left.length;
@@ -699,11 +707,12 @@ async function checkShared(){if(!/[?&]shared=1/.test(location.search))return;
   if(files.length)pickCall({files})}catch(e){toast("共有されたファイルを読み込めませんでした")}}
 /* ===== 記録の修正（居宅・ケアマネ・日付の選び直し、削除） ===== */
 const RE={id:null,office:"",cm:"",date:"",text:"",next:"",oc:[],ocq:"",err:""};
-window.recEditOpen=id=>{const r=DB.records.find(x=>x.id===id);if(!r)return;S.recEdit=id;Object.assign(RE,{id,office:r.office,cm:r.cm||"",date:r.date,text:r.text||"",next:r.next||"",oc:[],ocq:"",err:""});render();
+window.recEditOpen=id=>{const r=DB.records.find(x=>x.id===id);if(!r)return;S.recEdit=id;Object.assign(RE,{id,office:r.office,cm:r.cm||"",date:r.date,text:r.text||"",next:r.next||"",party:r.party||"ケアマネ",client:r.client||"",oc:[],ocq:"",err:""});render();
  setTimeout(()=>{const b=$("#recEdit");b&&b.scrollIntoView({block:"center"})},80)};
 function recEditForm(r){const o=DB.offices.find(x=>x.id===RE.office);const cms=o?DB.cms.filter(c=>c.office===o.id&&(cst(c)==="在籍"||c.id===RE.cm)):[];
  return `<div class="form" id="recEdit" style="border-color:var(--accent);margin:6px 0"><b>記録の修正</b>${r.kind==="電話"?" 📞電話":""}
  ${RE.err?`<div class="notice">${esc(RE.err)}</div>`:""}
+ ${partyHtml(RE,"re",RE.office)}
  ${candHtml({who:"",cc:[],oc:RE.oc,ocq:RE.ocq},()=>"",id=>`rePickOffice('${id}')`)}
  <label>居宅<input list="reOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="reSetOffice(this.value)"></label>
  ${officeList("reOffices")}
@@ -711,7 +720,7 @@ function recEditForm(r){const o=DB.offices.find(x=>x.id===RE.office);const cms=o
  <label>日付<input type="date" value="${esc(RE.date)}" onchange="RE.date=this.value"></label></div>
  <label>話した内容（要約）<textarea rows="6" oninput="RE.text=this.value">${esc(RE.text)}</textarea></label>
  <label>次回アクション<input value="${esc(RE.next)}" oninput="RE.next=this.value" placeholder="例：見積り提出（10/7まで）"></label>
- ${r.trans?`<details><summary class="meta">文字起こしを見る（見るだけ）</summary><div class="trans">${esc(r.trans)}</div></details>`:""}
+ ${transHtml(r,"文字起こしを見る（見るだけ）")}
  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn primary" type="button" onclick="reSave(this)">保存</button><button class="btn" type="button" onclick="S.recEdit=null;render()">やめる</button><button class="btn" type="button" style="margin-left:auto;color:#c0392b;border-color:#c0392b" onclick="reDel(this)">この記録を削除</button></div></div>`}
 window.reSetOffice=v=>{const oc=officeCands(v);
  if(oc.length===1){if(oc[0].id!==RE.office)RE.cm="";Object.assign(RE,{office:oc[0].id,oc:[],err:""})}
@@ -719,8 +728,9 @@ window.reSetOffice=v=>{const oc=officeCands(v);
 window.rePickOffice=id=>{if(id!==RE.office)RE.cm="";Object.assign(RE,{office:id,oc:[],err:""});render()};
 window.reSave=async b=>{const r=DB.records.find(x=>x.id===RE.id);if(!r)return;const o=DB.offices.find(x=>x.id===RE.office);if(!o){toast("居宅を選んでください");return}
  if(!String(RE.text||"").trim()){toast("話した内容が空です");return}
+ if(RE.party==="利用者"&&!RE.client){toast("利用者を選んでください");return}
  const moved=o.id!==r.office;b.disabled=true;
- try{await persist([{table:"records",row:{id:r.id,office:o.id,cm:RE.cm,date:RE.date||r.date,text:String(RE.text).trim(),next:String(RE.next||"").trim()}}]);S.recEdit=null;buzz(60);
+ try{await persist([{table:"records",row:{id:r.id,office:o.id,cm:RE.cm,date:RE.date||r.date,text:String(RE.text).trim(),next:String(RE.next||"").trim(),party:RE.party||"ケアマネ",client:RE.party==="利用者"?RE.client:""}}]);S.recEdit=null;buzz(60);
   toast(moved?"記録を「"+o.name+"」に移しました":"記録を修正しました");render()}
  catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
 window.reDel=async b=>{const r=DB.records.find(x=>x.id===RE.id);if(!r)return;if(!confirm("この記録を削除しますか？"))return;b.disabled=true;
@@ -779,7 +789,7 @@ function foundBox(){if(!FOUND.length)return "";
    <div class="meta">押すと自分のGoogleカレンダーが開くので、内容を確かめて「保存」を押してください。</div></div>`:"";
   const rqs=f.reqs.length?`<div style="margin-top:8px"><b>📨 事務への依頼</b>${f.sent?`<div class="meta">✅ 事務に送りました（「面談記録」の「事務への依頼」で状況が見られます）</div>`:`
    ${f.manual&&!f.fromRec?`<label>居宅<input list="fdOffices" value="${esc(o?o.name:"")}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="fdOffice(${fi},this.value)"></label>${officeList("fdOffices")}`:""}
-   ${f.reqs.map((q,qi)=>`<label style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">${f.reqs.length>1||!f.manual?`<input type="checkbox" style="width:auto;margin-top:12px" ${q.on?"checked":""} onchange="FOUND[${fi}].reqs[${qi}].on=this.checked">`:""}<textarea rows="2" style="flex:1" oninput="FOUND[${fi}].reqs[${qi}].text=this.value" placeholder="例：K藤様の契約書を居宅にFAXしてください">${esc(q.text)}</textarea></label>`).join("")}
+   ${f.reqs.map((q,qi)=>`<label style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">${f.reqs.length>1||!f.manual?`<input type="checkbox" style="width:auto;margin-top:12px" ${q.on?"checked":""} onchange="FOUND[${fi}].reqs[${qi}].on=this.checked">`:""}<textarea rows="2" style="flex:1" oninput="FOUND[${fi}].reqs[${qi}].text=this.value" placeholder="${f.fromRec?"お願いがあれば一言（空のままでも送れます）":"例：K藤様の契約書を居宅にFAXしてください"}">${esc(q.text)}</textarea></label>`).join("")}
    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn primary" type="button" onclick="fdSend(${fi},this)">${f.manual?"事務に送る":"チェックした依頼を事務に送る"}</button>${f.manual?"":`<button class="btn sm" type="button" onclick="FOUND[${fi}].reqs.push({text:'',on:true});render()">＋ 依頼を足す</button>`}</div>
    <div class="meta">事務のメールに届きます。利用者名は「K藤様」のように頭文字で書いてください。</div>`}</div>`:"";
   return `<div class="form found" style="border-color:var(--accent);margin:8px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${f.fromRec?"📨 この記録を事務に送る":f.manual?"📨 事務に依頼する":"🤖 AIが見つけたこと"}</b><button class="btn sm" type="button" onclick="fdClose(${fi})">閉じる</button></div>
@@ -791,7 +801,8 @@ window.fdAdded=(fi,ei)=>{setTimeout(()=>{const f=FOUND[fi];if(f&&f.events[ei]){f
 window.fdOffice=(fi,v)=>{const oc=officeCands(v),f=FOUND[fi];if(oc.length===1){f.office=oc[0].id;render()}else{f.office="";toast(oc.length?"候補が"+oc.length+"件あります。一覧から選んでください":"当てはまる居宅が見つかりませんでした")}};
 window.fdClose=fi=>{const f=FOUND[fi];if(!f)return;
  if(!f.sent&&f.reqs.some(q=>q.on&&q.text.trim())&&!confirm("事務への依頼をまだ送っていません。閉じますか？"))return;FOUND.splice(fi,1);render()};
-window.fdSend=async(fi,b)=>{const f=FOUND[fi];if(!f)return;const list=f.reqs.filter(q=>(q.on||f.manual)&&q.text.trim());
+window.fdSend=async(fi,b)=>{const f=FOUND[fi];if(!f)return;let list=f.reqs.filter(q=>(q.on||f.manual)&&q.text.trim());
+ if(!list.length&&f.fromRec){const rr=DB.records.find(x=>x.id===f.rec);list=[{text:"【共有】"+firstLine(rr&&rr.text).slice(0,40)}]}
  if(!list.length){toast("送る依頼がありません");return}
  if(!DB.offices.some(o=>o.id===f.office)){toast("居宅を選んでください");return}
  b.disabled=true;b.innerHTML='<span class="spin"></span> 送信中…';
@@ -881,6 +892,74 @@ const guessKind=t=>/会議|訪問|下見|面談|モニタ/.test(t)?"訪問予定
 window.fdToSched=async(fi,ei,b)=>{const f=FOUND[fi];const e=f&&f.events[ei];if(!e)return;if(b)b.disabled=true;
  const row={id:newId("s"),kind:guessKind(e.title+e.place),date:e.date,time:e.start||"",office:f.office||"",cm:f.cm&&f.cm!=="none"?f.cm:"",place:e.place||"",text:e.title,state:"",staff:USER?USER.name:"デモ"};if(MODE!=="live")row.email=me();
  try{await persist([{table:"sched",row}]);e.inApp=true;toast("アプリの予定に入れました（"+row.kind+"）");render()}catch(err){if(b)b.disabled=false;toast("保存できませんでした："+errText(err))}};
+/* ===== 記録の相手（ケアマネ／利用者・家族／その他） ===== */
+const PARTIES=[["ケアマネ","ケアマネ"],["利用者","利用者・家族"],["その他","その他"]];
+const clientOf=id=>DB.clients.find(u=>u.id===id);
+const clOffice=u=>u?(u.office||(DB.cms.find(c=>c.id===u.cm)||{}).office||""):"";   /* 利用者の担当居宅（なければ担当ケアマネの居宅） */
+const clientLabel=u=>{const o=DB.offices.find(x=>x.id===clOffice(u));return String(u.name||"")+(o?"（"+o.name+"）":"")};
+const PST=k=>k==="rf"?RF:k==="ci"?CI:k==="re"?RE:String(k).startsWith("cb")?CB.items[+String(k).slice(2)]:null;
+function partyHtml(st,k,officeId){const p=st.party||"ケアマネ",u=st.client?clientOf(st.client):null;
+ const list=DB.clients.slice().sort((a,b)=>(clOffice(b)===officeId)-(clOffice(a)===officeId)||String(a.name).localeCompare(String(b.name),"ja"));
+ const uo=u?DB.offices.find(x=>x.id===clOffice(u)):null,ucm=u?DB.cms.find(c=>c.id===u.cm):null;
+ return `<div class="meta" style="margin-top:6px">話した相手</div><div class="seg" style="margin:4px 0 6px">${PARTIES.map(([v,l])=>`<button type="button" class="${p===v?"on":""}" onclick="partySet('${k}','${v}')">${l}</button>`).join("")}</div>
+ ${p==="利用者"?`<label>利用者<input list="pl-${k}" value="${esc(u?clientLabel(u):"")}" placeholder="名前の一部を入れて候補から選ぶ（例：K藤）" onchange="partyClient('${k}',this.value)"></label>
+ <datalist id="pl-${k}">${list.map(x=>`<option value="${esc(clientLabel(x))}">`).join("")}</datalist>
+ ${u?`<div class="meta">担当居宅：${esc(uo?uo.name:"未登録")} ・ 担当ケアマネ：${esc(ucm?ucm.name:"未登録")}（自動で入ります）</div>`:""}`:""}`}
+window.partySet=(k,p)=>{const s=PST(k);if(!s)return;if(k==="ci")ciKeep();s.party=p;if(p!=="利用者")s.client="";render()};
+window.partyClient=(k,v)=>{const s=PST(k);if(!s)return;if(k==="ci")ciKeep();const raw=String(v||"").trim();
+ let u=DB.clients.find(x=>clientLabel(x)===raw)||DB.clients.find(x=>String(x.name)===raw);
+ if(!u&&raw){const w=pnorm(raw.replace(/（.*$/,"")),hit=DB.clients.filter(x=>pnorm(x.name).includes(w));if(hit.length===1)u=hit[0];else{toast(hit.length?"候補が"+hit.length+"人います。一覧から選んでください":"当てはまる利用者が見つかりませんでした");return}}
+ if(!u){s.client="";render();return}
+ s.client=u.id;const uof=clOffice(u);
+ if(k==="rf"){RF.cm=u.cm||"";RF.recOffice=uof&&uof!==RF.office?uof:""}
+ else if(k==="ci"){Object.assign(CI,{office:uof||CI.office,cm:u.cm||"",oc:[],cc:[],err:""});if(CI.office){S.office=CI.office;S.view="visit"}}
+ else if(k==="re"){Object.assign(RE,{office:uof||RE.office,cm:u.cm||"",oc:[],err:""})}
+ else Object.assign(s,{office:uof||s.office,cm:u.cm||"",oc:[],cc:[],err:""});
+ render();if(k==="ci")ciScroll()};
+const firstLine=t=>String(t||"").split("\n").map(x=>x.replace(/^[・\s]+/,"")).find(Boolean)||"記録";
+function whoHtml(r,cm,pick){if(r.party==="利用者"){const u=clientOf(r.client);return `👤${esc(u?u.name:"利用者")}${cm?"（担当 "+esc(cm.name)+"）":""}`}
+ if(r.party==="その他")return "その他"+(cm?"（"+esc(cm.name)+"）":"");
+ return cm?esc(cm.name):r.cm==="none"?"事業所":pick}
+/* 記録をそのまま事務に送る（依頼文なし） */
+window.fdQuick=async(id,b)=>{const r=DB.records.find(x=>x.id===id);if(!r)return;if(!confirm("この記録を、そのまま事務に送りますか？"))return;if(b)b.disabled=true;
+ const row={id:newId("q"),office:r.office,cm:r.cm&&r.cm!=="none"?r.cm:"",rec:r.id,text:"【共有】"+firstLine(r.text).slice(0,40),staff:USER?USER.name:"デモ",state:"未対応",at:new Date().toISOString()};
+ try{await persist([{table:"reqs",row}]);buzz(60);toast(MODE==="live"?"事務に送りました":"事務に送りました（デモなのでメールは届きません）");render()}
+ catch(e){if(b)b.disabled=false;toast("送れませんでした："+errText(e))}};
+/* ===== ほかの端末・ほかの人の変更を取り込む（変わった分だけ） ===== */
+let SYNC_TS="",SYNC_BUSY=false;
+const editingNow=()=>typing()||!!(S.cmEdit||S.recEdit||S.schedEdit||S.recOpen||S.bulk||RC.on||(CI.stage&&CI.stage!=="idle")||CB.items.length);
+async function syncNow(manual){if(MODE!=="live"||!USER||SYNC_BUSY||!SYNC_TS)return;
+ if(!manual&&(document.hidden||editingNow()))return;
+ SYNC_BUSY=true;const sb=$("#syncBtn");if(sb)sb.textContent="…";let n=0;
+ try{const d=await api("since",{ts:SYNC_TS});SYNC_TS=new Date(new Date(d.now).getTime()-90000).toISOString();
+  Object.keys(d).forEach(t=>{if(!Array.isArray(d[t])||!Array.isArray(DB[t])||t==="users")return;
+   d[t].forEach(r=>{n++;
+    if((t==="records"&&r.kind==="削除")||(t==="sched"&&r.state==="削除")){DB[t]=DB[t].filter(x=>x.id!==r.id);return}
+    const v=["offices","cms","records"].includes(t)?fromServer(t,r):r;
+    if(t==="records"){const ex=DB.records.find(x=>x.id===r.id);if(ex&&ex.trans&&!v.trans)v.trans=ex.trans}
+    applyOp(t,v)})});
+  if(n&&(manual||!editingNow()))render();if(manual)toast(n?"最新にしました（"+n+"件）":"最新の状態です")}
+ catch(e){if(manual)toast("更新できませんでした："+errText(e))}
+ finally{SYNC_BUSY=false;const b2=$("#syncBtn");if(b2)b2.textContent="↻"}}
+window.syncNow=syncNow;
+setInterval(()=>syncNow(false),180000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)syncNow(false)});
+/* 6か月より前の記録は、居宅を開いたときに取りに行く */
+const OLDER={};
+function wantOlder(){if(MODE!=="live"||S.view!=="visit"||!S.office||!DB.recCutoff||OLDER[S.office])return;const oid=S.office;OLDER[oid]="loading";
+ api("older",{office:oid,before:DB.recCutoff}).then(d=>{OLDER[oid]="done";const rs=d.records||[];rs.forEach(r=>applyOp("records",fromServer("records",r)));if(rs.length&&S.office===oid&&!editingNow())render()}).catch(()=>{OLDER[oid]=null})}
+/* 文字起こしの全文は見るときだけ取りに行く */
+window.loadTrans=async id=>{const r=DB.records.find(x=>x.id===id);if(!r||r.trans||MODE!=="live")return;
+ try{const d=await api("trans",{id});r.trans=d.trans||"（文字起こしはありません）";document.querySelectorAll(`[data-trans="${id}"]`).forEach(el=>el.textContent=r.trans)}
+ catch(e){toast("読み込めませんでした："+errText(e))}};
+const transHtml=(r,label)=>r.trans||r.hasTrans?`<details ontoggle="if(this.open)loadTrans('${r.id}')"><summary class="meta">${label}</summary><div class="trans" data-trans="${r.id}">${r.trans?esc(r.trans):"読み込み中…"}</div></details>`:"";
+/* 負荷テスト（管理者）：10件同時に保存したときの待ち時間を測る */
+window.benchRun=async b=>{const out=$("#benchOut");b.disabled=true;out.textContent="計測中…（30秒ほど）";
+ try{const t0=performance.now();await api("load");const tl=Math.round(performance.now()-t0);
+  const rs=await Promise.all(Array.from({length:10},()=>{const s=performance.now();return api("bench").then(r=>({ms:Math.round(performance.now()-s),w:r.waited})).catch(e=>({err:errText(e)}))}));
+  const ok=rs.filter(r=>!r.err),ms=ok.map(r=>r.ms);
+  out.innerHTML=`開くときの読み込み：<b>${(tl/1000).toFixed(1)}秒</b><br>10件同時の保存：成功 ${ok.length}件・失敗 ${rs.length-ok.length}件${ms.length?` ・ いちばん遅い ${(Math.max(...ms)/1000).toFixed(1)}秒 ・ 平均 ${(ms.reduce((a,c)=>a+c,0)/ms.length/1000).toFixed(1)}秒`:""}${rs.some(r=>r.err)?"<br>失敗の理由："+esc(rs.find(r=>r.err).err):""}`}
+ catch(e){out.textContent="計測できませんでした："+errText(e)}b.disabled=false};
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 /* ===== 紹介実績（ケアレンツの新規契約データ） ===== */
 let KC=null;
@@ -933,12 +1012,14 @@ window.bulkSave=async(e,oid)=>{e.preventDefault();const ids=[...document.querySe
  try{await persist(ops);S.bulk=false;buzz([60,60,60]);toast(ids.length+"名を退職にしました（下の「退職・異動したケアマネ」から戻せます）");render()}catch(err){bt.disabled=false;bt.textContent="退職にする";toast("保存できませんでした："+errText(err))}};
 /* 面談記録の下書き（画面を描き直しても消えないように覚えておく） */
 const RF={office:null};
-function rfReset(oid){Object.assign(RF,{office:oid,cm:S.selCm||"",date:today(),text:"",next:"",trans:""})}
+function rfReset(oid){Object.assign(RF,{office:oid,cm:S.selCm||"",date:today(),text:"",next:"",trans:"",party:"ケアマネ",client:"",recOffice:""})}
 const setF=(k,v)=>{RF[k]=v;const el=$("#f-"+k);if(el)el.value=v};
 function recordForm(o,cms){if(RF.office!==o.id)rfReset(o.id);
  return `<form class="form" id="recForm" onsubmit="addRecord(event,'${o.id}')">
   <div style="display:flex;justify-content:space-between;align-items:center"><b>面談を記録</b><button class="btn sm" type="button" onclick="recClose()">閉じる</button></div>
-  <div class="row2"><label>面談したCM（あとで選んでもOK）<select id="f-cm" onchange="RF.cm=this.value"><option value="">（あとで選ぶ）</option>${cms.map(c=>`<option value="${c.id}" ${RF.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none" ${RF.cm==="none"?"selected":""}>（CM不在・事業所のみ）</option></select></label>
+  ${partyHtml(RF,"rf",o.id)}
+  ${RF.recOffice?`<div class="notice">担当居宅「${esc((DB.offices.find(x=>x.id===RF.recOffice)||{name:""}).name)}」の記録として保存します</div>`:""}
+  <div class="row2"><label>${RF.party==="利用者"?"担当ケアマネ":"面談したCM（あとで選んでもOK）"}<select id="f-cm" onchange="RF.cm=this.value"><option value="">（あとで選ぶ）</option>${cms.map(c=>`<option value="${c.id}" ${RF.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none" ${RF.cm==="none"?"selected":""}>（CM不在・事業所のみ）</option></select></label>
   <label>日付<input type="date" id="f-date" value="${esc(RF.date)}" onchange="RF.date=this.value"></label></div>
   <div class="recbox">
    <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn recbtn ${RC.on?"rec":""}" id="recBtn" onclick="toggleRec()">${RC.on?"■ 録音を止める":"● 録音を開始"}</button>
@@ -956,14 +1037,16 @@ window.recClose=()=>{const dirty=RC.on||RC.busy||String((RF.trans||"")+(RF.text|
  if(RC.on)stopRec();rfClear();S.recOpen=false;render()};
 function rfClear(){RF.office=null;RC.audioUrl="";RC.msg="";RC.fail=[];RC.blob=null}
 function logItem(r){if(S.recEdit===r.id)return recEditForm(r);const cm=DB.cms.find(c=>c.id===r.cm);const o=DB.offices.find(x=>x.id===r.office);
- const pick=!r.cm&&o?`<select class="sim" onchange="setRecCm('${r.id}',this.value)"><option value="">面談者を選ぶ</option>${DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}<option value="none">CM不在・事業所のみ</option></select>`:"";
- return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${cm?esc(cm.name):r.cm==="none"?"事業所":pick}${r.staff?" ・ 記録："+esc(r.staff):""} <button class="btn sm" type="button" style="padding:2px 8px" onclick="recEditOpen('${r.id}')">修正</button>${(q=>q.length?` <span class="status" style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:999px;font-weight:700">📨 事務に送信済み${q.every(x=>x.state==="済")?"・対応済":"・未対応"}</span> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">もう一度送る</button>`:` <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">事務に送る</button>`)((DB.reqs||[]).filter(x=>x.rec===r.id))}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${r.trans?`<details><summary class="meta">文字起こしを見る</summary><div class="trans">${esc(r.trans)}</div></details>`:""}</div>`}
+ const pick=!r.cm&&o&&r.party!=="利用者"&&r.party!=="その他"?`<select class="sim" onchange="setRecCm('${r.id}',this.value)"><option value="">面談者を選ぶ</option>${DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}<option value="none">CM不在・事業所のみ</option></select>`:"";
+ return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${whoHtml(r,cm,pick)}${r.staff?" ・ 記録："+esc(r.staff):""} <button class="btn sm" type="button" style="padding:2px 8px" onclick="recEditOpen('${r.id}')">修正</button>${(q=>q.length?` <span class="status" style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:999px;font-weight:700">📨 事務に送信済み${q.every(x=>x.state==="済")?"・対応済":"・未対応"}</span> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">もう一度送る</button>`:` <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdQuick('${r.id}',this)">📨 そのまま事務へ</button> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">一言つけて送る</button>`)((DB.reqs||[]).filter(x=>x.rec===r.id))}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${transHtml(r,"文字起こしを見る")}</div>`}
 window.setRecCm=async(id,cm)=>{if(!cm)return;try{await persist([{table:"records",row:{id,cm}}]);toast("面談者を登録しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
 window.addRecord=async(e,oid)=>{e.preventDefault();
  const t=$("#f-text").value.trim();if(!t)return;const b=e.target.querySelector("[type=submit]");b.disabled=true;
  if(RC.on)stopRec();
- const row={id:newId("r"),office:oid,cm:$("#f-cm").value,date:$("#f-date").value,text:t,next:$("#f-next").value.trim(),trans:$("#f-trans").value.trim(),staff:USER?USER.name:""};
- try{await persist([{table:"records",row}]);if(RC.found){addFound(RC.found,row.id,oid,row.cm,row.date);RC.found=null}rfClear();S.recOpen=false;toast("面談記録を保存しました");render()}
+ if(RF.party==="利用者"&&!RF.client){b.disabled=false;toast("利用者を選んでください");return}
+ const roff=RF.recOffice||oid,cmSel=$("#f-cm").value;
+ const row={id:newId("r"),office:roff,cm:cmSel||(RF.party==="利用者"?RF.cm:""),date:$("#f-date").value,text:t,next:$("#f-next").value.trim(),trans:$("#f-trans").value.trim(),staff:USER?USER.name:"",party:RF.party||"ケアマネ",client:RF.party==="利用者"?RF.client:""};
+ try{await persist([{table:"records",row}]);if(RC.found){addFound(RC.found,row.id,roff,row.cm,row.date);RC.found=null}rfClear();S.recOpen=false;toast("面談記録を保存しました");render()}
  catch(err){b.disabled=false;toast("保存できませんでした："+errText(err))}};
 
 function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").length;
@@ -1461,7 +1544,7 @@ window.summarize=async(btn)=>{RC.found=null;if(RC.on){stopRec();await new Promis
  const names=DB.clients.filter(u=>DB.cms.some(c=>c.id===u.cm&&c.office===o.id)).map(u=>u.name).join("、");
  stx('<span class="spin"></span>要約中…');
  try{const rr=await aiJson(
- `福祉用具貸与事業所（アスポート）の営業担当が、居宅介護支援事業所「${o.name}」のケアマネジャー（${cmName}）と面談したときの文字起こしです。音声認識のため誤字があります。
+ `福祉用具貸与事業所（アスポート）の営業担当が、${RF.party==="利用者"?"利用者（"+((clientOf(RF.client)||{}).name||"")+"様）またはそのご家族":RF.party==="その他"?"居宅介護支援事業所「"+o.name+"」の関係者":"居宅介護支援事業所「"+o.name+"」のケアマネジャー（"+cmName+"）"}と面談したときの文字起こしです。音声認識のため誤字があります。
 営業日報向けに要約し、次のキーだけのJSONで返してください。
 {"summary":"話した内容の要約（箇条書き風に3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。1〜2行）","clients":["話題に出た利用者名"]${FIND_KEYS}}${FIND_RULE(RF.date||today())}
 参考：この居宅の当社利用者は ${names||"なし"}。
@@ -1486,6 +1569,7 @@ function viewSettings(){const imp=DB.importedAt;
  <div class="section-t"><h2>ページ送りボタン</h2></div>
  <div class="form"><label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px"><input type="checkbox" style="width:auto" ${S.keyTest?"checked":""} onchange="S.keyTest=this.checked"> 確認モード（押すと届いたキーの名前が出ます）</label></div>
  ${canAdmin()?`<div class="section-t" style="margin-top:28px"><h2 style="font-size:18px">管理者メニュー</h2></div>
+ ${MODE==="live"?`<div class="form"><b>負荷テスト</b><div class="meta">開くときの読み込み時間と、10件同時に保存したときの待ち時間を測ります（「負荷テスト」シートに計測の記録が残るだけで、営業のデータは変わりません）。</div><div style="margin-top:6px"><button class="btn" type="button" onclick="benchRun(this)">測ってみる</button></div><div class="meta" id="benchOut" style="margin-top:6px"></div></div>`:""}
  ${itemsAdmin()}
  ${MODE==="live"?`<div class="section-t"><h2>新規契約データ（紹介実績）</h2></div>
  <div class="form"><div class="meta">ケアレンツから書き出した新規契約のExcelを選ぶと、ケアマネごとの紹介件数を記録します。何度取り込んでも重複しません。紹介したケアマネは<b>最初に取り込んだときのまま</b>残り、あとで包括から居宅に移って担当CMが変わっても書き換わりません。利用者名はこの端末で暗号化し、送信しません。</div>
@@ -1547,7 +1631,7 @@ function viewLog(){
  const recs=[...DB.records].sort((a,b)=>b.date.localeCompare(a.date));
  const top=`<div style="margin:8px 0 4px">${foundBox()}${cbBox()}${CB.items.length?"":CI.stage!=="idle"&&!CI.office?callBox():callPickBtn()}</div>`;
  const todo=recs.filter(r=>r.next);
- return top+reqList()+`<div class="split"><div><div class="section-t"><h2>面談記録</h2><span class="meta">全${recs.length}件</span></div>
+ return top+reqList()+`<div class="split"><div><div class="section-t"><h2>面談記録</h2><span class="meta">全${recs.length}件</span></div>${MODE==="live"&&DB.recCutoff?`<div class="meta" style="margin:-4px 0 6px">直近6か月分を表示しています。それより前の記録は、各居宅の画面で見られます。</div>`:""}
  <div class="log">${recs.map(logItem).join("")}</div></div>
  <div><div class="section-t"><h2>次回アクション</h2><span class="meta">${todo.length}件</span></div>
  <div class="log">${todo.map(r=>`<div class="logi"><b>${esc(r.next)}</b><div class="meta">${esc((DB.offices.find(o=>o.id===r.office)||{name:""}).name)} ・ ${r.date}</div></div>`).join("")}</div>
@@ -1611,6 +1695,7 @@ window.addEventListener("popstate",e=>{const st=e.state||{};
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{S.view=t.dataset.v;S.cmEdit=null;render();scrollTo(0,0)});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classList?.contains("cm"))e.target.click()});
 
+const _render3=render;render=function(){_render3();try{wantOlder()}catch(e){}const sb=$("#syncBtn");if(sb)sb.hidden=!(MODE==="live"&&USER&&!S.loading)};
 /* 起動 */
 startGps();
 if(MODE==="demo"){S.office=DB.offices.some(o=>o.id==="o1")?"o1":null;render()}
