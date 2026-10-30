@@ -284,7 +284,7 @@ async function persist(ops){
  if(MODE==="live"){let d;
   try{d=await api("batch",{ops:ops.map(o=>{const row=toServer(o.table,o.row),ex=Array.isArray(DB[o.table])?DB[o.table].find(x=>x.id===o.row.id):null;if(ex&&ex.updatedAt!=null)row._base=ex.updatedAt;return {table:o.table,row}})})}
   catch(e){if(e&&e.code==="conflict")syncNow(true);throw e}
-  d.rows.forEach((r,i)=>{const v=fromServer(ops[i].table,r);if(ops[i].table==="records"){const ex=DB.records.find(x=>x.id===v.id);if(ex&&ex.trans&&!v.trans)v.trans=ex.trans;if(!v.trans&&ex&&ex.hasTrans)v.hasTrans=ex.hasTrans}applyOp(ops[i].table,v)})}
+  d.rows.forEach((r,i)=>{const v=fromServer(ops[i].table,r);if(ops[i].table==="records"){const ex=DB.records.find(x=>x.id===v.id);if(ex&&ex.trans&&!v.trans)v.trans=ex.trans;if(!v.trans&&ex&&ex.hasTrans)v.hasTrans=ex.hasTrans}applyOp(ops[i].table,v)});cacheSoon()}
  else{ops.forEach(o=>applyOp(o.table,o.row));save()}}
 async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.offices=d.offices.map(r=>fromServer("offices",r,d.notices||[]));
@@ -292,6 +292,11 @@ async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[];
  ["items","dist","visits","contracts","jisseki","reqs","sched"].forEach(k=>DB[k]=d[k]||[]);
  DB.recCutoff=d.recCutoff||"";if(d.now)SYNC_TS=new Date(new Date(d.now).getTime()-90000).toISOString()}
+/* 前回のデータをこの端末に覚えておき、次に開いたときすぐ表示する（ログアウトで消す） */
+const CKEY="kyotaku-c";
+function cacheSave(){if(MODE!=="live"||!USER||!SESSION||S.bgLoad)return;try{const db=Object.assign({},DB,{records:DB.records.map(r=>r.trans?Object.assign({},r,{trans:"",hasTrans:"1"}):r)});localStorage.setItem(CKEY,JSON.stringify({s:SESSION.slice(-8),at:Date.now(),user:USER,db}))}catch(e){try{localStorage.removeItem(CKEY)}catch(e2){}}}
+let CST=0;function cacheSoon(){if(MODE!=="live")return;clearTimeout(CST);CST=setTimeout(cacheSave,2000)}
+function cacheLoad(){try{const c=JSON.parse(localStorage.getItem(CKEY)||"null");if(!c||!SESSION||c.s!==SESSION.slice(-8)||Date.now()-c.at>14*864e5)return null;return c}catch(e){return null}}
 
 /* ===== Googleログイン ===== */
 function initGis(){if(window.google&&google.accounts){gisReady();return}
@@ -304,11 +309,18 @@ async function onCredential(resp){S.loginMsg="確認中…";render();
  try{const d=await api("login",{idToken:resp.credential});SESSION=d.session;try{localStorage.setItem("kyotaku-s",SESSION)}catch(e){}
   USER=d.user;S.loginMsg="";await boot()}
  catch(e){USER=null;S.loginMsg=errText(e);render()}}
-async function boot(){S.loading=true;render();
- try{await loadAll();S.loading=false;fillSim();restoreLast();setTimeout(checkShared,300);
+async function boot(){const c=cacheLoad();
+ if(c){Object.assign(DB,c.db);USER=c.user;S.loading=false;S.bgLoad=true;fillSim();restoreLast();setTimeout(checkShared,300);
   if(!DB.offices.some(o=>o.id===S.office))S.office=null;render()}
- catch(e){S.loading=false;if(e.code!=="auth")S.loginMsg="データを読み込めません："+errText(e);render()}}
-window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;try{localStorage.removeItem("kyotaku-s")}catch(e){}
+ else{S.loading=true;render()}
+ try{await loadAll();S.loading=false;S.bgLoad=false;fillSim();cacheSave();
+  if(!c){restoreLast();setTimeout(checkShared,300)}
+  if(!DB.offices.some(o=>o.id===S.office))S.office=null;
+  if(!c||!editingNow())render();else{const sb=$("#syncBtn");if(sb)sb.textContent="↻"}}
+ catch(e){S.loading=false;S.bgLoad=false;
+  if(c){if(e.code!=="auth"){toast("最新のデータを読み込めませんでした（前回の内容を表示中）");render()}return}
+  if(e.code!=="auth")S.loginMsg="データを読み込めません："+errText(e);render()}}
+window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;S.bgLoad=false;try{localStorage.removeItem("kyotaku-s");localStorage.removeItem(CKEY)}catch(e){}
  try{google.accounts.id.disableAutoSelect()}catch(e){}
  if(s&&typeof msg!=="string")fetch(setupCfg().gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"logout",session:s})}).catch(()=>{});
  DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[],reqs:[],sched:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render();initGis()};
@@ -928,7 +940,7 @@ window.fdQuick=async(id,b)=>{const r=DB.records.find(x=>x.id===id);if(!r)return;
 /* ===== ほかの端末・ほかの人の変更を取り込む（変わった分だけ） ===== */
 let SYNC_TS="",SYNC_BUSY=false;
 const editingNow=()=>typing()||!!(S.cmEdit||S.recEdit||S.schedEdit||S.recOpen||S.bulk||RC.on||(CI.stage&&CI.stage!=="idle")||CB.items.length);
-async function syncNow(manual){if(MODE!=="live"||!USER||SYNC_BUSY||!SYNC_TS)return;
+async function syncNow(manual){if(MODE!=="live"||!USER||SYNC_BUSY||!SYNC_TS||S.bgLoad)return;
  if(!manual&&(document.hidden||editingNow()))return;
  SYNC_BUSY=true;const sb=$("#syncBtn");if(sb)sb.textContent="…";let n=0;
  try{const d=await api("since",{ts:SYNC_TS});SYNC_TS=new Date(new Date(d.now).getTime()-90000).toISOString();
@@ -938,7 +950,7 @@ async function syncNow(manual){if(MODE!=="live"||!USER||SYNC_BUSY||!SYNC_TS)retu
     const v=["offices","cms","records"].includes(t)?fromServer(t,r):r;
     if(t==="records"){const ex=DB.records.find(x=>x.id===r.id);if(ex&&ex.trans&&!v.trans)v.trans=ex.trans}
     applyOp(t,v)})});
-  if(n&&(manual||!editingNow()))render();if(manual)toast(n?"最新にしました（"+n+"件）":"最新の状態です")}
+  if(n)cacheSoon();if(n&&(manual||!editingNow()))render();if(manual)toast(n?"最新にしました（"+n+"件）":"最新の状態です")}
  catch(e){if(manual)toast("更新できませんでした："+errText(e))}
  finally{SYNC_BUSY=false;const b2=$("#syncBtn");if(b2)b2.textContent="↻"}}
 window.syncNow=syncNow;
@@ -955,7 +967,7 @@ window.loadTrans=async id=>{const r=DB.records.find(x=>x.id===id);if(!r||r.trans
 const transHtml=(r,label)=>r.trans||r.hasTrans?`<details ontoggle="if(this.open)loadTrans('${r.id}')"><summary class="meta">${label}</summary><div class="trans" data-trans="${r.id}">${r.trans?esc(r.trans):"読み込み中…"}</div></details>`:"";
 /* 負荷テスト（管理者）：10件同時に保存したときの待ち時間を測る */
 window.benchRun=async b=>{const out=$("#benchOut");b.disabled=true;out.textContent="計測中…（30秒ほど）";
- try{const t0=performance.now();await api("load");const tl=Math.round(performance.now()-t0);
+ try{const t0=performance.now();await api("load");const tl=Math.round(performance.now()-t0);await api("bench");
   const rs=await Promise.all(Array.from({length:10},()=>{const s=performance.now();return api("bench").then(r=>({ms:Math.round(performance.now()-s),w:r.waited})).catch(e=>({err:errText(e)}))}));
   const ok=rs.filter(r=>!r.err),ms=ok.map(r=>r.ms);
   out.innerHTML=`開くときの読み込み：<b>${(tl/1000).toFixed(1)}秒</b><br>10件同時の保存：成功 ${ok.length}件・失敗 ${rs.length-ok.length}件${ms.length?` ・ いちばん遅い ${(Math.max(...ms)/1000).toFixed(1)}秒 ・ 平均 ${(ms.reduce((a,c)=>a+c,0)/ms.length/1000).toFixed(1)}秒`:""}${rs.some(r=>r.err)?"<br>失敗の理由："+esc(rs.find(r=>r.err).err):""}`}
@@ -1637,7 +1649,7 @@ function viewLog(){
  <div class="log">${todo.map(r=>`<div class="logi"><b>${esc(r.next)}</b><div class="meta">${esc((DB.offices.find(o=>o.id===r.office)||{name:""}).name)} ・ ${r.date}</div></div>`).join("")}</div>
  </div></div>`;
 }
-window.reloadAll=async b=>{b.disabled=true;try{await loadAll();fillSim();toast("最新のデータにしました");render()}catch(e){b.disabled=false;toast("更新できませんでした："+errText(e))}};
+window.reloadAll=async b=>{b.disabled=true;try{await loadAll();fillSim();cacheSave();toast("最新のデータにしました");render()}catch(e){b.disabled=false;toast("更新できませんでした："+errText(e))}};
 window.resetDemo=b=>{if(b.dataset.c!=="1"){b.dataset.c="1";b.textContent="もう一度押すと初期化します";return}
  DB=JSON.parse(JSON.stringify(SEED));save();fillSim();toast("初期データに戻しました");render();};
 
@@ -1695,7 +1707,7 @@ window.addEventListener("popstate",e=>{const st=e.state||{};
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{S.view=t.dataset.v;S.cmEdit=null;render();scrollTo(0,0)});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classList?.contains("cm"))e.target.click()});
 
-const _render3=render;render=function(){_render3();try{wantOlder()}catch(e){}const sb=$("#syncBtn");if(sb)sb.hidden=!(MODE==="live"&&USER&&!S.loading)};
+const _render3=render;render=function(){_render3();try{wantOlder()}catch(e){}const sb=$("#syncBtn");if(sb){sb.hidden=!(MODE==="live"&&USER&&!S.loading);sb.textContent=S.bgLoad||SYNC_BUSY?"…":"↻"}};
 /* 起動 */
 startGps();
 if(MODE==="demo"){S.office=DB.offices.some(o=>o.id==="o1")?"o1":null;render()}
