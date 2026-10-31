@@ -1012,14 +1012,22 @@ function rtHospital(r){const u=r.client?hospOf(r.client):null;if(u)return u;if(/
 let RT_FROM=(()=>{try{return localStorage.getItem("kyotaku-rtfrom")||""}catch(e){return ""}})()||new Date(Date.now()-90*864e5).toLocaleDateString("sv-SE");
 window.rtFromSet=v=>{RT_FROM=v||RT_FROM;try{localStorage.setItem("kyotaku-rtfrom",RT_FROM)}catch(e){}render()};
 function rtAlerts(r){const o=rtAlerts0(r);if(isD(r.deliv)&&r.deliv<RT_FROM)Object.values(o).forEach(a=>{if(a.k==="r"||a.k==="o")a.k="w"});return o}
-function rtAlerts0(r){const out={},d=daysFrom(r.deliv),stop=r.jflag==="中止",jh=r.jflag==="実費"||r.kubun==="実費";
+/* 台帳の書類ルール
+   ・実費：報告書なし、契約書は「契約書」だけ（確認シート・重要事項・個人情報なし）、引落はあり
+   ・既契約あり（区分が 追加・交換・切り替え・ﾒﾝﾃ交換、または備考に「既契約」）：引落なし、重要事項・個人情報は取得済み（契約書・確認シートだけ）
+   ・デモで解約（実費・中止欄が「中止」「デモ解約」）：書類はすべてなし */
+const rtDone=v=>/済|✓|○|完了/.test(String(v||""));
+const rtKei=r=>["追加","交換","切り替え","ﾒﾝﾃ交換","メンテ交換"].includes(String(r.kubun||"").trim())||/既契約/.test([r.note2,r.memo,r.biko].join(" "));
+const rtJh=r=>r.jflag==="実費"||r.kubun==="実費"||/実費/.test(String(r.own||""));
+function rtAlerts0(r){const out={},d=daysFrom(r.deliv),stop=r.jflag==="中止"||r.jflag==="デモ解約",jh=rtJh(r),kei=rtKei(r);
  out.in=stop?{k:"na",t:"―"}:String(r.input||"").trim()==="有"||String(r.input||"").trim()==="―"?{k:"ok",t:r.input}:!String(r.input||"").trim()?{k:"r",t:"未入力"}:{k:"w",t:r.input};
  out.rp=stop||jh||NAV(r.rp_print)?{k:"na",t:r.rp_print||"―"}:r.rp_sub==="済"||(/FAX|ＦＡＸ|メール|CM渡済|提供表/.test(r.rp_send||"")&&!/予定/.test(r.rp_send||""))?{k:"ok",t:(r.rp_sub==="済"?"提出済":r.rp_send)+(r.rp_date?" "+md(r.rp_date):"")}:{k:lvl(d,RT_RULE.rp)||"w",t:"未提出"+(d!=null?"（"+d+"日）":"")};
- out.ct=stop||NAV(r.ct_print)?{k:"na",t:r.ct_print||"―"}:r.ct_done==="完了"?{k:"ok",t:"完了"}:{k:lvl(d,RT_RULE.ct)||"w",t:(r.ct_done||"未完了")+(d!=null?"（"+d+"日）":"")};
- const way=String(r.db_way||"").trim(),need=DBNEED.includes(way)||(!way&&r.kubun==="新規");
- out.db=stop||jh||!need?{k:way?"ok":"na",t:way||"―"}:r.db_ok==="済"?{k:"ok",t:way+" 受理済"}:{k:lvl(d,RT_RULE.db)||"w",t:(way||"未定")+" "+(r.db_send==="済"?"発送済":r.db_col==="済"?"回収済":r.db_hand==="済"?"お渡し済":"未手続")+(d!=null?"（"+d+"日）":"")};
+ {const need=jh?[["ct_doc","契約書"]]:kei?[["ct_doc","契約書"],["ct_check","確認ｼｰﾄ"]]:[["ct_doc","契約書"],["ct_check","確認ｼｰﾄ"],["ct_imp","重要事項"],["ct_priv","個人情報"]],left=need.filter(([k])=>!rtDone(r[k])).map(x=>x[1]),tag=jh?"実費・":kei?"既契約・":"";
+ out.ct=stop||NAV(r.ct_print)?{k:"na",t:stop?"―":r.ct_print||"―"}:r.ct_done==="完了"||!left.length?{k:"ok",t:tag+"完了"}:{k:lvl(d,RT_RULE.ct)||"w",t:tag+(left.length===need.length&&r.ct_done?r.ct_done:"未："+left.join("・"))+(d!=null?"（"+d+"日）":"")}}
+ const way=String(r.db_way||"").trim(),need=DBNEED.includes(way)||(!way&&(r.kubun==="新規"||jh));
+ out.db=stop||kei||!need?{k:kei&&!stop?"na":way?"ok":"na",t:kei&&!stop?"既契約":way||"―"}:r.db_ok==="済"?{k:"ok",t:way+" 受理済"}:{k:lvl(d,RT_RULE.db)||"w",t:(way||"未定")+" "+(r.db_send==="済"?"発送済":r.db_col==="済"?"回収済":r.db_hand==="済"?"お渡し済":"未手続")+(d!=null?"（"+d+"日）":"")};
  const h=rtHospital(r);
- if(stop||r.jflag==="実費"||!isD(r.deliv))out.demo={k:"na",t:""};
+ if(stop||jh||!isD(r.deliv))out.demo={k:"na",t:stop?"解約":""};
  else if(isD(r.start))out.demo={k:"ok",t:"開始 "+md(r.start)};
  else if(h)out.demo={k:"h",t:"入院中"+(h.inDate?" "+md(h.inDate)+"〜":"")};
  else if(d>60)out.demo={k:"w",t:"開始日 未記入"};
@@ -1069,7 +1077,7 @@ function rtLedger(){const rs=rtList(),st=rtStaffs();
  <div class="rtw"><table class="rt"><thead><tr><th>納品日</th><th>利用者</th><th>品目</th><th>居宅</th><th>担当</th><th>要注意（押すと全部の項目が開きます）</th></tr></thead><tbody>
  ${rs.slice(0,S.rtAll?5000:300).map(r=>{const a=rtAlerts(r);return `<tr onclick="S.rtOpen='${r.id}';render()"><td class="num">${esc(isD(r.deliv)?r.deliv.slice(2).replace(/-/g,"/"):r.deliv||"")}</td><td><b>${esc(r.cname||"")}</b></td><td>${esc(r.item||"")}</td><td>${esc(r.officeName||"")}</td><td>${esc(r.staff||"")}</td><td>${rtWarn(a)}</td></tr>`}).join("")}
  </tbody></table></div>${rs.length>300&&!S.rtAll?`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.rtAll=true;render()">すべて表示（${rs.length}件）</button>`:""}`}
-const RT_FIELDS=[["deliv","納品日","date"],["input","ケアレンツ入力","sel:有,―,ロング,入院中,申請中,新規申請中,無し"],["start","レンタル開始","date"],["jflag","実費・中止","sel:,実費,中止,済,保留"],["cname","利用者","text"],["item","品目","sel:ベット,ベット付属,車椅子,車付属,歩行器,手すり,杖,スロープ,床ずれ予防,体位変換,徘徊,リフト,吸引器"],["officeName","居宅","office"],["cmName","担当CM","text"],["staff","担当営業","staff"],["own","自社レン","sel:自社,他社,混合, 自社（実費）"],["kubun","区分","sel:新規,追加,交換,実費,切り替え,ﾒﾝﾃ交換,再新規,―"]];
+const RT_FIELDS=[["deliv","納品日","date"],["input","ケアレンツ入力","sel:有,―,ロング,入院中,申請中,新規申請中,無し"],["start","レンタル開始","date"],["jflag","実費・中止","sel:,実費,中止,デモ解約,済,保留"],["cname","利用者","text"],["item","品目","sel:ベット,ベット付属,車椅子,車付属,歩行器,手すり,杖,スロープ,床ずれ予防,体位変換,徘徊,リフト,吸引器"],["officeName","居宅","office"],["cmName","担当CM","text"],["staff","担当営業","staff"],["own","自社レン","sel:自社,他社,混合, 自社（実費）"],["kubun","区分","sel:新規,追加,交換,実費,切り替え,ﾒﾝﾃ交換,再新規,―"]];
 const RT_TG=[["報告書",[["rp_print","印刷"],["rp_sub","提出"]],[["rp_send","持出・FAX","sel:,ＦＡＸ,FAX予定分,ﾃﾞﾓ中FAX,予定分,提供表,メール,CM渡済,営業持出"],["rp_date","提出日","date"]]],
  ["契約書",[["ct_print","印刷"],["ct_doc","契約書"],["ct_check","確認ｼｰﾄ"],["ct_imp","重要事項"],["ct_priv","個人情報"]],[["ct_done","済み","sel:,完了,途中,契約のみ,至急,保留"]]],
  ["引落",[["db_hand","お渡し"],["db_col","回収"],["db_send","発送"],["db_ok","受理"]],[["db_way","方法","sel:,口座有,NICOS,ゆうちょ,集金,生保,リコー,要手続,―"],["db_date","発送日","date"]]],
