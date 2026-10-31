@@ -953,7 +953,7 @@ const rtHot=r=>{const a=rtAlerts(r);return RT_KEYS.some(([k])=>a[k].k==="r"||a[k
 const staffEmail=n=>{n=String(n||"").trim();if(!n)return "";const u=(DB.users||[]).find(x=>x.name&&(x.name.includes(n)||n.includes(x.name)));return u?u.email:""};
 function rtStaffs(){const m={};(DB.rentals||[]).forEach(r=>{const n=String(r.staff||"").trim()||"（担当なし）";m[n]=(m[n]||0)+1});return Object.keys(m).sort((a,b)=>m[b]-m[a])}
 function viewJimu(){const t=S.jt||"board";
- const tabs=[["board","営業別ボード"],["ledger","レンタル台帳"],["hosp","入院中"],["req","依頼・連絡"]];
+ const tabs=[["board","営業別ボード"],["ledger","レンタル台帳"],["hosp","入退院"],["req","依頼・連絡"]];
  const unread=unreadFor("jimu").length+(DB.reqs||[]).filter(r=>!r.state||r.state==="未対応").length;
  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 12px"><h2 style="margin-right:auto">事務所</h2><label class="meta" style="display:flex;gap:6px;align-items:center">要注意にするのは納品日 <input type="date" class="sim" value="${RT_FROM}" onchange="rtFromSet(this.value)"> 以降</label><div class="seg">${tabs.map(([k,l])=>`<button type="button" class="${t===k?"on":""}" onclick="S.jt='${k}';S.rtOpen=null;render()">${l}${k==="req"&&unread?" ("+unread+")":""}</button>`).join("")}</div></div>
  ${S.rtOpen?rtDetail():t==="ledger"?rtLedger():t==="hosp"?jimuHosp():t==="req"?viewJimuReq():rtBoard()}`}
@@ -1046,51 +1046,87 @@ window.rtImportGo=async b=>{if(!RT_PEND)return;b.disabled=true;const all=RT_PEND
  try{for(let i=0;i<all.length;i+=N){const part=all.slice(i,i+N);b.textContent="取り込み中… "+done+"/"+all.length;await persist(part.map(row=>({table:"rentals",row})));done+=part.length}
   RT_PEND=null;S.rtImp=`<div class="notice" style="margin-bottom:8px">${done}件を取り込みました。</div>`;toast("取り込みました");render()}
  catch(e){b.disabled=false;b.textContent="続きから取り込む";toast("途中で止まりました（"+done+"件まで完了）："+errText(e));RT_PEND=all.slice(done)}};
-function jimuHosp(){const hs=(DB.hosp||[]).filter(hospOpen).sort((a,b)=>String(a.inDate).localeCompare(String(b.inDate)));
- return `<div class="form" style="margin-bottom:10px"><b>🏥 入院を登録（CMさんからの連絡など）</b><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
-  <label style="flex:1;min-width:220px">利用者<input id="jh-c" list="jhCl" placeholder="名前の一部で候補から選ぶ"></label><datalist id="jhCl">${DB.clients.map(x=>`<option value="${esc(clientLabel(x))}">`).join("")}</datalist>
-  <label>入院日<input type="date" id="jh-in" value="${today()}"></label><label>退院予定日<input type="date" id="jh-plan"></label><label style="flex:1;min-width:200px">メモ<input id="jh-note" placeholder="病院名・連絡元のCMなど"></label>
-  <button class="btn primary" type="button" onclick="jhAdd(this)">登録</button></div></div>
- <div class="form" style="margin-bottom:10px"><b>📄 入退院の書類を読み取る（紙をスキャンした画像・PDF）</b>
-  <div class="meta">連絡票やFAXをスキャンしたファイルを選ぶと、AIが利用者名・入院日・退院日を読み取ります。確認・修正してから登録します（何枚でもまとめて選べます）。</div>
+/* ===== 入退院管理（紙の「入退院管理表」と同じ項目） ===== */
+const HM_KIND=["入院","入所","ショート"],HM_FAX=["","✓","自社","―"],HM_PICK=["","解約","死亡"];
+const hmName=h=>{const u=h.client?clientOf(h.client):null;return u?nmOnly(u.name):(h.clientName||"")};
+const hmLeft=h=>{if(h.state==="削除")return [];const L=[];if(h.inData!=="✓")L.push("休止データ");if(!h.inFax)L.push("休止FAX");
+ if(h.outDate){if(h.outData!=="✓")L.push("再開データ");if(!h.outFax)L.push("再開FAX")}if(h.pickKind&&h.pickData!=="✓")L.push("引上げデータ");if(h.done!=="✓")L.push("処理済");return L};
+function hmRows(){const f=S.hmf||"open",q=(S.hmq||"").trim();let hs=(DB.hosp||[]).filter(h=>h.state!=="削除");
+ if(f==="open")hs=hs.filter(hospOpen);else if(f==="left")hs=hs.filter(h=>hmLeft(h).length);
+ if(q){const tk=qTokens(q);hs=hs.filter(h=>{const t=snorm([hmName(h),h.reason,h.note,h.officeName,h.contactFrom].join(" "));return tk.every(x=>t.includes(x))})}
+ return hs.sort((a,b)=>String(b.contactAt||b.inDate||"").localeCompare(String(a.contactAt||a.inDate||"")))}
+const ck=v=>v==="✓"?'<span class="ac ok">✓</span>':'<span class="ac o">未</span>';
+function jimuHosp(){const hs=hmRows(),f=S.hmf||"open";
+ return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+  <button class="btn primary" type="button" onclick="S.hmOpen='new';render()">＋ 入院・入所の連絡を登録</button>
+  <div class="seg">${[["open","入院・入所中"],["left","処理が残っている"],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="S.hmf='${k}';render()">${l}</button>`).join("")}</div>
+  <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="利用者・理由・居宅で探す" value="${esc(S.hmq||"")}" onchange="S.hmq=this.value;render()"><span class="meta">${hs.length}件</span></div>
+ ${S.hmOpen?hmForm():""}
+ <div class="form" style="margin-bottom:10px"><b>📄 入退院管理表をスキャンして読み取る（画像・PDF、何枚でも）</b>
+  <div class="meta">紙の入退院管理表や連絡票をスキャンしたファイルを選ぶと、AIが1行ずつ読み取ります。確認・修正してから登録します。</div>
   <div><label class="btn" for="hsx" style="display:inline-flex">ファイルを選ぶ</label><input type="file" id="hsx" multiple accept="image/*,application/pdf" onchange="hsScan(this)" style="position:absolute;opacity:0;width:1px;height:1px"> <span class="meta" id="hsSt">${esc(S.hsSt||"")}</span></div>
   ${(S.hsItems||[]).length?hsTable():""}</div>
- <div class="section-t"><h2>入院中の利用者</h2><span class="meta">${hs.length}名</span></div>
- <div class="rtw"><table class="rt"><thead><tr><th>利用者</th><th>居宅</th><th>入院日</th><th>日数</th><th>退院予定</th><th>メモ</th><th>登録</th><th></th></tr></thead><tbody>
- ${hs.map(h=>{const u=clientOf(h.client),o=DB.offices.find(x=>x.id===(h.office||(u&&clOffice(u))));return `<tr><td><b>${esc(u?nmOnly(u.name):h.clientName||"")}</b></td><td>${esc(o?o.name:"")}</td><td>${esc(h.inDate||"")}</td><td>${h.inDate?dayN(h.inDate)+"日目":""}</td><td>${esc(h.outPlan||"")}</td><td>${esc(h.note||"")}</td><td class="meta">${esc(h.byName||"")}（${esc(h.source||"")}）</td><td><button class="btn sm" type="button" onclick="jhOut2('${h.id}',this)">退院を登録</button></td></tr>`}).join("")||'<tr><td colspan="8" class="meta">入院中の利用者はいません</td></tr>'}
- </tbody></table></div>`}
+ <div class="rtw"><table class="rt"><thead><tr><th>利用者</th><th>分類</th><th>入院連絡</th><th>誰から</th><th>入院日</th><th>休止データ</th><th>休止FAX</th><th>退院連絡</th><th>退院日</th><th>再開データ</th><th>再開FAX</th><th>引上げ</th><th>期間</th><th>理由</th><th>居宅</th><th>処理済</th></tr></thead><tbody>
+ ${hs.slice(0,S.hmAll?3000:300).map(h=>{const u=h.client?clientOf(h.client):null,o=DB.offices.find(x=>x.id===(h.office||(u&&clOffice(u))));return `<tr onclick="S.hmOpen='${h.id}';render();scrollTo(0,0)" style="${hmLeft(h).length?"":"opacity:.7"}"><td><b>${esc(hmName(h))}</b>${h.client?"":' <span class="meta">（未登録）</span>'}</td><td>${esc(h.kind||"入院")}${hospOpen(h)?' <span class="ac h">中</span>':""}</td>
+  <td>${md(h.contactAt)}</td><td>${esc(h.contactFrom||"")}</td><td>${md(h.inDate)}${hospOpen(h)&&h.inDate?" <span class=meta>"+dayN(h.inDate)+"日目</span>":""}</td><td>${ck(h.inData)}</td><td>${h.inFax?esc(h.inFax):'<span class="ac o">未</span>'}</td>
+  <td>${md(h.outContactAt)}</td><td>${md(h.outDate)}${h.outPlan&&!h.outDate?' <span class="meta">予定'+md(h.outPlan)+'</span>':""}</td><td>${h.outDate?ck(h.outData):""}</td><td>${h.outDate?(h.outFax?esc(h.outFax):'<span class="ac o">未</span>'):""}</td>
+  <td>${h.pickKind?`<span class="ac r">${esc(h.pickKind)}</span> ${md(h.pickDate)}`:""}</td><td>${esc(h.period||"")}</td><td>${esc(String(h.reason||h.note||"").slice(0,24))}</td><td>${esc(o?o.name:h.officeName||"")}</td><td>${ck(h.done)}</td></tr>`}).join("")||'<tr><td colspan="16" class="meta">該当なし</td></tr>'}
+ </tbody></table></div>${hs.length>300&&!S.hmAll?`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.hmAll=true;render()">すべて表示（${hs.length}件）</button>`:""}`}
+const HM_F=[["contactAt","入院の連絡日","date"],["contactFrom","誰から","text"],["kind","分類","sel:入院,入所,ショート"],["inDate","入院日","date"],["outPlan","退院予定日","date"],["inFax","休止FAX","sel:,✓,自社,―"],
+ ["outContactAt","退院の連絡日","date"],["outFrom","誰から（退院）","text"],["outDate","退院日","date"],["outFax","再開FAX","sel:,✓,自社,―"],["pickDate","引上げ日","date"],["pickKind","引上げの内容","sel:,解約,死亡"],["period","期間の見込み","text"],["reason","入院理由・病院","text"],["officeName","居宅","office"]];
+const HM_T=[["inData","休止データ登録"],["outData","再開データ登録"],["pickData","引上げデータ"],["done","処理済"]];
+function hmForm(){const isNew=S.hmOpen==="new",h=isNew?{kind:"入院",contactAt:today()}:(DB.hosp||[]).find(x=>x.id===S.hmOpen);if(!h)return "";const u=h.client?clientOf(h.client):null;
+ return `<div class="form" style="margin-bottom:12px;border:2px solid #8e44ad"><b>${isNew?"入院・入所の連絡を登録":"🏥 "+esc(hmName(h))}</b>
+ <label>利用者（登録の利用者から選ぶ。いなければ名前だけでも可）<input id="hm-client" list="hmCl" value="${esc(u?clientLabel(u):h.clientName||"")}"></label><datalist id="hmCl">${DB.clients.map(x=>`<option value="${esc(clientLabel(x))}">`).join("")}</datalist>
+ <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">${HM_F.map(f=>rtInput(f,h[f[0]]).replace(/id="rt-/g,'id="hm-')).join("")}</div>
+ <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${HM_T.map(([k,l])=>`<button type="button" class="tgl hmt ${h[k]==="✓"?"on":""}" data-k="${k}" data-v="${h[k]==="✓"?"✓":""}" onclick="hmTg(this)">${h[k]==="✓"?"✓ ":""}${l}</button>`).join("")}</div>
+ <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="hmSave('${isNew?"":h.id}',this)">保存</button><button class="btn" type="button" onclick="S.hmOpen=null;render()">閉じる</button>${isNew?"":`<button class="btn sm" type="button" style="color:var(--alert)" onclick="hmDel('${h.id}',this)">削除</button>`}</div></div>`}
+window.hmTg=b=>{b.dataset.v=b.dataset.v==="✓"?"":"✓";b.classList.toggle("on",b.dataset.v==="✓");b.textContent=(b.dataset.v==="✓"?"✓ ":"")+b.textContent.replace(/^✓ /,"")};
+window.hmSave=async(id,b)=>{const row={id:id||newId("h")};HM_F.forEach(([k])=>{const el=$("#hm-"+k);if(el)row[k]=el.value.trim()});
+ document.querySelectorAll(".hmt").forEach(t=>row[t.dataset.k]=t.dataset.v);
+ const cv=$("#hm-client").value.trim();if(!cv){toast("利用者を入れてください");return}const u=findClient(cv);row.client=u?u.id:"";row.clientName=u?"":cv.replace(/（.*$/,"");
+ const o=DB.offices.find(x=>x.name===row.officeName);row.office=o?o.id:(u?clOffice(u):"");
+ row.state=row.pickKind?"引上げ":row.outDate?"退院":"入院中";if(!id){row.source="事務所";row.by=myId();row.byName=USER?USER.name:"デモ";row.createdAt=new Date().toISOString()}
+ b.disabled=true;try{await persist([{table:"hosp",row}]);S.hmOpen=null;buzz(60);toast("保存しました");render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
+window.hmDel=async(id,b)=>{if(!confirm("この行を削除しますか？"))return;b.disabled=true;try{await persist([{table:"hosp",row:{id,state:"削除"}}]);S.hmOpen=null;render()}catch(e){b.disabled=false;toast("削除できませんでした："+errText(e))}};
+/* スキャンの読み取り（入退院管理表・連絡票） */
+const HS_KEYS=["name","contactAt","contactFrom","inDate","inData","inFax","kind","outContactAt","outFrom","outDate","outData","outFax","pickDate","pickKind","period","reason","officeName","done"];
 function hsTable(){const it=S.hsItems;
- return `<div class="rtw" style="margin-top:8px"><table class="rt"><thead><tr><th></th><th>利用者（書類）</th><th>登録の利用者</th><th>入院日</th><th>退院予定</th><th>退院日</th><th>メモ（病院・連絡元）</th><th>ファイル</th></tr></thead><tbody>
- ${it.map((x,i)=>`<tr><td><input type="checkbox" style="width:auto" ${x.on?"checked":""} onchange="S.hsItems[${i}].on=this.checked"></td><td>${esc(x.name)}</td>
-  <td><input list="hsCl" value="${esc(x.client?clientLabel(clientOf(x.client)):"")}" placeholder="${x.client?"":"一致なし（選ぶか空のまま）"}" onchange="hsCl(${i},this.value)" style="min-width:180px"></td>
-  <td><input type="date" value="${esc(x.inDate)}" onchange="S.hsItems[${i}].inDate=this.value"></td><td><input type="date" value="${esc(x.outPlan)}" onchange="S.hsItems[${i}].outPlan=this.value"></td><td><input type="date" value="${esc(x.outDate)}" onchange="S.hsItems[${i}].outDate=this.value"></td>
-  <td><input value="${esc(x.note)}" oninput="S.hsItems[${i}].note=this.value" style="min-width:200px"></td><td class="meta">${esc(x.file)}</td></tr>`).join("")}
+ return `<div class="rtw" style="margin-top:8px"><table class="rt"><thead><tr><th></th><th>利用者（読み取り）</th><th>登録の利用者</th><th>分類</th><th>入院連絡</th><th>入院日</th><th>退院日</th><th>引上げ</th><th>理由</th><th>確認</th></tr></thead><tbody>
+ ${it.map((x,i)=>`<tr style="${x.unsure?"background:#fdecea":""}"><td><input type="checkbox" style="width:auto" ${x.on?"checked":""} onchange="S.hsItems[${i}].on=this.checked"></td>
+  <td><input value="${esc(x.name)}" oninput="S.hsItems[${i}].name=this.value" style="min-width:110px"></td>
+  <td><input list="hsCl" value="${esc(x.client?clientLabel(clientOf(x.client)):"")}" placeholder="${x.client?"":"一致なし"}" onchange="hsCl(${i},this.value)" style="min-width:170px"></td>
+  <td><select onchange="S.hsItems[${i}].kind=this.value">${HM_KIND.map(k=>`<option ${k===x.kind?"selected":""}>${k}</option>`).join("")}</select></td>
+  <td><input type="date" value="${esc(x.contactAt)}" onchange="S.hsItems[${i}].contactAt=this.value"></td><td><input type="date" value="${esc(x.inDate)}" onchange="S.hsItems[${i}].inDate=this.value"></td>
+  <td><input type="date" value="${esc(x.outDate)}" onchange="S.hsItems[${i}].outDate=this.value"></td>
+  <td><select onchange="S.hsItems[${i}].pickKind=this.value">${HM_PICK.map(k=>`<option value="${k}" ${k===x.pickKind?"selected":""}>${k||"―"}</option>`).join("")}</select></td>
+  <td><input value="${esc(x.reason)}" oninput="S.hsItems[${i}].reason=this.value" style="min-width:160px"></td><td class="meta">${x.unsure?'<b style="color:#b03a2e">要確認</b> ':""}${esc(x.file)}</td></tr>`).join("")}
  </tbody></table></div><datalist id="hsCl">${DB.clients.map(x=>`<option value="${esc(clientLabel(x))}">`).join("")}</datalist>
- <div style="display:flex;gap:8px;margin-top:8px"><button class="btn primary" type="button" onclick="hsSave(this)">チェックした${it.filter(x=>x.on).length}件を登録</button><button class="btn" type="button" onclick="S.hsItems=[];S.hsSt='';render()">やめる</button></div>`}
+ <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="button" onclick="hsSave(this)">チェックした${it.filter(x=>x.on).length}件を登録</button><button class="btn" type="button" onclick="S.hsItems=[];S.hsSt='';render()">やめる</button><span class="meta">赤い行は読み取りに自信がない行です。データ登録・FAX・処理済の ✓ も読み取った内容で入ります。</span></div>`}
 window.hsCl=(i,v)=>{const x=S.hsItems[i];if(!x)return;if(!v.trim()){x.client="";return}const u=findClient(v);if(!u){toast("一覧から選んでください");return}x.client=u.id;render()};
-window.hsScan=async inp=>{const fs=[...inp.files];inp.value="";if(!fs.length)return;S.hsItems=S.hsItems||[];const yr=new Date().getFullYear(),dt=v=>isD(v)?v:"";
+window.hsScan=async inp=>{const fs=[...inp.files];inp.value="";if(!fs.length)return;S.hsItems=S.hsItems||[];const now=new Date(),yr=now.getFullYear();
+ const dt=v=>{v=String(v||"").trim();if(isD(v))return v;const m=v.match(/^(\d{1,2})[\/月.](\d{1,2})/);if(!m)return "";let y=yr;const d=new Date(y,+m[1]-1,+m[2]);if(d-now>60*864e5)y--;return y+"-"+String(m[1]).padStart(2,"0")+"-"+String(m[2]).padStart(2,"0")};
+ const chk=v=>/✓|レ|済|true|yes|有/i.test(String(v||""))?"✓":"";
  for(let k=0;k<fs.length;k++){const f=fs[k];S.hsSt=`読み取り中… ${k+1}/${fs.length}（${f.name}）`;const st=$("#hsSt");if(st)st.textContent=S.hsSt;
-  try{const rr=await aiJson(`入院・退院の連絡票、FAX、メモなどの書類の画像です。書かれている利用者ごとに、次のキーだけのJSONで返してください。
-{"items":[{"name":"利用者の氏名（書かれているとおり）","inDate":"入院日 YYYY-MM-DD","outPlan":"退院予定日 YYYY-MM-DD","outDate":"退院した日 YYYY-MM-DD","hospital":"病院名","from":"連絡元（居宅・ケアマネなど）","note":"そのほか大事なこと（一言）"}]}
-年が書かれていない日付は${yr}年として扱う（ただし今日より大きく先の日付になるなら前の年）。読めない項目は空にする。利用者が書かれていなければ items は []。`,f);
+  try{const rr=await aiJson(`福祉用具レンタル事業所の「入退院管理表」（手書きの表）または入退院の連絡票をスキャンした画像です。利用者1人（表の1行）ごとに、次のキーだけのJSONで返してください。空の行は入れない。
+{"items":[{"name":"利用者名","contactAt":"入院の連絡日時（例 10/26）","contactFrom":"誰から","inDate":"入院日","inData":"休止データ登録欄に✓があれば✓","inFax":"休止FAX欄の記入（✓・自社・―・空）","kind":"分類で丸がついているもの（入院・入所・ショート）","outContactAt":"退院の連絡日時","outFrom":"退院を誰から","outDate":"退院日","outData":"退院側のデータ登録欄に✓があれば✓","outFax":"退院側のFAX欄の記入","pickDate":"引上げの日付","pickKind":"引上げの内容で丸がついているもの（解約・死亡・空）","period":"備考の期間","reason":"入院理由・病院名","officeName":"居宅","done":"処理済確認欄に✓があれば✓","unsure":"名前や日付が読み取りにくい行は true"}]}
+日付は書かれているとおり「月/日」で返してよい。読めない項目は空にする。`,f);
    const items=(rr&&rr.data&&Array.isArray(rr.data.items))?rr.data.items:[];
-   if(!items.length)S.hsItems.push({file:f.name,name:"（読み取れませんでした）",client:"",inDate:"",outPlan:"",outDate:"",note:"",on:false});
-   items.forEach(x=>{const u=matchClient(x.name,"");S.hsItems.push({file:f.name,name:String(x.name||""),client:u?u.id:"",inDate:dt(x.inDate),outPlan:dt(x.outPlan),outDate:dt(x.outDate),note:[x.hospital,x.from?"連絡："+x.from:"",x.note].filter(Boolean).join(" ・ "),on:!!(x.name&&(x.inDate||x.outDate))})})}
-  catch(e){S.hsItems.push({file:f.name,name:"（エラー："+errText(e)+"）",client:"",inDate:"",outPlan:"",outDate:"",note:"",on:false})}}
- S.hsSt=`${fs.length}ファイルを読み取りました。内容を確認して登録してください。`;render()};
+   if(!items.length)S.hsItems.push({file:f.name,name:"（読み取れませんでした）",client:"",kind:"入院",on:false,unsure:true});
+   items.forEach(x=>{const o={file:f.name};HS_KEYS.forEach(k=>o[k]=String(x[k]==null?"":x[k]).trim());
+    ["contactAt","inDate","outContactAt","outDate","pickDate"].forEach(k=>o[k]=dt(o[k]));["inData","outData","done"].forEach(k=>o[k]=chk(o[k]));
+    o.kind=HM_KIND.find(k=>o.kind.includes(k))||"入院";o.pickKind=HM_PICK.find(k=>k&&o.pickKind.includes(k))||"";o.inFax=/自社/.test(o.inFax)?"自社":/✓|レ/.test(o.inFax)?"✓":/―|-|ー/.test(o.inFax)?"―":"";o.outFax=/自社/.test(o.outFax)?"自社":/✓|レ/.test(o.outFax)?"✓":/―|-|ー/.test(o.outFax)?"―":"";
+    o.unsure=x.unsure===true||String(x.unsure)==="true";const u=matchClient(o.name,"");o.client=u?u.id:"";o.on=!!o.name&&!!(o.inDate||o.contactAt||o.outDate);S.hsItems.push(o)})}
+  catch(e){S.hsItems.push({file:f.name,name:"（エラー："+errText(e)+"）",client:"",kind:"入院",on:false,unsure:true})}}
+ S.hsSt=`${fs.length}ファイルを読み取りました（${S.hsItems.length}行）。確認して登録してください。`;render()};
 window.hsSave=async b=>{const list=(S.hsItems||[]).filter(x=>x.on);if(!list.length){toast("チェックしたものがありません");return}
- if(list.some(x=>!x.inDate&&!x.outDate)){toast("入院日か退院日が空の行があります");return}
  const ops=[],now=new Date().toISOString();
- list.forEach(x=>{const u=x.client?clientOf(x.client):null,h=x.client?hospOf(x.client):null;
-  if(h&&(!x.inDate||x.inDate>=h.inDate||!h.inDate)){const r={id:h.id};if(x.inDate)r.inDate=x.inDate;if(x.outPlan)r.outPlan=x.outPlan;if(x.note)r.note=x.note;if(x.outDate){r.outDate=x.outDate;r.state="退院"}ops.push({table:"hosp",row:r})}
-  else ops.push({table:"hosp",row:{id:newId("h"),client:x.client||"",clientName:x.client?"":x.name,office:u?clOffice(u):"",inDate:x.inDate||"",outPlan:x.outPlan||"",outDate:x.outDate||"",note:x.note||"",source:"書類読取",state:x.outDate?"退院":"入院中",by:myId(),byName:USER?USER.name:"デモ",createdAt:now}})});
- b.disabled=true;try{await persist(ops);S.hsItems=(S.hsItems||[]).filter(x=>!x.on);S.hsSt=list.length+"件を登録しました。";buzz(60);render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
-window.jhAdd=async b=>{const u=findClient($("#jh-c").value);if(!u){toast("利用者を一覧から選んでください");return}b.disabled=true;
- try{await persist(hospOps(u.id,"入院",$("#jh-in").value,$("#jh-plan").value,$("#jh-note").value.trim(),"事務所"));toast("入院を登録しました");render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
-window.jhOut2=async(id,b)=>{const d=prompt("退院日（例：2026-11-05）",today());if(!d)return;b.disabled=true;
- try{await persist([{table:"hosp",row:{id,outDate:d,state:"退院"}}]);toast("退院を登録しました");render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
-window.jhOut=async(uid,b)=>{const d=prompt("退院日（例：2026-11-05）",today());if(!d)return;b.disabled=true;
- try{await persist(hospOps(uid,"退院",d,"","","事務所"));toast("退院を登録しました");render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
+ list.forEach(x=>{const u=x.client?clientOf(x.client):null,o=DB.offices.find(y=>y.name===x.officeName);
+  const ex=(DB.hosp||[]).find(h=>h.state!=="削除"&&((x.client&&h.client===x.client)||(!x.client&&h.clientName===x.name))&&h.inDate&&h.inDate===x.inDate);
+  const row={id:ex?ex.id:newId("h"),client:x.client||"",clientName:x.client?"":x.name,office:o?o.id:(u?clOffice(u):"")};
+  HS_KEYS.filter(k=>k!=="name").forEach(k=>{if(x[k])row[k]=x[k]});row.state=x.pickKind?"引上げ":x.outDate?"退院":"入院中";
+  if(!ex){row.source="書類読取";row.by=myId();row.byName=USER?USER.name:"デモ";row.createdAt=now}ops.push({table:"hosp",row})});
+ b.disabled=true;try{for(let i=0;i<ops.length;i+=100)await persist(ops.slice(i,i+100));S.hsItems=(S.hsItems||[]).filter(x=>!x.on);S.hsSt=list.length+"件を登録しました。";buzz(60);render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
 function viewJimuReq(){markRead("jimu");const f=S.jf||"open",st=S.jst||"";
  const all=(DB.reqs||[]),cnt=k=>all.filter(r=>k==="done"?r.state==="済":r.state!=="済").length;
  const rs=all.filter(r=>(f==="all"||(f==="done"?r.state==="済":r.state!=="済"))&&(!st||r.email===st)).sort((a,b)=>String(b.at||"").localeCompare(String(a.at||"")));
@@ -1107,14 +1143,14 @@ function viewJimuReq(){markRead("jimu");const f=S.jf||"open",st=S.jst||"";
  <select class="sim" onchange="S.jst=this.value;render()"><option value="">営業：全員</option>${sales.map(u=>`<option value="${esc(u.email)}" ${st===u.email?"selected":""}>${esc(u.name)}</option>`).join("")}</select></div>
  <div class="log">${rs.map(jReqItem).join("")||'<div class="empty">該当する依頼はありません</div>'}</div>`}
 /* ===== 入院情報（CMさんからの知らせ・事務からの登録。利用者ごとに入院中・入院期間を持つ） ===== */
-const hospOpen=h=>h.state!=="削除"&&h.state!=="退院"&&!h.outDate;
+const hospOpen=h=>h.state!=="削除"&&h.state!=="退院"&&h.state!=="引上げ"&&!h.outDate&&!h.pickKind;
 const hospOf=uid=>(DB.hosp||[]).filter(h=>h.client===uid&&hospOpen(h)).sort((a,b)=>String(b.inDate).localeCompare(String(a.inDate)))[0]||null;
 const md=x=>x?String(x).slice(5).replace("-","/").replace(/^0/,""):"";
 const dayN=x=>{if(!x)return 0;const d=Math.floor((new Date(today()+"T00:00:00")-new Date(x+"T00:00:00"))/864e5)+1;return isNaN(d)?0:d};
 function hospLine(h){const dd=h.outPlan?Math.round((new Date(h.outPlan+"T00:00:00")-new Date(today()+"T00:00:00"))/864e5):99,soon=dd>=0&&dd<=3;
- return `<div class="hospl ${soon?"soon":""}">🏥 入院中${h.inDate?" "+md(h.inDate)+"〜（"+dayN(h.inDate)+"日目）":""}${h.outPlan?" ・ 退院予定 "+md(h.outPlan)+(soon?"（もうすぐ）":"ごろ"):""}${h.note?`<div class="meta" style="font-weight:400">${esc(h.note)}</div>`:""}</div>`}
+ return `<div class="hospl ${soon?"soon":""}">🏥 ${esc(h.kind||"入院")}中${h.inDate?" "+md(h.inDate)+"〜（"+dayN(h.inDate)+"日目）":""}${h.outPlan?" ・ 退院予定 "+md(h.outPlan)+(soon?"（もうすぐ）":"ごろ"):""}${h.note?`<div class="meta" style="font-weight:400">${esc(h.note)}</div>`:""}</div>`}
 function hospHist(uid){const hs=(DB.hosp||[]).filter(h=>h.client===uid&&h.state!=="削除"&&!hospOpen(h)).sort((a,b)=>String(b.inDate).localeCompare(String(a.inDate)));
- return hs.length?`<details style="margin-top:4px"><summary class="meta" style="cursor:pointer">これまでの入院（${hs.length}回）</summary>${hs.map(h=>`<div class="meta">${esc(h.inDate||"?")} 〜 ${esc(h.outDate||"?")}${h.inDate&&h.outDate?"（"+(dayN(h.inDate)-dayN(h.outDate)+1)+"日間）":""}${h.note?" ・ "+esc(h.note):""}</div>`).join("")}</details>`:""}
+ return hs.length?`<details style="margin-top:4px"><summary class="meta" style="cursor:pointer">これまでの入院（${hs.length}回）</summary>${hs.map(h=>`<div class="meta">${esc(h.inDate||"?")} 〜 ${esc(h.outDate||"?")}${h.inDate&&h.outDate?"（"+(dayN(h.inDate)-dayN(h.outDate)+1)+"日間）":""} ${esc(h.kind||"")}${h.pickKind?" ・ 引上げ（"+esc(h.pickKind)+"）":""}${h.reason||h.note?" ・ "+esc(h.reason||h.note):""}</div>`).join("")}</details>`:""}
 function hospForm(u){const h=hospOf(u.id);
  return `<div class="form" style="margin-top:6px"><b>🏥 ${esc(nmOnly(u.name))}</b>
  ${h?`<div class="row2"><label>入院日<input type="date" id="hf-in" value="${esc(h.inDate||"")}"></label><label>退院予定日<input type="date" id="hf-plan" value="${esc(h.outPlan||"")}"></label></div>
