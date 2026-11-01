@@ -1,6 +1,6 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>居宅営業管理システム</title>
-<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0d6e62">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="theme-color" content="#0d6e62">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap">
 </head><body>
@@ -700,8 +700,19 @@ function restoreLast(){try{const l=JSON.parse(localStorage.getItem(LASTKEY)||"nu
 /* ===== 通話録音の取り込み（Galaxyの通話録音ファイル「通話 名前_yymmdd_hhmmss」） ===== */
 const CI={stage:"idle"};
 const CB={items:[],run:false,i:0},CB_MAX=10;
-function callPickBtn(){return `<label class="btn" for="ci-file" style="display:flex;justify-content:center;width:100%;padding:10px;font-size:15px">📞 通話録音を取り込む（複数まとめても可）</label>
- <input type="file" id="ci-file" multiple onchange="pickCall(this)" style="position:absolute;opacity:0;width:1px;height:1px">`}
+/* 取り込み：通話録音（音声ファイル）と SMS・LINE の文章（貼り付け）を1つのボタンにまとめる。写真は使わないので音声だけを選ばせる */
+function callPickBtn(){const io=S.impOpen;
+ return `<button class="btn" type="button" style="display:flex;justify-content:center;width:100%;padding:10px;font-size:15px" onclick="S.impOpen=!S.impOpen;render()">📞✉️ 通話・SMS・LINEを取り込む</button>
+ ${io?`<div class="form" style="margin-top:6px">
+  <label class="btn" for="ci-file" style="display:flex;justify-content:center;padding:12px;font-size:16px">📞 通話録音を選ぶ（複数まとめても可）</label>
+  <input type="file" id="ci-file" accept="audio/*" multiple onchange="S.impOpen=false;pickCall(this)" style="position:absolute;opacity:0;width:1px;height:1px">
+  <b style="margin-top:6px">✉️ SMS・LINE の文章</b>
+  <textarea id="imp-txt" rows="4" placeholder="メッセージを長押し →「コピー」して、ここに貼り付け"></textarea>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">${navigator.clipboard&&navigator.clipboard.readText?`<button class="btn" type="button" onclick="impPaste()">📋 コピーした文章を貼る</button>`:""}<button class="btn primary" type="button" onclick="impText()">この文章を取り込む</button></div>
+  <div class="meta">SMSは「共有」→「アスポッピー」でも送れます（ホーム画面に追加したスマホ）。
+   <label for="ci-file2" style="text-decoration:underline;cursor:pointer">録音ファイルが一覧に出ないとき</label><input type="file" id="ci-file2" multiple onchange="S.impOpen=false;pickCall(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div></div>`:""}`}
+window.impPaste=async()=>{try{const t=await navigator.clipboard.readText();const el=$("#imp-txt");if(el&&t)el.value=t;if(!t)toast("コピーした文章がありません")}catch(e){toast("貼り付けできませんでした。長押しで貼り付けてください")}};
+window.impText=()=>{const t=String(($("#imp-txt")||{}).value||"").trim();if(!t){toast("文章を貼り付けてください");return}S.impOpen=false;smsIn(t)};
 function parseCallName(n){const m=String(n||"").normalize("NFKC").match(/通話\s*(.+?)_(\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})/);
  return m?{who:m[1].trim(),date:"20"+m[2]+"-"+m[3]+"-"+m[4]}:{who:"",date:today()}}
 const digits=x=>String(x||"").replace(/[^0-9]/g,"");
@@ -749,9 +760,9 @@ window.pickCall=async inp=>{let fs=[...(inp.files||[])];if(inp.value!==undefined
  if(CI.office){S.office=CI.office;S.view="visit"}else S.view="log";render();ciScroll()};
 const ciScroll=()=>setTimeout(()=>{const b=$("#callBox");b&&b.scrollIntoView({block:"center"})},80);
 function callBox(){const o=DB.offices.find(x=>x.id===CI.office);const cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];
- if(CI.stage==="work")return `<div class="form" id="callBox"><div class="progress"><span class="spin"></span>${CI.sms?"ショートメールを要約中…（10〜20秒）":"通話を文字起こしして要約中…（30秒〜1分）"}</div></div>`;
+ if(CI.stage==="work")return `<div class="form" id="callBox"><div class="progress"><span class="spin"></span>${CI.sms?"メッセージを要約中…（10〜20秒）":"通話を文字起こしして要約中…（30秒〜1分）"}</div></div>`;
  const noMatch=CI.who&&!o&&!CI.cm&&!(CI.cc||[]).length&&!(CI.oc||[]).length&&!CI.err;
- return `<div class="form" id="callBox" style="border-color:var(--accent)"><b>${CI.sms?"✉️ ショートメールの取り込み":"📞 通話録音の取り込み"}</b>
+ return `<div class="form" id="callBox" style="border-color:var(--accent)"><b>${CI.sms?"✉️ SMS・LINEの取り込み":"📞 通話録音の取り込み"}</b>
  ${CI.sms?`<textarea id="ci-sms" rows="5" style="font-size:16px" oninput="CI.sms=this.value">${esc(CI.sms)}</textarea><div class="meta">個人の電話番号・住所などは要約に残しません。</div>`:`<div class="meta">${esc(CI.file?CI.file.name:"")}${CI.who?` ・ 相手：${esc(CI.who)}`:""}</div>`}
  ${CI.err?`<div class="notice">${esc(CI.err)}</div>`:""}
  ${noMatch?`<div class="notice">「${esc(CI.who)}」は、登録されているケアマネ・居宅と一致しませんでした。居宅を選んでください。</div>`:""}
@@ -779,12 +790,12 @@ async function saveCall(it){const o=DB.offices.find(x=>x.id===it.office);if(!o)t
  if(isCl&&!cl&&!it.cname)throw new Error("利用者の名前を入れてください（新規の方は名前だけでOK）");
  const clName=cl?cl.name:String(it.cname||"").replace(/[\s　]*様$/,"");
  const sms=String(it.sms||"").trim(),cands=contCands(o.id,"");
- const prompt=sms?`福祉用具貸与事業所（アスポート）の営業担当が受け取った（または送った）ショートメール（SMS）です。${isCl?"相手は利用者（"+clName+"様）またはそのご家族、担当の居宅介護支援事業所は「"+o.name+"」":"相手は居宅介護支援事業所「"+o.name+"」などの関係者"}です。
+ const prompt=sms?`福祉用具貸与事業所（アスポート）の営業担当が受け取った（または送った）ショートメール（SMS）またはLINEのメッセージです。${isCl?"相手は利用者（"+clName+"様）またはそのご家族、担当の居宅介護支援事業所は「"+o.name+"」":"相手は居宅介護支援事業所「"+o.name+"」などの関係者"}です。
 営業日報向けに要約して、次のキーだけのJSONで返してください。
 {"summary":"メールの内容の要約（1〜4行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"相手のケアマネジャーの名前（文面から分かる場合。候補：${cms||"なし"}。分からなければ空）"${FIND_KEYS}}${FIND_RULE(it.date||today())}
 利用者の名前は「加藤様」のように書くこと。住所・電話番号・生年月日は書かないこと。
 参考：この居宅の当社利用者は ${DB.clients.filter(u=>clOffice(u)===o.id).map(u=>nmOnly(u.name)).join("、")||"なし"}。
---- ショートメール ---
+--- メッセージ ---
 ${sms}`:`福祉用具貸与事業所（アスポート）の営業担当と、${isCl?"利用者（"+clName+"様）またはそのご家族との電話の録音です。担当の居宅介護支援事業所は「"+o.name+"」":it.party==="その他"?"居宅介護支援事業所「"+o.name+"」などの関係者との電話の録音":"居宅介護支援事業所「"+o.name+"」との電話の録音"}です。
 音声を聞き取り、営業日報向けに要約して、次のキーだけのJSONで返してください。
 {"summary":"話した内容の要約（3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"電話の相手のケアマネジャーの名前（会話から分かる場合。候補：${cms||"なし"}。分からなければ空）"${FIND_KEYS}}${FIND_RULE(it.date||today())}
@@ -798,7 +809,7 @@ window.runCall=async b=>{if(!DB.offices.some(x=>x.id===CI.office)){toast("居宅
  const smsEl=$("#ci-sms");if(smsEl)CI.sms=smsEl.value;
  CI.cm=$("#ci-cm").value;CI.date=$("#ci-date").value||CI.date;CI.stage="work";render();
  try{const {o,cm}=await saveCall(CI);CI.stage="idle";beep(SND.checkin);buzz(60);
-  toast((CI.sms?"ショートメール":"電話")+(cm?"の記録を保存しました":"の記録を保存しました（ケアマネは記録の横で選べます）"));CI.sms="";S.office=o.id;S.view="visit";render()}
+  toast((CI.sms?"メッセージ":"電話")+(cm?"の記録を保存しました":"の記録を保存しました（ケアマネは記録の横で選べます）"));CI.sms="";S.office=o.id;S.view="visit";render()}
  catch(e){CI.stage="confirm";CI.err="取り込めませんでした："+errText(e);render()}};
 /* 複数の録音をまとめて取り込む */
 function cbBox(){if(!CB.items.length)return "";const n=CB.items.length;
@@ -1897,7 +1908,7 @@ window.rqUpd=()=>{const b=$("#rqBox");if(b)b.innerHTML=rqHtml()};
 window.recAt=id=>{S.office=id;S.view="visit";S.selCm=null;S.recOpen=true;S.autoOpened=id;S.rq="";render();setTimeout(()=>{const f=$("#recForm");if(f)f.scrollIntoView({block:"start"});else scrollTo(0,0)},60)};
 function logItem(r){if(S.recEdit===r.id)return recEditForm(r);const cm=DB.cms.find(c=>c.id===r.cm);const o=DB.offices.find(x=>x.id===r.office);
  const pick=!r.cm&&o&&r.party!=="利用者"&&r.party!=="その他"?`<select class="sim" onchange="setRecCm('${r.id}',this.value)"><option value="">面談者を選ぶ</option>${DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}<option value="none">CM不在・事業所のみ</option></select>`:"";
- return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":r.kind==="SMS"?" ✉️SMS":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${whoHtml(r,cm,pick)}${r.staff?" ・ 記録："+esc(r.staff):""} <button class="btn sm" type="button" style="padding:2px 8px" onclick="recEditOpen('${r.id}')">修正</button>${(DB.caselog||[]).some(l=>l.rec===r.id&&!isCont(l)&&l.kind!=="続き解除")?"":` <button class="btn sm" type="button" style="padding:2px 8px" onclick="caseSplit('${r.id}',this)">🗂 案件に振り分け</button>`}${(q=>q.length?` <span class="status" style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:999px;font-weight:700">📨 事務に送信済み${q.every(x=>x.state==="済")?"・対応済":"・未対応"}</span> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">もう一度送る</button>`:` <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdQuick('${r.id}',this)">📨 そのまま事務へ</button> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">一言つけて送る</button>`)((DB.reqs||[]).filter(x=>x.rec===r.id))}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${transHtml(r,"文字起こしを見る")}${contCtl(r)}</div>`}
+ return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":r.kind==="SMS"?" ✉️SMS・LINE":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${whoHtml(r,cm,pick)}${r.staff?" ・ 記録："+esc(r.staff):""} <button class="btn sm" type="button" style="padding:2px 8px" onclick="recEditOpen('${r.id}')">修正</button>${(DB.caselog||[]).some(l=>l.rec===r.id&&!isCont(l)&&l.kind!=="続き解除")?"":` <button class="btn sm" type="button" style="padding:2px 8px" onclick="caseSplit('${r.id}',this)">🗂 案件に振り分け</button>`}${(q=>q.length?` <span class="status" style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:999px;font-weight:700">📨 事務に送信済み${q.every(x=>x.state==="済")?"・対応済":"・未対応"}</span> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">もう一度送る</button>`:` <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdQuick('${r.id}',this)">📨 そのまま事務へ</button> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">一言つけて送る</button>`)((DB.reqs||[]).filter(x=>x.rec===r.id))}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${transHtml(r,"文字起こしを見る")}${contCtl(r)}</div>`}
 window.setRecCm=async(id,cm)=>{if(!cm)return;try{await persist([{table:"records",row:{id,cm}}]);toast("面談者を登録しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
 window.addRecord=async(e,oid)=>{e.preventDefault();
  const t=$("#f-text").value.trim();if(!t)return;const b=e.target.querySelector("[type=submit]");b.disabled=true;
