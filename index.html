@@ -40,7 +40,7 @@ body.wide .wrap{max-width:1500px}
 .board{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}.bcol{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:10px 12px}.bcol h3{font-size:17px;margin-bottom:6px}.bitem{display:block;width:100%;text-align:left;border:0;border-top:1px solid var(--line);background:none;padding:6px 2px;font:inherit;color:inherit;cursor:pointer}.bitem:hover{background:var(--accent-soft)}
 .chatbtn{position:relative;font-size:18px;padding:6px 12px}.chatbtn .tbadge{position:absolute;top:-4px;right:-4px}
 .chl{display:flex;flex-direction:column;gap:6px}.chl button{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:16px;cursor:pointer}.chl .cnt{background:var(--alert);color:#fff;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:700}
-.chat{display:flex;flex-direction:column;gap:6px;margin:8px 0 10px}.chat .msg{max-width:85%}.chat .msg.me{align-self:flex-end}.msg.urg{border:2px solid var(--alert);background:var(--alert-soft)}
+.chat{display:flex;flex-direction:column;gap:6px;margin:8px 0 10px}.chat .msg{max-width:85%}.chat .msg.me{align-self:flex-end}.urgn{border-left-color:var(--alert)!important}.msg.urg{border:2px solid var(--alert);background:var(--alert-soft)}
 .alarm{position:fixed;inset:0;z-index:20;background:rgba(176,58,46,.96);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center}.alarm .pp{width:110px;height:110px;animation:ppBob .5s ease-in-out infinite}.alarm .t{font-size:22px;font-weight:800;white-space:pre-wrap;max-width:640px}.alarm .btn{font-size:18px;padding:12px 22px;color:var(--ink)}.alarm .btn.primary{color:#fff}
 .thr{border-left:4px solid var(--accent);border-radius:10px;background:var(--accent-soft);padding:4px 0 4px 6px;margin:4px 0}.thr-h{font-size:13px;font-weight:700;color:var(--accent);padding:2px 6px}.thr .rrow+.rrow{margin-left:14px}
 .rfl{display:flex;flex-direction:column;gap:6px;margin:10px 0 6px}.rfs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:2px solid var(--line);border-radius:12px;padding:6px 8px;background:var(--surface)}.rfs.on{border-color:#1e8449;background:#eefaf3}.rfb{flex:1;min-width:200px;display:flex;gap:10px;align-items:center;text-align:left;background:none;border:0;padding:6px 2px;font-size:17px;color:var(--ink);cursor:pointer}.rfc{flex:none;width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--line);font-weight:800;color:var(--muted)}.rfs.on .rfc{background:#1e8449;border-color:#1e8449;color:#fff}.rfx{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.rfx .sim{max-width:170px}
@@ -902,6 +902,7 @@ window.shotIn=async files=>{files=(files||[]).filter(f=>/^image\//.test(f.type||
  if(date&&date<=today())CI.date=date;CI.err=err;
  if(CI.office){S.office=CI.office;S.view="visit"}else S.view="log";render();ciScroll()};
 /* ===== 連絡チャット：全員の部屋・事務の部屋・1対1。【至急】は相手のアプリでアラーム（＋SMS） ===== */
+const msgBody=t=>esc(String(t||"")).replace(/\[case:([A-Za-z0-9_-]+)\]/g,(x,id)=>{const c=(DB.cases||[]).find(y=>y.id===id);return c?`<button type="button" class="btn sm" style="margin:4px 0" onclick="caseOpen('${id}')">🗂 ${esc(caseHead(c))}</button>`:""});
 const URG="【至急】",isUrg=m=>String(m&&m.text||"").startsWith(URG);
 const dmKey=(a,b)=>"dm:"+[String(a).toLowerCase(),String(b).toLowerCase()].sort().join("|");
 const SEEN_K="kyotaku-seen-all",ACK_K="kyotaku-alarm-ack";
@@ -928,7 +929,7 @@ function viewChat(){const rs=roomsOf(),r=S.room?rs.find(x=>x.k===S.room):null;
  setTimeout(()=>roomRead(r),300);const me=myId(),ph=r.peer&&r.peer.phone?String(r.peer.phone):"";
  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><button class="btn sm" type="button" onclick="S.room=null;render()">← 部屋の一覧</button><h2 style="font-size:18px">${esc(r.name)}</h2>
   ${ph?`<a class="btn sm" href="tel:${esc(ph)}">📞 電話</a>`:""}</div>
- <div class="chat">${roomMsgs(r.k).map(m=>`<div class="msg ${m.from===me?"me":""} ${isUrg(m)?"urg":""}"><div class="meta">${esc(m.fromName||uName(m.from))}${m.to===JIMU?" → 事務":""} ・ ${fmtAt(m.at)}${m.from===me&&m.read&&r.k!=="room:all"?" ・ 既読":""}</div>${esc(m.text)}</div>`).join("")||'<div class="meta">まだやりとりはありません</div>'}</div>
+ <div class="chat">${roomMsgs(r.k).map(m=>`<div class="msg ${m.from===me?"me":""} ${isUrg(m)?"urg":""}"><div class="meta">${esc(m.fromName||uName(m.from))}${m.to===JIMU?" → 事務":""} ・ ${fmtAt(m.at)}${m.from===me&&m.read&&r.k!=="room:all"?" ・ 既読":""}</div>${msgBody(m.text)}</div>`).join("")||'<div class="meta">まだやりとりはありません</div>'}</div>
  <div class="form"><textarea id="ch-t" rows="2" placeholder="メッセージ"></textarea>
   <label style="display:flex;gap:8px;align-items:center;font-size:15px;color:var(--ink)"><input type="checkbox" id="ch-u" style="width:auto"> 🚨 至急（相手のアプリでアラームを鳴らす${r.peer?"・SMSも送る":""}）</label>
   <button class="btn primary" type="button" onclick="chatSend('${r.k}',this)">送る</button>
@@ -936,18 +937,21 @@ function viewChat(){const rs=roomsOf(),r=S.room?rs.find(x=>x.k===S.room):null;
 window.chatSend=async(k,b)=>{const r=roomsOf().find(x=>x.k===k);if(!r)return;let t=String(($("#ch-t")||{}).value||"").trim();if(!t){toast("文を入れてください");return}
  const urg=($("#ch-u")||{}).checked;if(urg)t=URG+t;b.disabled=true;
  const row={id:newId("m"),req:k,office:"",to:r.to,from:myId(),fromName:USER?USER.name:"デモ",text:t,at:new Date().toISOString(),read:""};
- try{await persist([{table:"msgs",row}]);buzz(40);if(urg&&r.peer&&r.peer.phone){location.href="sms:"+String(r.peer.phone).replace(/[^0-9+]/g,"")+"?body="+encodeURIComponent("【アスポッピー至急】"+t.slice(URG.length)+"（"+(USER?USER.name:"")+"）")}render()}
+ try{await persist([{table:"msgs",row}]);buzz(40);if(urg&&r.peer&&r.peer.phone){location.href="sms:"+String(r.peer.phone).replace(/[^0-9+]/g,"")+"?body="+encodeURIComponent("【アスポッピー至急】"+t.slice(URG.length).replace(/\[case:[^\]]+\]/g,"")+"（"+(USER?USER.name:"")+"）")}render()}
  catch(e){b.disabled=false;toast("送れませんでした："+errText(e))}};
 /* 至急の呼び出し：自分あて（1対1・事務あて・全員）の【至急】が来たら全画面で鳴らし続ける。「見た」で止まる */
 let ALARM=null,ALARM_T=null;setInterval(()=>{try{alarmCheck()}catch(e){}},15000);
 function alarmCheck(){if(MODE==="live"&&!USER)return;const me=myId(),ack=lsSet(ACK_K),lim=new Date(Date.now()-864e5).toISOString();
  const m=(DB.msgs||[]).filter(x=>isUrg(x)&&x.from!==me&&String(x.at)>lim&&!ack.has(x.id)&&(x.to===me||x.to==="all"||(x.to===JIMU&&meJ()))).sort((a,b)=>String(a.at).localeCompare(String(b.at)))[0];
  if(!m||ALARM===m.id)return;ALARM=m.id;const d=document.createElement("div");d.className="alarm";d.id="alarm";
- d.innerHTML=`<span class="pp" style="background-image:var(--pp-wow)"></span><div style="font-size:18px">🚨 至急の連絡 ・ ${esc(m.fromName||uName(m.from))} ・ ${esc(fmtAt(m.at))}</div><div class="t">${esc(m.text.slice(URG.length))}</div><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><button class="btn primary" type="button" onclick="alarmOff('${m.id}',true)">見た・返事する</button><button class="btn" type="button" onclick="alarmOff('${m.id}',false)">見た</button></div>`;
+ d.innerHTML=`<span class="pp" style="background-image:var(--pp-wow)"></span><div style="font-size:18px">🚨 至急の連絡 ・ ${esc(m.fromName||uName(m.from))} ・ ${esc(fmtAt(m.at))}</div><div class="t">${esc(m.text.slice(URG.length).replace(/\[case:[^\]]+\]/g,""))}</div><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><button class="btn primary" type="button" onclick="alarmOff('${m.id}',true)">見た・返事する</button><button class="btn" type="button" onclick="alarmOff('${m.id}',false)">見た</button></div>`;
  document.body.appendChild(d);const ring=()=>{try{const c=acx(),save=ppSndOn;woofF(3)}catch(e){}try{navigator.vibrate&&navigator.vibrate([400,200,400])}catch(e){}};ring();ALARM_T=setInterval(ring,2500)}
 function woofF(n){const k=PPS_K;let was=null;try{was=localStorage.getItem(k);localStorage.removeItem(k)}catch(e){}woof(n);try{if(was!==null)localStorage.setItem(k,was)}catch(e){}}
 window.alarmOff=(id,go)=>{clearInterval(ALARM_T);ALARM_T=null;const a=lsSet(ACK_K);a.add(id);try{localStorage.setItem(ACK_K,JSON.stringify([...a].slice(-200)))}catch(e){}
  const el=$("#alarm");if(el)el.remove();ALARM=null;const m=(DB.msgs||[]).find(x=>x.id===id);if(go&&m){S.view="chat";S.room=m.req&&(m.req.startsWith("room:")||m.req.startsWith("dm:"))?m.req:null;render()}setTimeout(alarmCheck,500)};
+window.caseShare=async(id,to)=>{const c=(DB.cases||[]).find(x=>x.id===id);if(!c)return;const t=prompt("ひとこと（例：明日の納品お願いします）","")||"";const k=to==="all"?"room:all":dmKey(myId(),to);
+ const row={id:newId("m"),req:k,office:c.office||"",to,from:myId(),fromName:USER?USER.name:"デモ",text:(t?t+"\n":"")+"[case:"+id+"]",at:new Date().toISOString(),read:""};
+ try{await persist([{table:"msgs",row},clog(id,"連絡",(to==="all"?"全員":uName(to))+"に知らせました"+(t?"："+t:""))]);toast("知らせました");render()}catch(e){toast("送れませんでした："+errText(e))}};
 /* 確認した人を残す（案件カード） */
 const caseChecks=id=>(DB.caselog||[]).filter(l=>l.case===id&&l.kind==="確認").sort((a,b)=>String(a.at).localeCompare(String(b.at)));
 window.caseCheck=async(id,b)=>{if(caseChecks(id).some(l=>l.by===myId())){toast("確認済みです");return}if(b)b.disabled=true;try{await persist([clog(id,"確認","確認しました")]);render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
@@ -1491,7 +1495,8 @@ const cDone=c=>c.stage==="完了"||c.state==="完了";
 const cLive=c=>c.state!=="削除";
 const cColor=c=>cDone(c)?"done":cStage(c)===cFirst(c)?"new":WAITST.includes(c.stage)?"wait":"go";
 const cOver=c=>!cDone(c)&&!!c.due&&c.due<today();
-function nmOnly(n){n=String(n||"").replace(/\s*様\s*$/,"").trim();const m=n.match(/^(\S+?(町|丁目|区|村|市|郡))\s+(.+)$/);return (m?m[3]:n)+" 様"}
+function nmOnly(n){n=String(n||"").replace(/\s*様\s*$/,"").trim();return n?n+" 様":" 様"}
+function nmBare(n){n=String(n||"").replace(/\s*様\s*$/,"").trim();const m=n.match(/^(\S+?(町|丁目|区|村|市|郡))\s+(.+)$/);return (m?m[3]:n)+" 様"}
 const cFull=c=>{const u=c.client?clientOf(c.client):null;let n=String(u?u.name:(c.clientName||"")).replace(/\s*様\s*$/,"").trim();return n?n+" 様":"（利用者なし）"};
 const cTopic=c=>{let t=String(c.title||"").split("\n")[0].trim();if(!t||t.length>16)t=c.type&&c.type!=="その他"?c.type:(t.slice(0,16)||"用件");return /件$/.test(t)?t:t+"の件"};
 const caseHead=c=>cFull(c)+"　"+cTopic(c);
@@ -1500,7 +1505,7 @@ const daysAgo=x=>{if(!x)return "";const d=Math.floor((Date.now()-new Date(x).get
 const caseLogs=id=>(DB.caselog||[]).filter(l=>l.case===id).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
 const openCasesOf=uid=>(DB.cases||[]).filter(c=>c.client===uid&&cLive(c)&&!cDone(c));
 function matchClient(n,office){const w=pnorm(String(n||"").replace(/様$/,""));if(!w)return null;
- const hit=DB.clients.filter(u=>{const p=pnorm(nmOnly(u.name).replace(/ 様$/,""));return p&&(p.includes(w)||w.includes(p))});
+ const hit=DB.clients.filter(u=>{const p=pnorm(nmBare(u.name).replace(/ 様$/,"")),pf=pnorm(nmOnly(u.name).replace(/ 様$/,""));return p&&(p.includes(w)||w.includes(p)||w.includes(pf))});
  if(hit.length===1)return hit[0];const ho=hit.filter(u=>clOffice(u)===office);return ho.length===1?ho[0]:null}
 function findClient(v){const raw=String(v||"").trim();if(!raw)return null;
  let u=DB.clients.find(x=>clientLabel(x)===raw)||DB.clients.find(x=>String(x.name)===raw);if(u)return u;
@@ -1564,7 +1569,8 @@ function viewCase(){const c=(DB.cases||[]).find(x=>x.id===S.caseId);if(!c)return
   ${c.due?`<div class="ct-st">期限 <span class="${cOver(c)?"ovt":""}">${esc(c.due)}${cOver(c)?"（過ぎています）":""}</span></div>`:""}
   <div class="meta" style="margin-top:4px">進み具合（押すと変わります）</div>
   <div class="steps">${st.map((x,k)=>`<button type="button" class="${k===ci?"on":k<ci?"past":""}" onclick="caseStage('${c.id}','${x}',this)">${k<ci?"✓ ":""}${x}</button>`).join("")}</div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">${(cc=>`<button class="btn sm" type="button" onclick="caseCheck('${c.id}',this)">${cc.some(l=>l.by===myId())?"✓ 確認済み":"✓ 確認した"}</button>${cc.length?`<span class="meta">確認：${cc.map(l=>esc(l.byName||"")+" "+esc(fmtAt(l.at))).join("、")}</span>`:`<span class="meta">まだだれも確認していません</span>`}`)(caseChecks(c.id))}</div></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">${(cc=>`<button class="btn sm" type="button" onclick="caseCheck('${c.id}',this)">${cc.some(l=>l.by===myId())?"✓ 確認済み":"✓ 確認した"}</button>${cc.length?`<span class="meta">確認：${cc.map(l=>esc(l.byName||"")+" "+esc(fmtAt(l.at))).join("、")}</span>`:`<span class="meta">まだだれも確認していません</span>`}`)(caseChecks(c.id))}
+   <select class="sim" onchange="if(this.value)caseShare('${c.id}',this.value);this.value=''"><option value="">💬 この案件をだれかに知らせる</option>${(DB.users||[]).filter(u=>u.email&&u.email!==myId()).map(u=>`<option value="${esc(u.email)}">${esc(u.name)}</option>`).join("")}<option value="all">全員の部屋</option></select></div></div>
  ${c.next||c.title?`<div class="form" style="margin-top:10px;gap:2px"><div class="meta">次にやること</div><b style="font-size:17px">${esc(c.next||c.title)}</b>${c.due?`<div class="meta">期限 ${esc(c.due.slice(5).replace("-","/"))}</div>`:""}</div>`:""}
  <details class="form" style="margin-top:10px"><summary style="cursor:pointer"><b>用件・次にやること・期限を直す</b></summary>
   <label>見出し（用件をひとこと。例：車いす引上げ）<input id="cs-title" maxlength="20" value="${esc(c.title||"")}"></label>
@@ -1665,7 +1671,7 @@ window.caseSplit=async(id,b)=>{const r=DB.records.find(x=>x.id===id);if(!r)retur
 参考：この居宅（${o.name}）の当社利用者は ${DB.clients.filter(u=>clOffice(u)===r.office).map(u=>nmOnly(u.name)).join("、")||"なし"}。
 --- 記録 ---
 ${r.text}${r.next?"\n次回："+r.next:""}`);d=rr&&rr.data}catch(e){}
- if(!d||!Array.isArray(d.cases)||!d.cases.length)d={cases:[{client:r.client?nmOnly((clientOf(r.client)||{}).name||"").replace(/ 様$/,""):"",type:"その他",text:firstLine(r.text),next:r.next||""}]};
+ if(!d||!Array.isArray(d.cases)||!d.cases.length)d={cases:[{client:r.client?nmBare((clientOf(r.client)||{}).name||"").replace(/ 様$/,""):"",type:"その他",text:firstLine(r.text),next:r.next||""}]};
  addFound({cases:d.cases},r.id,r.office,r.cm||"",r.date);const f=FOUND[FOUND.length-1];if(f){FOUND.pop();FOUND.unshift(f)}
  render();setTimeout(()=>{const x=document.querySelector(".found");if(x)x.scrollIntoView({block:"start"})},80)};
 function reqList(){const rs=(DB.reqs||[]).slice().sort((a,b)=>((a.state==="済")-(b.state==="済"))||String(b.at||"").localeCompare(String(a.at||"")));
@@ -1739,6 +1745,8 @@ function jimuNews(){const me=myId(),d=dism(),out=[];
  (DB.reqs||[]).filter(r=>r.email===me||MODE==="demo").forEach(r=>{const l=lastOf(r.id);
   if(r.state==="済"&&!d.has("q:"+r.id))out.push({at:r.doneAt||r.at,k:"q:"+r.id,html:reqNews(r,"事務が対応しました")});
   else if(r.state!=="済"&&l&&l.from!==me&&!d.has("m:"+l.id))out.push({at:l.at,k:"m:"+l.id,html:reqNews(r,"事務から返事があります")})});
+ try{roomsOf().forEach(r=>{const n=roomUnread(r);if(!n)return;const l=roomMsgs(r.k).filter(m=>m.from!==me).slice(-1)[0];if(!l||d.has("c:"+l.id))return;
+  out.push({at:l.at,k:"c:"+l.id,html:`<div class="jreq st-doing ${isUrg(l)?"urgn":""}"><div class="meta"><b>💬 ${esc(l.fromName||uName(l.from))}から${n>1?"（"+n+"件）":""}</b> ・ ${esc(r.name.replace(/^\S+\s/,""))}</div>${msgBody(l.text)}<div><button type="button" class="btn sm" style="margin-top:4px" onclick="S.view='chat';S.room='${r.k}';render();scrollTo(0,0)">💬 開いて返事</button></div></div>`})})}catch(e){}
  return out.sort((x,y)=>String(y.at).localeCompare(String(x.at)))}
 function reqNews(r,head){const o=DB.offices.find(x=>x.id===r.office)||{name:""},c=caseOfReq(r);
  return `<div class="jreq st-doing"><div class="meta"><b>${head}</b> ・ ${esc(o.name)}</div>${c?`<div class="chead">🗂 ${esc(caseHead(c))}</div>`:""}${esc(r.text)}${c?`<div><button type="button" class="btn sm" style="margin-top:4px" onclick="caseOpen('${c.id}')">🗂 案件カードを開く</button></div>`:""}<div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${r.state==="済"?"":replyBox(r.id,JIMU,r.office||"","事務に一言")}</div>`}
@@ -1752,7 +1760,7 @@ function viewTodo(){markRead("sales");const t=today(),list=schedMine(),open=list
  return `<div class="section-t"><h2>やること</h2><button class="btn sm primary" type="button" onclick="schedNew()">＋ 予定を入れる</button></div>
  ${users.length?`<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:8px">担当者 <select class="sim" onchange="S.schedWho=this.value;render()"><option value="">全員</option>${users.map(([e,n])=>`<option value="${esc(e)}" ${S.schedWho===e?"selected":""}>${esc(n)}</option>`).join("")}</select></label>`:""}
  ${S.schedEdit?schedForm():""}
- ${news.length?`<div class="section-t"><h2 style="font-size:16px;color:var(--accent)">事務から</h2><span class="meta">${news.length}件</span></div><div class="log">${news.map(x=>`<div>${x.html}<div style="margin:-4px 0 8px"><button class="btn sm" type="button" onclick="dismiss('${x.k}')">✓ 確認した</button></div></div>`).join("")}</div>`:""}
+ ${news.length?`<div class="section-t"><h2 style="font-size:16px;color:var(--accent)">連絡（事務・営業から）</h2><span class="meta">${news.length}件</span></div><div class="log">${news.map(x=>`<div>${x.html}<div style="margin:-4px 0 8px"><button class="btn sm" type="button" onclick="dismiss('${x.k}')">✓ 確認した</button></div></div>`).join("")}</div>`:""}
  ${casesSection("")}
  ${grp.map(([h,f])=>{const xs=open.filter(f);return xs.length?`<div class="section-t"><h2 style="font-size:16px${h.startsWith("期限")?";color:#c0392b":""}">${h}</h2><span class="meta">${xs.length}件</span></div><div class="log">${xs.map(s=>schedItem(s,true)).join("")}</div>`:""}).join("")}
  ${open.length||news.length?"":`<div class="empty">今やることはありません。「＋ 予定を入れる」か、記録を保存したあとのカードから入れられます。</div>`}
