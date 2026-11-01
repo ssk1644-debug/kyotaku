@@ -204,7 +204,7 @@ body.noscroll{overflow:hidden}
 .msg{background:var(--bg);border-radius:10px;padding:6px 10px;margin-top:6px;max-width:92%;font-size:16px;white-space:pre-wrap;justify-self:start}.msg.me{background:var(--accent-soft);justify-self:end}.thread{display:grid}.newb{color:var(--alert)}
 .ctiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
 .ctile{display:grid;gap:4px;text-align:left;border:1px solid var(--line);border-left:6px solid var(--c);background:var(--surface);border-radius:12px;padding:10px 12px;font:inherit;color:inherit;cursor:pointer;width:100%}
-.ctile .ct-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.ctile .ct-h b{font-size:17px}
+.ctile .ct-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.ctile .ct-h b{font-size:17px}.ct-topic{font-size:18px;font-weight:800;color:var(--ink);margin:2px 0}.tnode .ct-topic{font-size:16px;margin:0}.chead{font-size:17px;font-weight:800;margin:4px 0 2px;color:var(--ink)}
 .ct-type{font-size:12px;font-weight:700;color:#fff;background:var(--c);border-radius:999px;padding:1px 9px;white-space:nowrap}
 .ct-bar{display:flex;gap:3px}.ct-bar i{flex:1;height:6px;border-radius:3px;background:var(--line)}.ct-bar i.on{background:var(--c)}
 .ct-st{font-weight:700;color:var(--c);font-size:15px}.ct-next{font-size:15px}
@@ -722,10 +722,10 @@ window.pickCall=async inp=>{let fs=[...(inp.files||[])];if(inp.value!==undefined
  if(CI.office){S.office=CI.office;S.view="visit"}else S.view="log";render();ciScroll()};
 const ciScroll=()=>setTimeout(()=>{const b=$("#callBox");b&&b.scrollIntoView({block:"center"})},80);
 function callBox(){const o=DB.offices.find(x=>x.id===CI.office);const cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];
- if(CI.stage==="work")return `<div class="form" id="callBox"><div class="progress"><span class="spin"></span>通話を文字起こしして要約中…（30秒〜1分）</div></div>`;
+ if(CI.stage==="work")return `<div class="form" id="callBox"><div class="progress"><span class="spin"></span>${CI.sms?"ショートメールを要約中…（10〜20秒）":"通話を文字起こしして要約中…（30秒〜1分）"}</div></div>`;
  const noMatch=CI.who&&!o&&!CI.cm&&!(CI.cc||[]).length&&!(CI.oc||[]).length&&!CI.err;
- return `<div class="form" id="callBox" style="border-color:var(--accent)"><b>📞 通話録音の取り込み</b>
- <div class="meta">${esc(CI.file?CI.file.name:"")}${CI.who?` ・ 相手：${esc(CI.who)}`:""}</div>
+ return `<div class="form" id="callBox" style="border-color:var(--accent)"><b>${CI.sms?"✉️ ショートメールの取り込み":"📞 通話録音の取り込み"}</b>
+ ${CI.sms?`<textarea id="ci-sms" rows="5" style="font-size:16px" oninput="CI.sms=this.value">${esc(CI.sms)}</textarea><div class="meta">個人の電話番号・住所などは要約に残しません。</div>`:`<div class="meta">${esc(CI.file?CI.file.name:"")}${CI.who?` ・ 相手：${esc(CI.who)}`:""}</div>`}
  ${CI.err?`<div class="notice">${esc(CI.err)}</div>`:""}
  ${noMatch?`<div class="notice">「${esc(CI.who)}」は、登録されているケアマネ・居宅と一致しませんでした。居宅を選んでください。</div>`:""}
  ${candHtml(CI,id=>`ciPickCm('${id}')`,id=>`ciPickOffice('${id}')`)}
@@ -751,19 +751,27 @@ async function saveCall(it){const o=DB.offices.find(x=>x.id===it.office);if(!o)t
  const isCl=it.party==="利用者",cl=isCl?clientOf(it.client):null;
  if(isCl&&!cl&&!it.cname)throw new Error("利用者の名前を入れてください（新規の方は名前だけでOK）");
  const clName=cl?cl.name:String(it.cname||"").replace(/[\s　]*様$/,"");
- const prompt=`福祉用具貸与事業所（アスポート）の営業担当と、${isCl?"利用者（"+clName+"様）またはそのご家族との電話の録音です。担当の居宅介護支援事業所は「"+o.name+"」":it.party==="その他"?"居宅介護支援事業所「"+o.name+"」などの関係者との電話の録音":"居宅介護支援事業所「"+o.name+"」との電話の録音"}です。
+ const sms=String(it.sms||"").trim();
+ const prompt=sms?`福祉用具貸与事業所（アスポート）の営業担当が受け取った（または送った）ショートメール（SMS）です。${isCl?"相手は利用者（"+clName+"様）またはそのご家族、担当の居宅介護支援事業所は「"+o.name+"」":"相手は居宅介護支援事業所「"+o.name+"」などの関係者"}です。
+営業日報向けに要約して、次のキーだけのJSONで返してください。
+{"summary":"メールの内容の要約（1〜4行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"相手のケアマネジャーの名前（文面から分かる場合。候補：${cms||"なし"}。分からなければ空）"${FIND_KEYS}}${FIND_RULE(it.date||today())}
+利用者の名前は「加藤様」のように書くこと。住所・電話番号・生年月日は書かないこと。
+参考：この居宅の当社利用者は ${DB.clients.filter(u=>clOffice(u)===o.id).map(u=>nmOnly(u.name)).join("、")||"なし"}。
+--- ショートメール ---
+${sms}`:`福祉用具貸与事業所（アスポート）の営業担当と、${isCl?"利用者（"+clName+"様）またはそのご家族との電話の録音です。担当の居宅介護支援事業所は「"+o.name+"」":it.party==="その他"?"居宅介護支援事業所「"+o.name+"」などの関係者との電話の録音":"居宅介護支援事業所「"+o.name+"」との電話の録音"}です。
 音声を聞き取り、営業日報向けに要約して、次のキーだけのJSONで返してください。
 {"summary":"話した内容の要約（3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"電話の相手のケアマネジャーの名前（会話から分かる場合。候補：${cms||"なし"}。分からなければ空）"${FIND_KEYS}}${FIND_RULE(it.date||today())}
 利用者の名前は聞き取れたとおりに「加藤様」のように書くこと。住所・電話番号・生年月日は書かないこと。
 参考：この居宅の当社利用者は ${DB.clients.filter(u=>clOffice(u)===o.id).map(u=>nmOnly(u.name)).join("、")||"なし"}。`;
- const r=await aiAudio(prompt,it.file);if(!r)throw new Error("この画面ではAIが使えません");const d=r.data||{};
+ const r=sms?await aiJson(prompt):await aiAudio(prompt,it.file);if(!r)throw new Error("この画面ではAIが使えません");const d=r.data||{};
  let cm=it.cm||"";if(!cm&&d.cm&&(it.party||"ケアマネ")==="ケアマネ"){const h=cmCands(d.cm,o.id);if(h.length===1)cm=h[0].id}
- const row={id:newId("r"),office:o.id,cm,date:it.date||today(),text:(isCl&&!cl?cnTag(it.cname):"")+(d.summary||""),next:d.next||"",trans:"",staff:USER?USER.name:"",kind:"電話",party:it.party||"ケアマネ",client:isCl?it.client:""};
+ const row={id:newId("r"),office:o.id,cm,date:it.date||today(),text:(isCl&&!cl?cnTag(it.cname):"")+(d.summary||""),next:d.next||"",trans:"",staff:USER?USER.name:"",kind:sms?"SMS":"電話",party:it.party||"ケアマネ",client:isCl?it.client:""};
  await persist([{table:"records",row}]);addFound(d,row.id,o.id,cm,row.date);return {o,cm}}
 window.runCall=async b=>{if(!DB.offices.some(x=>x.id===CI.office)){toast("居宅を選んでください");return}
+ const smsEl=$("#ci-sms");if(smsEl)CI.sms=smsEl.value;
  CI.cm=$("#ci-cm").value;CI.date=$("#ci-date").value||CI.date;CI.stage="work";render();
  try{const {o,cm}=await saveCall(CI);CI.stage="idle";beep(SND.checkin);buzz(60);
-  toast(cm?"電話の記録を保存しました":"電話の記録を保存しました（ケアマネは記録の横で選べます）");S.office=o.id;S.view="visit";render()}
+  toast((CI.sms?"ショートメール":"電話")+(cm?"の記録を保存しました":"の記録を保存しました（ケアマネは記録の横で選べます）"));CI.sms="";S.office=o.id;S.view="visit";render()}
  catch(e){CI.stage="confirm";CI.err="取り込めませんでした："+errText(e);render()}};
 /* 複数の録音をまとめて取り込む */
 function cbBox(){if(!CB.items.length)return "";const n=CB.items.length;
@@ -803,10 +811,18 @@ window.cbRun=async()=>{if(CB.run)return;if(CB.items.some(x=>x.state!=="ok"&&!x.o
 async function checkShared(){if(!/[?&]shared=1/.test(location.search))return;
  try{history.replaceState(history.state,"",location.pathname+location.hash)}catch(e){}
  try{const c=await caches.open("kyotaku-share");
+  const tk=(await c.keys()).find(r=>/shared-text/.test(r.url));if(tk){const res=await c.match(tk);await c.delete(tk);const t=res?(await res.text()).trim():"";if(t){smsIn(t);return}}
   const ks=(await c.keys()).filter(r=>/shared-file/.test(r.url)).sort((a,b)=>a.url.localeCompare(b.url,undefined,{numeric:true}));if(!ks.length)return;
   const files=[];for(const k of ks){const res=await c.match(k);await c.delete(k);if(!res)continue;
    const name=decodeURIComponent(res.headers.get("x-name")||"通話.m4a"),blob=await res.blob();files.push(new File([blob],name,{type:blob.type||res.headers.get("content-type")||""}))}
   if(files.length)pickCall({files})}catch(e){toast("共有されたファイルを読み込めませんでした")}}
+/* ショートメール（SMS）の「共有」から届いた文章。文中のケアマネ名・居宅名で居宅を推定 */
+window.smsIn=t=>{const n=String(t).normalize("NFKC").replace(/[\s　]/g,"");
+ const offs=DB.offices.filter(o=>!offGone(o)&&o.name&&n.includes(String(o.name).normalize("NFKC").replace(/[\s　]/g,"")));
+ const cms=DB.cms.filter(c=>cst(c)==="在籍"&&c.name&&String(c.name).replace(/[\s　]/g,"").length>=2&&n.includes(String(c.name).normalize("NFKC").replace(/[\s　]/g,"")));
+ let office="",cm="";if(cms.length===1){cm=cms[0].id;office=cms[0].office}else if(offs.length===1)office=offs[0].id;else if(S.view==="visit"&&S.office)office=S.office;
+ Object.assign(CI,{stage:"confirm",sms:String(t),file:null,who:"",date:today(),office,cm,cc:[],oc:[],ocq:"",err:"",party:"ケアマネ",client:"",cname:""});
+ if(office){S.office=office;S.view="visit"}else S.view="log";render();ciScroll()};
 /* ===== 記録の修正（居宅・ケアマネ・日付の選び直し、削除） ===== */
 const RE={id:null,office:"",cm:"",date:"",text:"",next:"",oc:[],ocq:"",err:""};
 window.recEditOpen=id=>{const r=DB.records.find(x=>x.id===id);if(!r)return;S.recEdit=id;Object.assign(RE,{id,office:r.office,cm:r.cm||"",date:r.date,text:r.text||"",next:r.next||"",party:r.party||"ケアマネ",client:r.client||"",cname:"",oc:[],ocq:"",err:""});render();
@@ -867,7 +883,7 @@ function dupNotice(cms){const ds=cms.map(c=>({c,d:cmDups(c)})).filter(x=>x.d.len
 /* ===== AIが見つけた予定・事務への依頼（保存のあとに確認カードを出す。勝手には入れない） ===== */
 const FOUND=[];
 const wd=d=>"日月火水木金土"[new Date(String(d)+"T00:00:00").getDay()]||"";
-const FIND_KEYS=`,"events":[{"title":"予定の名前（例：担当者会議、納品、見積り提出の期限）","date":"YYYY-MM-DD","start":"HH:MM（分からなければ空）","end":"HH:MM（分からなければ空）","place":"場所（分からなければ空）"}],"requests":["事務所（事務員）にお願いすること。1件ずつ短い文で"],"cases":[{"client":"話題になった利用者の名前（例：加藤）","type":"「レンタル新規」「購入」「住宅改修」「交換・回収」「その他」のどれか","text":"この利用者のこの用件について話した内容（1〜3文）","next":"この用件で次にやること（なければ空）","due":"この用件の期限 YYYY-MM-DD（なければ空）"}],"hosp":[{"client":"入院・退院した利用者の名前（例：加藤）","kind":"「入院」か「退院」","date":"入院日または退院日 YYYY-MM-DD（分からなければ空）","outPlan":"入院のとき、退院予定日 YYYY-MM-DD（分からなければ空）","note":"病院名・理由・見込みなど一言"}]`;
+const FIND_KEYS=`,"events":[{"title":"予定の名前（例：担当者会議、納品、見積り提出の期限）","date":"YYYY-MM-DD","start":"HH:MM（分からなければ空）","end":"HH:MM（分からなければ空）","place":"場所（分からなければ空）"}],"requests":["事務所（事務員）にお願いすること。1件ずつ短い文で"],"cases":[{"client":"話題になった利用者の名前（例：加藤）","head":"用件の見出し。10字以内（例：車いす引上げ、ベッド新規、手すり見積、浴室改修）","type":"「レンタル新規」「購入」「住宅改修」「交換・回収」「その他」のどれか","text":"この利用者のこの用件について話した内容（1〜3文）","next":"この用件で次にやること（なければ空）","due":"この用件の期限 YYYY-MM-DD（なければ空）"}],"hosp":[{"client":"入院・退院した利用者の名前（例：加藤）","kind":"「入院」か「退院」","date":"入院日または退院日 YYYY-MM-DD（分からなければ空）","outPlan":"入院のとき、退院予定日 YYYY-MM-DD（分からなければ空）","note":"病院名・理由・見込みなど一言"}]`;
 const FIND_RULE=date=>`
 予定（events）：日時が決まった予定・期限だけ入れる。会話した日は${date}（${wd(date)}曜日）なので、「来週火曜」などはこの日を基準に年月日に直すこと。なければ []。
 事務への依頼（requests）：書類の送付・納品や回収の日程調整・見積りや請求書の作成・商品の手配など、営業本人ではなく事務所にやってもらうべきことだけ入れる。なければ []。
@@ -878,7 +894,7 @@ function addFound(d,rec,office,cm,date){d=d||{};
  const ev=(Array.isArray(d.events)?d.events:[]).filter(e=>e&&e.title&&/^\d{4}-\d{2}-\d{2}$/.test(String(e.date||""))).map(e=>({title:String(e.title),date:String(e.date),start:String(e.start||""),end:String(e.end||""),place:String(e.place||""),added:false}));
  const rq=(Array.isArray(d.requests)?d.requests:[]).map(x=>String(x||"").trim()).filter(Boolean).map(text=>({text,on:true}));
  const cs=(Array.isArray(d.cases)?d.cases:[]).filter(x=>x&&(x.text||x.client)).map(x=>{const u=matchClient(x.client,office),type=CTYPES[x.type]?x.type:"その他",same=u?openCasesOf(u.id).find(c=>c.type===type):null;
-  return {cname:String(x.client||""),client:u?u.id:"",type,text:String(x.text||"").trim(),next:String(x.next||"").trim(),due:/^\d{4}-\d{2}-\d{2}$/.test(String(x.due||""))?x.due:"",target:same?same.id:"new",on:true}});
+  return {cname:String(x.client||""),client:u?u.id:"",type,head:String(x.head||"").trim().slice(0,20),text:String(x.text||"").trim(),next:String(x.next||"").trim(),due:/^\d{4}-\d{2}-\d{2}$/.test(String(x.due||""))?x.due:"",target:same?same.id:"new",on:true}});
  const hs=(Array.isArray(d.hosp)?d.hosp:[]).filter(x=>x&&x.client).map(x=>{const u=matchClient(x.client,office),dt=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||""))?String(v):"";
   return {cname:String(x.client||""),client:u?u.id:"",kind:x.kind==="退院"?"退院":"入院",date:dt(x.date)||(x.kind==="退院"?"":date||""),outPlan:dt(x.outPlan),note:String(x.note||"").trim(),on:true}});
  const items=ev.map(e=>({t:e.title,date:e.date,time:e.start,place:e.place,def:"sched",st:""})).concat(rq.map(x=>({t:x.text,date:"",def:"jimu",st:""})));
@@ -997,7 +1013,7 @@ function salesMsgs(){const me=myId();const ds=(DB.msgs||[]).filter(m=>m.req===""
 function jReqItem(r){const o=DB.offices.find(x=>x.id===r.office)||{name:""},cm=DB.cms.find(c=>c.id===r.cm),rec=r.rec?DB.records.find(x=>x.id===r.rec):null;
  const stt=r.state==="済"?"済":r.state==="対応中"?"対応中":"未対応",cls={"未対応":"","対応中":"st-doing","済":"st-done"}[stt];
  return `<div class="jreq ${cls}"><div class="meta">${fmtAt(r.at)} ・ ${esc(r.staff||uName(r.email))}${o.name?" ・ "+esc(o.name):""}${cm?" ・ CM "+esc(cm.name):""}</div>
- <div style="font-size:17px;font-weight:700;margin:2px 0;white-space:pre-wrap">${esc(r.text)}</div>
+ ${(c=>c?`<div class="chead">🗂 ${esc(caseHead(c))}</div>`:"")(caseOfReq(r))}<div style="font-size:17px;font-weight:700;margin:2px 0;white-space:pre-wrap">${esc(r.text)}</div>
  ${rec?`<details><summary class="meta" style="cursor:pointer">${rec.kind==="電話"?"電話":"面談"}の内容を見る（${esc(rec.date)}）</summary><div style="white-space:pre-wrap;font-size:16px">${esc(rec.text)}</div>${rec.next?`<div class="meta">次回：${esc(rec.next)}</div>`:""}</details>`:""}
  <div class="seg" style="margin:8px 0 2px">${["未対応","対応中","済"].map(x=>`<button type="button" class="${stt===x?"on":""}" onclick="jState('${r.id}','${x}',this)">${x}</button>`).join("")}</div>
  ${stt==="済"&&r.doneBy?`<div class="meta">済：${esc(r.doneBy)}${r.doneAt?"（"+fmtAt(r.doneAt)+"）":""}</div>`:""}
@@ -1229,7 +1245,7 @@ window.hsSave=async b=>{const list=(S.hsItems||[]).filter(x=>x.on);if(!list.leng
 function viewJimuReq(){markRead("jimu");const f=S.jf||"open",st=S.jst||"",d=dism();
  const sales=(DB.users||[]).filter(u=>u.role!=="jimu"&&u.role!=="事務");
  const its=[];
- (DB.reqs||[]).forEach(r=>{const l=lastOf(r.id),done=r.state==="済",c=caseOfReq(r);its.push({at:(l&&l.at>(r.at||"")?l.at:r.at)||"",done,who:r.email||"",html:(c?`<button type="button" class="btn sm" style="margin-bottom:-6px" onclick="caseOpen('${c.id}')">🗂 案件カード：${esc(cName(c))}・${esc(c.type)}（${esc(cStage(c))}）を開く</button>`:"")+jReqItem(r)})});
+ (DB.reqs||[]).forEach(r=>{const l=lastOf(r.id),done=r.state==="済",c=caseOfReq(r);its.push({at:(l&&l.at>(r.at||"")?l.at:r.at)||"",done,who:r.email||"",html:(c?`<button type="button" class="btn sm" style="margin-bottom:-6px" onclick="caseOpen('${c.id}')">🗂 案件カードを開く（${esc(cStage(c))}）</button>`:"")+jReqItem(r)})});
  (DB.msgs||[]).filter(m=>m.req==="").forEach(m=>{const l=lastOf("m:"+m.id)||m,peer=peerOf(m),done=d.has("jd:"+l.id);
   its.push({at:l.at||"",done,who:peer,html:`<div>${directItem(m,"jimu")}<div style="margin:-4px 0 8px"><button class="btn sm" type="button" onclick="dismiss('jd:${l.id}')">${done?"✓ 済":"済にする"}</button></div></div>`})});
  const cnt=k=>its.filter(x=>k==="done"?x.done:!x.done).length;
@@ -1300,6 +1316,9 @@ const cLive=c=>c.state!=="削除";
 const cColor=c=>cDone(c)?"done":cStage(c)===cFirst(c)?"new":WAITST.includes(c.stage)?"wait":"go";
 const cOver=c=>!cDone(c)&&!!c.due&&c.due<today();
 function nmOnly(n){n=String(n||"").replace(/\s*様\s*$/,"").trim();const m=n.match(/^(\S+?(町|丁目|区|村|市|郡))\s+(.+)$/);return (m?m[3]:n)+" 様"}
+const cFull=c=>{const u=c.client?clientOf(c.client):null;let n=String(u?u.name:(c.clientName||"")).replace(/\s*様\s*$/,"").trim();return n?n+" 様":"（利用者なし）"};
+const cTopic=c=>{let t=String(c.title||"").split("\n")[0].trim();if(!t||t.length>16)t=c.type&&c.type!=="その他"?c.type:(t.slice(0,16)||"用件");return /件$/.test(t)?t:t+"の件"};
+const caseHead=c=>cFull(c)+"　"+cTopic(c);
 const cName=c=>{const u=c.client?clientOf(c.client):null;return u?nmOnly(u.name):c.clientName?nmOnly(c.clientName):"（利用者なし）"};
 const daysAgo=x=>{if(!x)return "";const d=Math.floor((Date.now()-new Date(x).getTime())/864e5);return isNaN(d)?"":d<=0?"今日":d+"日前"};
 const caseLogs=id=>(DB.caselog||[]).filter(l=>l.case===id).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
@@ -1312,26 +1331,27 @@ function findClient(v){const raw=String(v||"").trim();if(!raw)return null;
  const w=pnorm(raw.replace(/（.*$/,"")),hit=DB.clients.filter(x=>pnorm(x.name).includes(w));return hit.length===1?hit[0]:null}
 function caseTile(c){const st=ctSteps(c),i=Math.max(0,st.indexOf(cStage(c))),o=DB.offices.find(x=>x.id===c.office);
  return `<button type="button" class="ctile c-${cColor(c)} ${cOver(c)?"over":""}" onclick="caseOpen('${c.id}')">
- <div class="ct-h"><b>${esc(cName(c))}</b><span class="ct-type">${esc(c.type||"その他")}</span></div>
+ <div class="ct-h"><b>${esc(cFull(c))}</b><span class="ct-type">${esc(c.type||"その他")}</span></div>
+ <div class="ct-topic">${esc(cTopic(c))}</div>
  <div class="ct-bar">${st.map((x,k)=>`<i class="${k<=i?"on":""}"></i>`).join("")}</div>
  <div class="ct-st">${esc(cStage(c))}${c.due?` ・ <span class="${cOver(c)?"ovt":""}">期限 ${esc(c.due.slice(5).replace("-","/"))}${cOver(c)?"（過ぎています）":""}</span>`:""}</div>
- ${c.next?`<div class="ct-next">次：${esc(c.next)}</div>`:c.title?`<div class="ct-next">${esc(c.title)}</div>`:""}
+ ${c.next?`<div class="ct-next">次：${esc(c.next)}</div>`:""}
  <div class="meta">${esc(o?o.name:"")}${c.staffName?" ・ "+esc(c.staffName):""}${c.updatedAt||c.createdAt?" ・ "+daysAgo(c.updatedAt||c.createdAt)+"に更新":""}</div></button>`}
 /* 案件の一覧は「利用者・居宅・CM」を大見出しにして、その下に案件を枝分かれ（ツリー）で並べる */
 function clientTree(cs){const g=new Map();
  cs.forEach(c=>{const k=c.client||("n:"+(c.clientName||"")+"|"+(c.office||""));if(!g.has(k))g.set(k,[]);g.get(k).push(c)});
  return [...g.values()].map(list=>{const c0=list[0],u=c0.client?clientOf(c0.client):null,o=DB.offices.find(x=>x.id===(c0.office||(u&&clOffice(u)))),cm=DB.cms.find(x=>x.id===(c0.cm||(u&&u.cm)));
-  return `<div class="ctree"><div class="ctree-h"><b>${esc(cName(c0))}</b>${u&&u.lv?`<span class="meta">${esc(u.lv)}</span>`:""}</div>
+  return `<div class="ctree"><div class="ctree-h"><b>${esc(cFull(c0))}</b>${u&&u.lv?`<span class="meta">${esc(u.lv)}</span>`:""}</div>
   <div class="meta">${esc(o?o.name:"居宅未設定")}${cm?" ・ CM "+esc(cm.name):""}${c0.staffName?" ・ 担当 "+esc(c0.staffName):""}</div>
   <ul class="tree">${list.map(c=>{const st=ctSteps(c),i=Math.max(0,st.indexOf(cStage(c))),rq=caseReqs(c).filter(r=>r.state!=="済"),lg=caseLogs(c.id)[0];
-   const leaves=[];if(c.next||c.title)leaves.push(`<li><span class="meta">次にやること</span> ${esc(c.next||c.title)}</li>`);
+   const leaves=[];if(c.next)leaves.push(`<li><span class="meta">次にやること</span> ${esc(c.next)}</li>`);
    rq.forEach(r=>leaves.push(`<li><span class="meta">事務へ（${esc(r.state||"未対応")}）</span> ${esc(String(r.text).replace(/^.*?）：/,"").slice(0,40))}</li>`));
    if(lg)leaves.push(`<li><span class="meta">${esc(String(lg.at||"").slice(5,10).replace("-","/"))} ${esc(lg.kind||"")}</span> ${esc(String(lg.text||"").slice(0,40))}</li>`);
-   return `<li><button type="button" class="tnode c-${cColor(c)} ${cOver(c)?"over":""}" onclick="caseOpen('${c.id}')"><span class="ct-type">${esc(c.type||"その他")}</span> <b>${esc(cStage(c))}</b>${c.due?` ・ <span class="${cOver(c)?"ovt":""}">期限 ${esc(c.due.slice(5).replace("-","/"))}${cOver(c)?"（過ぎています）":""}</span>`:""}
+   return `<li><button type="button" class="tnode c-${cColor(c)} ${cOver(c)?"over":""}" onclick="caseOpen('${c.id}')"><b class="ct-topic">${esc(cTopic(c))}</b> ${cTopic(c).startsWith(c.type||"その他")?"":`<span class="ct-type">${esc(c.type||"その他")}</span>`} ${esc(cStage(c))}${c.due?` ・ <span class="${cOver(c)?"ovt":""}">期限 ${esc(c.due.slice(5).replace("-","/"))}${cOver(c)?"（過ぎています）":""}</span>`:""}
    <div class="ct-bar">${st.map((x,k)=>`<i class="${k<=i?"on":""}"></i>`).join("")}</div></button>${leaves.length?`<ul class="tree">${leaves.join("")}</ul>`:""}</li>`}).join("")}</ul></div>`}).join("")}
 function casesList(office){const q=(S.cq||"").trim(),me=myId(),all=office?true:S.cmine===false;
  let cs=(DB.cases||[]).filter(c=>cLive(c)&&(office?c.office===office&&!cDone(c):(S.cdone||!cDone(c))&&(all||c.staff===me)));
- if(q&&!office){const tk=qTokens(q);cs=cs.filter(c=>{const o=DB.offices.find(x=>x.id===c.office);const h=snorm([cName(c),c.type,c.title,c.next,o?o.name:""].join(" "));return tk.every(t=>h.includes(t))})}
+ if(q&&!office){const tk=qTokens(q);cs=cs.filter(c=>{const o=DB.offices.find(x=>x.id===c.office);const h=snorm([cFull(c),c.type,c.title,c.next,o?o.name:""].join(" "));return tk.every(t=>h.includes(t))})}
  return cs.sort((a,b)=>(cOver(b)-cOver(a))||(cDone(a)-cDone(b))||String(a.due||"9999").localeCompare(String(b.due||"9999"))||String(b.updatedAt||b.createdAt||"").localeCompare(String(a.updatedAt||a.createdAt||"")))}
 function casesSection(office){const cs=casesList(office);
  const newf=S.caseNew&&S.caseNew.office===(office||"")?caseNewForm(office):"";
@@ -1348,7 +1368,7 @@ function caseNewForm(office){const L=DB.clients.slice().sort((a,b)=>(clOffice(b)
  return `<div class="form" style="margin-bottom:10px"><b>案件カードを作る</b>
   <label>利用者<input id="cn-client" list="cnClients" placeholder="名前の一部を入れて候補から選ぶ"></label><datalist id="cnClients">${L.map(u=>`<option value="${esc(clientLabel(u))}">`).join("")}</datalist>
   <div class="row2"><label>種類<select id="cn-type">${Object.keys(CTYPES).map(k=>`<option>${k}</option>`).join("")}</select></label><label>期限（なくても可）<input type="date" id="cn-due"></label></div>
-  <label>用件<input id="cn-title" placeholder="例：電動ベッドの新規、来週納品希望"></label>
+  <label>見出し（用件をひとこと）<input id="cn-title" maxlength="20" placeholder="例：車いす引上げ、ベッド新規"></label>
   <div style="display:flex;gap:8px"><button class="btn primary" type="button" onclick="caseCreate('${office||""}',this)">作る</button><button class="btn" type="button" onclick="S.caseNew=null;render()">やめる</button></div></div>`}
 function clog(caseId,kind,text,rec){return {table:"caselog",row:{id:newId("l"),case:caseId,kind,text:String(text||""),rec:rec||"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}}
 function newCaseRow(o){const u=o.client?clientOf(o.client):null,now=new Date().toISOString();
@@ -1363,14 +1383,14 @@ function viewCase(){const c=(DB.cases||[]).find(x=>x.id===S.caseId);if(!c)return
  const st=ctSteps(c),cur=cStage(c),ci=st.indexOf(cur),o=DB.offices.find(x=>x.id===c.office),cm=DB.cms.find(x=>x.id===c.cm),u=c.client?clientOf(c.client):null;
  const others=(DB.cases||[]).filter(x=>x.id!==c.id&&cLive(x)&&!cDone(x)&&!!c.client&&x.client===c.client);
  return `<div class="ctile c-${cColor(c)} ${cOver(c)?"over":""}" style="cursor:default;margin-top:8px">
-  <div class="ct-h"><b style="font-size:21px">${esc(cName(c))}</b><span class="ct-type">${esc(c.type||"その他")}</span></div>
+  <div class="ct-h"><b style="font-size:21px">${esc(cFull(c))}</b><span class="ct-type">${esc(c.type||"その他")}</span></div><div class="ct-topic" style="font-size:20px">${esc(cTopic(c))}</div>
   <div class="meta">${o?`<a href="#" onclick="openOffice('${o.id}');return false">${esc(o.name)}</a>`:"居宅未設定"}${cm?" ・ CM "+esc(cm.name):""}${u&&u.lv?" ・ "+esc(u.lv):""}${c.staffName?" ・ 担当 "+esc(c.staffName):""}</div>
   ${c.due?`<div class="ct-st">期限 <span class="${cOver(c)?"ovt":""}">${esc(c.due)}${cOver(c)?"（過ぎています）":""}</span></div>`:""}
   <div class="meta" style="margin-top:4px">進み具合（押すと変わります）</div>
   <div class="steps">${st.map((x,k)=>`<button type="button" class="${k===ci?"on":k<ci?"past":""}" onclick="caseStage('${c.id}','${x}',this)">${k<ci?"✓ ":""}${x}</button>`).join("")}</div></div>
  ${c.next||c.title?`<div class="form" style="margin-top:10px;gap:2px"><div class="meta">次にやること</div><b style="font-size:17px">${esc(c.next||c.title)}</b>${c.due?`<div class="meta">期限 ${esc(c.due.slice(5).replace("-","/"))}</div>`:""}</div>`:""}
  <details class="form" style="margin-top:10px"><summary style="cursor:pointer"><b>用件・次にやること・期限を直す</b></summary>
-  <label>用件（ひとこと）<input id="cs-title" value="${esc(c.title||"")}"></label>
+  <label>見出し（用件をひとこと。例：車いす引上げ）<input id="cs-title" maxlength="20" value="${esc(c.title||"")}"></label>
   <div class="row2"><label>次にやること<input id="cs-next" value="${esc(c.next||"")}"></label><label>期限<input type="date" id="cs-due" value="${esc(c.due||"")}"></label></div>
   <div class="row2"><label>種類<select id="cs-type">${Object.keys(CTYPES).map(k=>`<option ${k===c.type?"selected":""}>${k}</option>`).join("")}</select></label>
   <label>利用者<input id="cs-client" list="csClients" value="${esc(u?clientLabel(u):c.clientName||"")}" placeholder="名前の一部で候補から選ぶ"></label></div>
@@ -1396,7 +1416,7 @@ const caseOfReq=r=>{if(!r||!r.rec)return null;if(String(r.rec).startsWith("c:"))
 function caseRentals(c){const rs=c.client?(DB.rentals||[]).filter(r=>r.state!=="削除"&&r.client===c.client):[];if(!rs.length)return "";
  return `<div class="section-t"><h2>レンタル台帳</h2><span class="meta">${rs.length}件</span></div><div class="log">${rs.map(r=>`<div class="logi"><b>${esc(r.item||"")}</b> <span class="meta">納品 ${md(r.deliv)}</span><div>${rtWarn(rtAlerts(r))}</div></div>`).join("")}</div>`}
 window.caseAsk=async(id,b)=>{const c=DB.cases.find(y=>y.id===id),t=($("#cs-jimu").value||"").trim();if(!c)return;if(!t){toast("文を入れてください");return}
- b.disabled=true;const row={id:newId("q"),office:c.office||"",cm:c.cm||"",rec:"c:"+id,text:cName(c)+"（"+(c.type||"")+"）："+t,staff:USER?USER.name:"デモ",state:"未対応",at:new Date().toISOString()};
+ b.disabled=true;const row={id:newId("q"),office:c.office||"",cm:c.cm||"",rec:"c:"+id,text:caseHead(c)+"："+t,staff:USER?USER.name:"デモ",state:"未対応",at:new Date().toISOString()};
  try{await persist([{table:"reqs",row},{table:"cases",row:{id}}]);buzz(40);toast("事務に送りました");render()}catch(e){b.disabled=false;toast("送れませんでした："+errText(e))}};
 async function caseOps(ops,b,msg){if(b)b.disabled=true;try{await persist(ops);buzz(40);if(msg)toast(msg);render();return true}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e));return false}}
 window.caseStage=(id,x,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c||cStage(c)===x)return;
@@ -1418,7 +1438,7 @@ window.recShow=id=>{S.view="log";S.caseId=null;S.recAll=true;render();setTimeout
 /* 会話の記録は1行ずつ（タップで全文）。どの案件に入ったかを色の札で出す */
 function recRow(r){const o=DB.offices.find(x=>x.id===r.office),cm=DB.cms.find(c=>c.id===r.cm);
  const cs=[...new Set((DB.caselog||[]).filter(l=>l.rec===r.id).map(l=>l.case))].map(id=>(DB.cases||[]).find(c=>c.id===id&&cLive(c))).filter(Boolean);
- return `<details class="rrow" id="rec-${r.id}" ${S.recEdit===r.id?"open":""}><summary><span class="num meta">${esc(String(r.date||"").slice(5).replace("-","/"))}</span> ${r.kind==="電話"?"📞":"🗣"} ${S.view==="visit"?"":"<b>"+esc(o?o.name:"")+"</b> "}<span class="meta">${whoHtml(r,cm,"")}</span>${cs.map(c=>`<span class="cchip c-${cColor(c)}">${esc(cName(c))}・${esc(c.type)}</span>`).join("")}<div class="rr1">${esc(firstLine(r.text))}</div></summary>${logItem(r)}</details>`}
+ return `<details class="rrow" id="rec-${r.id}" ${S.recEdit===r.id?"open":""}><summary><span class="num meta">${esc(String(r.date||"").slice(5).replace("-","/"))}</span> ${r.kind==="電話"?"📞":r.kind==="SMS"?"✉️":"🗣"} ${S.view==="visit"?"":"<b>"+esc(o?o.name:"")+"</b> "}<span class="meta">${whoHtml(r,cm,"")}</span>${cs.map(c=>`<span class="cchip c-${cColor(c)}">${esc(cName(c))}・${esc(cTopic(c))}</span>`).join("")}<div class="rr1">${esc(firstLine(r.text))}</div></summary>${logItem(r)}</details>`}
 /* AIの振り分け案（会話 → 案件） */
 function fcHtml(f,fi){if(f.casesDone)return `<div style="margin-top:8px"><b>🗂 案件</b><div class="meta">✅ 案件カードに入れました（「やること」で見られます）</div></div>`;
  return `<div style="margin-top:8px"><b>🗂 案件カードに入れる</b><div class="meta">利用者・用件ごとに分けました。違っていたら直してから入れてください。</div>
@@ -1427,6 +1447,7 @@ function fcHtml(f,fi){if(f.casesDone)return `<div style="margin-top:8px"><b>🗂
   ${u?"":`<input list="fcCl" placeholder="登録の利用者を名前の一部で選ぶ" onchange="fcClient(${fi},${xi},this.value)">`}
   <div class="row2"><select onchange="FOUND[${fi}].cases[${xi}].type=this.value">${Object.keys(CTYPES).map(k=>`<option ${k===x.type?"selected":""}>${k}</option>`).join("")}</select>
   <select onchange="FOUND[${fi}].cases[${xi}].target=this.value"><option value="new" ${x.target==="new"?"selected":""}>新しい案件カードにする</option>${ex.map(c=>`<option value="${c.id}" ${x.target===c.id?"selected":""}>今の案件カードに追加：${esc(c.type)}（${esc(cStage(c))}）</option>`).join("")}</select></div>
+  <input placeholder="見出し（例：車いす引上げ）" maxlength="20" value="${esc(x.head||"")}" oninput="FOUND[${fi}].cases[${xi}].head=this.value">
   <textarea rows="2" oninput="FOUND[${fi}].cases[${xi}].text=this.value">${esc(x.text)}</textarea>
   ${x.next||x.due?`<div class="meta">次：${esc(x.next||"―")}${x.due?" ・ 期限 "+esc(x.due):""}</div>`:""}</div>`}).join("")}
  <datalist id="fcCl">${DB.clients.map(u=>`<option value="${esc(clientLabel(u))}">`).join("")}</datalist>
@@ -1436,7 +1457,7 @@ window.fcClient=(fi,xi,v)=>{const x=FOUND[fi]&&FOUND[fi].cases[xi];if(!x)return;
 window.fcApply=async(fi,b)=>{const f=FOUND[fi];if(!f)return;const list=f.cases.filter(x=>x.on&&(x.text.trim()||x.client));if(!list.length){toast("チェックした案件がありません");return}
  if(list.some(x=>!x.client)&&!confirm("登録の利用者が選ばれていない案件があります。このまま入れますか？"))return;
  const ops=[];list.forEach(x=>{let id=x.target;
-  if(id==="new"||!DB.cases.some(c=>c.id===id)){const row=newCaseRow({client:x.client,clientName:x.cname,office:f.office,cm:f.cm,type:x.type,title:firstLine(x.text).slice(0,40),due:x.due,next:x.next});id=row.id;ops.push({table:"cases",row})}
+  if(id==="new"||!DB.cases.some(c=>c.id===id)){const row=newCaseRow({client:x.client,clientName:x.cname,office:f.office,cm:f.cm,type:x.type,title:x.head||firstLine(x.text).slice(0,40),due:x.due,next:x.next});id=row.id;ops.push({table:"cases",row})}
   else{const r={id};if(x.next)r.next=x.next;if(x.due)r.due=x.due;ops.push({table:"cases",row:r})}
   ops.push(clog(id,"会話",x.text,f.rec))});
  if(await caseOps(ops,b,"案件に入れました")){f.casesDone=true;render()}};
@@ -1444,7 +1465,7 @@ window.fcApply=async(fi,b)=>{const f=FOUND[fi];if(!f)return;const list=f.cases.f
 window.caseSplit=async(id,b)=>{const r=DB.records.find(x=>x.id===id);if(!r)return;if(b){b.disabled=true;b.textContent="AIで分けています…"}
  let d=null;try{const o=DB.offices.find(x=>x.id===r.office)||{name:""};
   const rr=await aiJson(`福祉用具貸与事業所（アスポート）の営業担当の記録です。利用者ごと・用件ごとに分けて、次のキーだけのJSONで返してください。
-{"cases":[{"client":"話題になった利用者の名前（例：加藤）","type":"「レンタル新規」「購入」「住宅改修」「交換・回収」「その他」のどれか","text":"この利用者のこの用件についての内容（1〜3文）","next":"次にやること（なければ空）","due":"期限 YYYY-MM-DD（なければ空）"}]}
+{"cases":[{"client":"話題になった利用者の名前（例：加藤）","head":"用件の見出し。10字以内（例：車いす引上げ、ベッド新規、手すり見積、浴室改修）","type":"「レンタル新規」「購入」「住宅改修」「交換・回収」「その他」のどれか","text":"この利用者のこの用件についての内容（1〜3文）","next":"次にやること（なければ空）","due":"期限 YYYY-MM-DD（なければ空）"}]}
 同じ利用者でも用件が違えば別にする。特定の利用者の話でなければ入れない。記録の日付は${r.date}。
 参考：この居宅（${o.name}）の当社利用者は ${DB.clients.filter(u=>clOffice(u)===r.office).map(u=>nmOnly(u.name)).join("、")||"なし"}。
 --- 記録 ---
@@ -1525,7 +1546,7 @@ function jimuNews(){const me=myId(),d=dism(),out=[];
   else if(r.state!=="済"&&l&&l.from!==me&&!d.has("m:"+l.id))out.push({at:l.at,k:"m:"+l.id,html:reqNews(r,"事務から返事があります")})});
  return out.sort((x,y)=>String(y.at).localeCompare(String(x.at)))}
 function reqNews(r,head){const o=DB.offices.find(x=>x.id===r.office)||{name:""},c=caseOfReq(r);
- return `<div class="jreq st-doing"><div class="meta"><b>${head}</b> ・ ${esc(o.name)}</div>${esc(r.text)}${c?`<div><button type="button" class="btn sm" style="margin-top:4px" onclick="caseOpen('${c.id}')">🗂 案件カードを開く</button></div>`:""}<div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${r.state==="済"?"":replyBox(r.id,JIMU,r.office||"","事務に一言")}</div>`}
+ return `<div class="jreq st-doing"><div class="meta"><b>${head}</b> ・ ${esc(o.name)}</div>${c?`<div class="chead">🗂 ${esc(caseHead(c))}</div>`:""}${esc(r.text)}${c?`<div><button type="button" class="btn sm" style="margin-top:4px" onclick="caseOpen('${c.id}')">🗂 案件カードを開く</button></div>`:""}<div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${r.state==="済"?"":replyBox(r.id,JIMU,r.office||"","事務に一言")}</div>`}
 function todoCount(){const t=today();let n=0;try{n=schedMine().filter(s=>s.state!=="済"&&s.date&&s.date<=t).length+jimuNews().length+(DB.cases||[]).filter(c=>cLive(c)&&c.staff===myId()&&cOver(c)).length}catch(e){}return n}
 function viewTodo(){markRead("sales");const t=today(),list=schedMine(),open=list.filter(s=>s.state!=="済").sort(sortS),news=jimuNews(),me=myId();
  const grp=[["期限が過ぎています",s=>s.date&&s.date<t],["今日",s=>s.date===t],["明日",s=>s.date===addDays(t,1)],["今週（あさって〜7日後）",s=>s.date>addDays(t,1)&&s.date<=addDays(t,7)],["それ以降",s=>s.date>addDays(t,7)],["日付なし",s=>!s.date]];
@@ -1783,7 +1804,7 @@ window.rqUpd=()=>{const b=$("#rqBox");if(b)b.innerHTML=rqHtml()};
 window.recAt=id=>{S.office=id;S.view="visit";S.selCm=null;S.recOpen=true;S.autoOpened=id;S.rq="";render();setTimeout(()=>{const f=$("#recForm");if(f)f.scrollIntoView({block:"start"});else scrollTo(0,0)},60)};
 function logItem(r){if(S.recEdit===r.id)return recEditForm(r);const cm=DB.cms.find(c=>c.id===r.cm);const o=DB.offices.find(x=>x.id===r.office);
  const pick=!r.cm&&o&&r.party!=="利用者"&&r.party!=="その他"?`<select class="sim" onchange="setRecCm('${r.id}',this.value)"><option value="">面談者を選ぶ</option>${DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}<option value="none">CM不在・事業所のみ</option></select>`:"";
- return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${whoHtml(r,cm,pick)}${r.staff?" ・ 記録："+esc(r.staff):""} <button class="btn sm" type="button" style="padding:2px 8px" onclick="recEditOpen('${r.id}')">修正</button>${(DB.caselog||[]).some(l=>l.rec===r.id)?"":` <button class="btn sm" type="button" style="padding:2px 8px" onclick="caseSplit('${r.id}',this)">🗂 案件に振り分け</button>`}${(q=>q.length?` <span class="status" style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:999px;font-weight:700">📨 事務に送信済み${q.every(x=>x.state==="済")?"・対応済":"・未対応"}</span> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">もう一度送る</button>`:` <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdQuick('${r.id}',this)">📨 そのまま事務へ</button> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">一言つけて送る</button>`)((DB.reqs||[]).filter(x=>x.rec===r.id))}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${transHtml(r,"文字起こしを見る")}</div>`}
+ return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":r.kind==="SMS"?" ✉️SMS":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${whoHtml(r,cm,pick)}${r.staff?" ・ 記録："+esc(r.staff):""} <button class="btn sm" type="button" style="padding:2px 8px" onclick="recEditOpen('${r.id}')">修正</button>${(DB.caselog||[]).some(l=>l.rec===r.id)?"":` <button class="btn sm" type="button" style="padding:2px 8px" onclick="caseSplit('${r.id}',this)">🗂 案件に振り分け</button>`}${(q=>q.length?` <span class="status" style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:999px;font-weight:700">📨 事務に送信済み${q.every(x=>x.state==="済")?"・対応済":"・未対応"}</span> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">もう一度送る</button>`:` <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdQuick('${r.id}',this)">📨 そのまま事務へ</button> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">一言つけて送る</button>`)((DB.reqs||[]).filter(x=>x.rec===r.id))}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${transHtml(r,"文字起こしを見る")}</div>`}
 window.setRecCm=async(id,cm)=>{if(!cm)return;try{await persist([{table:"records",row:{id,cm}}]);toast("面談者を登録しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
 window.addRecord=async(e,oid)=>{e.preventDefault();
  const t=$("#f-text").value.trim();if(!t)return;const b=e.target.querySelector("[type=submit]");b.disabled=true;
