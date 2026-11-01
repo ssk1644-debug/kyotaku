@@ -545,6 +545,7 @@ function viewVisit(){
  <div class="split">
   <div>
    <div class="section-t"><h2>担当利用者の近況</h2><span class="meta">${S.selCm&&DB.cms.find(c=>c.id===S.selCm)?esc(DB.cms.find(c=>c.id===S.selCm).name)+" さん担当 ・ <a href='#' onclick='S.selCm=null;render();return false'>全員を表示</a>":"この居宅の全CM"}</span></div>
+   ${(L=>L.length?`<div class="hospl" style="margin-bottom:8px">🏥 この居宅で入院・入所中 ${L.length}人：${L.map(h=>`${esc(hmName(h))}${h.inDate?"（"+md(h.inDate)+"〜）":""}`).join("、")}</div>`:"")((DB.hosp||[]).filter(h=>h.state!=="削除"&&hospOpen(h)&&hmInfo(h).o&&hmInfo(h).o.id===o.id))}
    <div class="clients">${clients.map(u=>{const [l,c]=stLabel[u.status]||stLabel.ok;const cm=DB.cms.find(x=>x.id===u.cm)||{name:""};
      const h=hospOf(u.id);
      return `<div class="client ${h?"inhosp":""}"><div><span class="nm">${esc(u.name)}</span> <span class="meta">${esc(u.lv)}${cm.name?" ・ CM "+esc(cm.name.split(" ")[0]):""}</span></div>
@@ -1342,7 +1343,7 @@ const hmLeft=h=>{if(h.state==="削除")return [];const L=[];if(h.inData!=="✓")
  if(h.outDate){if(h.outData!=="✓")L.push("再開データ");if(!h.outFax)L.push("再開FAX")}if(h.pickKind&&h.pickData!=="✓")L.push("引上げデータ");if(h.done!=="✓")L.push("処理済");return L};
 function hmRows(){const f=hmF(),q=(S.hmq||"").trim();let hs=(DB.hosp||[]).filter(h=>h.state!=="削除");
  if(f==="open")hs=hs.filter(hospOpen);else if(f==="left")hs=hs.filter(h=>hmLeft(h).length);
- if(q){const tk=qTokens(q);hs=hs.filter(h=>{const t=snorm([hmName(h),h.reason,h.note,h.officeName,h.contactFrom].join(" "));return tk.every(x=>t.includes(x))})}
+ if(q){const tk=qTokens(q);hs=hs.filter(h=>{const i=hmInfo(h),t=snorm([hmName(h),h.reason,h.note,h.officeName,h.contactFrom,i.off,i.cm,i.staff].join(" "));return tk.every(x=>t.includes(x))})}
  return hs.sort((a,b)=>String(b.contactAt||b.inDate||"").localeCompare(String(a.contactAt||a.inDate||"")))}
 const hmState=h=>`${esc(h.kind||"入院")} `+(h.pickKind?`<span class="ac r">引上げ（${esc(h.pickKind)}）</span>`:h.outDate?`<span class="ac ok">退院</span>`:hospOpen(h)?`<span class="ac h">入院中</span>`:"");
 /* 入院期間（入院日〜退院日。まだなら今日まで）と長期の印（30日以上） */
@@ -1353,18 +1354,23 @@ const ck=v=>v==="✓"?'<span class="ac ok">✓</span>':'<span class="ac o">未</
 /* 絞り込みは前回のまま（開き直しても「入院・入所中」に戻らない） */
 const hmF=()=>{if(!S.hmf){try{S.hmf=localStorage.getItem("kyotaku-hmf")||"open"}catch(e){S.hmf="open"}}return S.hmf};
 window.hmSetF=k=>{S.hmf=k;try{localStorage.setItem("kyotaku-hmf",k)}catch(e){}render()};
-function jimuHosp(){const hs=hmRows(),f=hmF(),allN=(DB.hosp||[]).filter(h=>h.state!=="削除").length;
+/* 入退院の行に、居宅・担当CM・担当営業を付ける（登録の利用者から。なければ居宅名から） */
+function hmInfo(h){const u=h.client?clientOf(h.client):null,o=DB.offices.find(x=>x.id===(h.office||(u&&clOffice(u))))||(h.officeName?DB.offices.find(x=>x.name===h.officeName):null),cm=u&&u.cm?DB.cms.find(c=>c.id===u.cm):null;
+ return {u,o,off:o?o.name:(h.officeName||""),cm:cm?cm.name:"",staff:o?staffNames(o).replace(/^未設定$/,""):""}}
+const HM_COLS=[["name","利用者",h=>hmName(h)],["state","状態",h=>h.pickKind?"3":h.outDate?"2":"1"],["in","入院日",h=>h.inDate||""],["out","退院日",h=>h.outDate||h.outPlan||""],["dur","入院期間",h=>String(hmDays(h.inDate,h.outDate)??-1).padStart(5,"0")],["left","残っている処理",h=>String(hmLeft(h).length).padStart(2,"0")],["off","居宅",h=>hmInfo(h).off],["cm","担当CM",h=>hmInfo(h).cm],["staff","担当営業",h=>hmInfo(h).staff]];
+window.hmSort=k=>{if(S.hmSk===k)S.hmSd=-(S.hmSd||1);else{S.hmSk=k;S.hmSd=1}render()};
+function jimuHosp(){let hs=hmRows();if(S.hmSk){const c=HM_COLS.find(x=>x[0]===S.hmSk),d=S.hmSd||1;if(c)hs=hs.slice().sort((a,b)=>{const x=c[2](a),y=c[2](b);return (!x&&y?1:x&&!y?-1:String(x).localeCompare(String(y),"ja"))*(x&&y?d:1)})}const f=hmF(),allN=(DB.hosp||[]).filter(h=>h.state!=="削除").length;
  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
   <button class="btn primary" type="button" onclick="S.hmOpen='new';render()">＋ 入院・入所の連絡を登録</button>
   <div class="seg">${[["open","入院・入所中"],["left","処理が残っている"],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="hmSetF('${k}')">${l}</button>`).join("")}</div>
-  <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="利用者・理由・居宅で探す" value="${esc(S.hmq||"")}" onchange="S.hmq=this.value;render()"><span class="meta">${hs.length}件${f!=="all"?`（全部で${allN}件。退院・引上げを入れた行は「すべて」に出ます）`:""}</span></div>
+  <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="利用者・理由・居宅・CM・担当で探す" value="${esc(S.hmq||"")}" onchange="S.hmq=this.value;render()"><span class="meta">${hs.length}件${f!=="all"?`（全部で${allN}件。退院・引上げを入れた行は「すべて」に出ます）`:""}</span></div>
  ${S.hmOpen?fullBox(hmForm(),"S.hmOpen=null;render()"):""}
  <div class="form" style="margin-bottom:10px"><b>📄 入退院管理表をスキャンして読み取る（画像・PDF、何枚でも）</b>
   <div class="meta">紙の入退院管理表や連絡票をスキャンしたファイルを選ぶと、AIが1行ずつ読み取ります。確認・修正してから登録します。</div>
   <div><label class="btn" for="hsx" style="display:inline-flex">ファイルを選ぶ</label><input type="file" id="hsx" multiple accept="image/*,application/pdf" onchange="hsScan(this)" style="position:absolute;opacity:0;width:1px;height:1px"> <span class="meta" id="hsSt">${esc(S.hsSt||"")}</span></div>
   ${(S.hsItems||[]).length?hsTable():""}</div>
- <div class="rtw"><table class="rt"><thead><tr><th>利用者</th><th>状態</th><th>入院日</th><th>退院日</th><th>入院期間</th><th>残っている処理（押すと全部の項目が開きます）</th><th>居宅</th></tr></thead><tbody>
- ${hs.slice(0,S.hmAll?3000:300).map(h=>{const u=h.client?clientOf(h.client):null,o=DB.offices.find(x=>x.id===(h.office||(u&&clOffice(u))));return `<tr onclick="S.hmOpen='${h.id}';render()" style="${hmLeft(h).length?"":"opacity:.7"}"><td><b>${esc(hmName(h))}</b>${h.client?"":' <span class="meta">（未登録）</span>'}</td><td>${hmState(h)}</td><td>${md(h.inDate)}</td><td>${md(h.outDate)}${h.outPlan&&!h.outDate?' <span class="meta">予定'+md(h.outPlan)+'</span>':""}</td><td>${hmDur(h.inDate,h.outDate)}</td><td>${hmLeft(h).map(x=>`<span class="ac o">${esc(x)}</span>`).join(" ")||'<span class="ac ok">完了</span>'}</td><td>${esc(o?o.name:h.officeName||"")}</td></tr>`}).join("")||'<tr><td colspan="7" class="meta">該当なし</td></tr>'}
+ <div class="rtw"><table class="rt"><thead><tr>${HM_COLS.map(([k,l])=>`<th style="cursor:pointer;white-space:nowrap" onclick="hmSort('${k}')">${l}${S.hmSk===k?((S.hmSd||1)>0?" ▲":" ▼"):" <span class=\"meta\">⇅</span>"}</th>`).join("")}</tr></thead><tbody>
+ ${hs.slice(0,S.hmAll?3000:300).map(h=>{const u=h.client?clientOf(h.client):null,o=DB.offices.find(x=>x.id===(h.office||(u&&clOffice(u))));return `<tr onclick="S.hmOpen='${h.id}';render()" style="${hmLeft(h).length?"":"opacity:.7"}"><td><b>${esc(hmName(h))}</b>${h.client?"":' <span class="meta">（未登録）</span>'}</td><td>${hmState(h)}</td><td>${md(h.inDate)}</td><td>${md(h.outDate)}${h.outPlan&&!h.outDate?' <span class="meta">予定'+md(h.outPlan)+'</span>':""}</td><td>${hmDur(h.inDate,h.outDate)}</td><td>${hmLeft(h).map(x=>`<span class="ac o">${esc(x)}</span>`).join(" ")||'<span class="ac ok">完了</span>'}</td>${(i=>`<td>${esc(i.off)}</td><td>${esc(i.cm)}</td><td>${esc(i.staff)}</td>`)(hmInfo(h))}</tr>`}).join("")||'<tr><td colspan="9" class="meta">該当なし</td></tr>'}
  </tbody></table></div>${hs.length>300&&!S.hmAll?`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.hmAll=true;render()">すべて表示（${hs.length}件）</button>`:""}`}
 const HM_F=[["contactAt","入院の連絡日","date"],["contactFrom","誰から","text"],["kind","分類","sel:入院,入所,ショート"],["inDate","入院日","date"],["outPlan","退院予定日","date"],["inFax","休止FAX","sel:,✓,自社,―"],
  ["outContactAt","退院の連絡日","date"],["outFrom","誰から（退院）","text"],["outDate","退院日","date"],["outFax","再開FAX","sel:,✓,自社,―"],["pickDate","引上げ日","date"],["pickKind","引上げの内容","sel:,解約,死亡"],["period","期間の見込み","text"],["reason","入院理由・病院","text"],["officeName","居宅","office"]];
