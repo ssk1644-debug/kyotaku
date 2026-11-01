@@ -271,6 +271,7 @@ body.noscroll{overflow:hidden}
     <button class="tab" data-v="jimu" data-jt="board" id="t-jimu" hidden style="order:-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="7" height="16" rx="1.5"/><rect x="14" y="4" width="7" height="10" rx="1.5"/></svg><span class="tl">事務</span></button>
     <button class="tab" data-v="jimu" data-jt="ledger" id="t-jledger" hidden style="order:-3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h11l3 3v15H5z"/><path d="M9 9h7M9 13h7M9 17h4"/></svg>レンタル台帳</button>
     <button class="tab" data-v="jimu" data-jt="hosp" id="t-jhosp" hidden style="order:-2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V8l8-4 8 4v12z"/><path d="M12 9v6M9 12h6"/></svg>入退院</button>
+    <button class="tab" data-v="jimu" data-jt="cl" id="t-jcl" hidden style="order:-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 8v6M14 11h6"/></svg>利用者</button>
     <button class="tab" data-v="jimu" data-jt="req" id="t-jreq" hidden style="order:-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>依頼・連絡BOX</button>
     <button class="tab" data-v="visit" id="t-visit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>訪問中</button>
     <button class="tab" data-v="list" id="t-list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>居宅一覧</button>
@@ -1109,7 +1110,7 @@ const isJimu=()=>!!USER&&(USER.role==="jimu"||USER.role==="事務");
 const JIMU_URL=/[?&#]jimu\b/.test(location.href);
 /* 事務の人（または ?jimu で開いた画面）は、ボード・台帳・入退院・依頼を下のタブに出す */
 const jimuMode=()=>isJimu()||(JIMU_URL&&seeJimu());
-const JT_L={board:"営業別ボード",ledger:"レンタル台帳",hosp:"入退院",req:"依頼・連絡BOX"};
+const JT_L={board:"営業別ボード",ledger:"レンタル台帳",hosp:"入退院",cl:"利用者",req:"依頼・連絡BOX"};
 function jimuTabsUpd(){const jm=jimuMode();document.querySelectorAll(".tab[data-jt]").forEach(t=>{if(jm)t.setAttribute("aria-current",S.view==="jimu"&&(S.jt||"board")===t.dataset.jt)});const tl=document.querySelector("#t-jimu .tl");if(tl)tl.textContent=jm?"ボード":"事務";document.body.classList.toggle("noscroll",!!document.querySelector(".full"))}
 const fullBox=(html,close)=>`<div class="full" role="dialog" aria-modal="true"><div class="full-in"><div class="full-bar"><button class="btn" type="button" onclick="${close}">← 一覧に戻る</button></div>${html}</div></div>`;
 const seeJimu=()=>MODE==="demo"||isJimu()||(JIMU_URL&&!!USER&&USER.role==="admin");
@@ -1195,15 +1196,15 @@ const rtHot=r=>{const a=rtAlerts(r);return RT_KEYS.some(([k])=>a[k].k==="r"||a[k
 const staffEmail=n=>{n=String(n||"").trim();if(!n)return "";const u=(DB.users||[]).find(x=>x.name&&(x.name.includes(n)||n.includes(x.name)));return u?u.email:""};
 function rtStaffs(){const m={};(DB.rentals||[]).forEach(r=>{const n=String(r.staff||"").trim()||"（担当なし）";m[n]=(m[n]||0)+1});return Object.keys(m).sort((a,b)=>m[b]-m[a])}
 function viewJimu(){const t=S.jt||"board",jm=jimuMode();
- const tabs=[["board","営業別ボード"],["ledger","レンタル台帳"],["hosp","入退院"],["req","依頼・連絡BOX"]];
+ const tabs=[["board","営業別ボード"],["ledger","レンタル台帳"],["hosp","入退院"],["cl","利用者"],["req","依頼・連絡BOX"]];
  const unread=unreadFor("jimu").length+(DB.reqs||[]).filter(r=>!r.state||r.state==="未対応").length;
  const flt=t==="board"||t==="ledger"?`<label class="meta" style="display:flex;gap:6px;align-items:center">要注意にするのは納品日 <input type="date" class="sim" value="${RT_FROM}" onchange="rtFromSet(this.value)"> 以降</label>`:"";
  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 12px"><h2 style="margin-right:auto">${jm?JT_L[t]:"事務所"}</h2>${flt}${jm?"":`<div class="seg">${tabs.map(([k,l])=>`<button type="button" class="${t===k?"on":""}" onclick="S.jt='${k}';S.rtOpen=null;render()">${l}${k==="req"&&unread?" ("+unread+")":""}</button>`).join("")}</div>`}</div>
- ${t==="ledger"?rtLedger():t==="hosp"?jimuHosp():t==="req"?viewJimuReq():rtBoard()}${S.rtOpen?fullBox(rtDetail(),"S.rtOpen=null;render()"):""}`}
+ ${t==="ledger"?rtLedger():t==="hosp"?jimuHosp():t==="cl"?clList():t==="req"?viewJimuReq():rtBoard()}${S.rtOpen?fullBox(rtDetail(),"S.rtOpen=null;render()"):""}${S.clOpen?fullBox(clForm(),"S.clOpen=null;render()"):""}`}
 function rtBoard(){const rs=(DB.rentals||[]).filter(r=>r.state!=="削除"),cases=(DB.cases||[]).filter(c=>cLive(c)&&!cDone(c));
- if(!rs.length&&!cases.length)return `<div class="empty">案件カードも台帳もまだありません。</div>`;
+ if(!rs.length&&!cases.length)return `<button class="btn primary" type="button" onclick="S.jt='cl';S.clOpen='new';render()">＋ 新規利用者</button><div class="empty">案件カードも台帳もまだありません。</div>`;
  const st=[...new Set(rtStaffs().concat(cases.map(c=>c.staffName||"（担当なし）")))];
- return `<div class="meta" style="margin-bottom:8px">赤・オレンジの件を営業さんごとに並べています。押すと詳しく見られます。</div><div class="board">${st.map(n=>{
+ return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><button class="btn primary" type="button" onclick="S.jt='cl';S.clOpen='new';render()">＋ 新規利用者</button><span class="meta">赤・オレンジの件を営業さんごとに並べています。押すと詳しく見られます。</span></div><div class="board">${st.map(n=>{
   const mine=rs.filter(r=>(String(r.staff||"").trim()||"（担当なし）")===n);const items=[];
   mine.forEach(r=>{const a=rtAlerts(r);RT_KEYS.forEach(([k,l])=>{if(a[k].k==="r"||a[k].k==="o")items.push({r,k,l,a:a[k]})});if(a.demo.k==="h")items.push({r,k:"demo",l:"入院",a:a.demo})});
   const cnt=k=>items.filter(x=>x.k===k&&x.a.k!=="h").length,red=items.filter(x=>x.a.k==="r").length;
@@ -1336,6 +1337,38 @@ window.rtImportGo=async b=>{if(!RT_PEND)return;b.disabled=true;const all=RT_PEND
  try{for(let i=0;i<all.length;i+=N){const part=all.slice(i,i+N);b.textContent="取り込み中… "+done+"/"+all.length;await persist(part.map(row=>({table:"rentals",row})));done+=part.length}
   RT_PEND=null;S.rtImp=`<div class="notice" style="margin-bottom:8px">${done}件を取り込みました。</div>`;toast("取り込みました");render()}
  catch(e){b.disabled=false;b.textContent="続きから取り込む";toast("途中で止まりました（"+done+"件まで完了）："+errText(e));RT_PEND=all.slice(done)}};
+/* ===== 利用者（事務所アプリ）：一覧・並べ替え・新規追加・修正。ケアレンツのマスターを取り込むと同じ人は1人にまとまる ===== */
+const clTown=u=>{const m=String(u.name||"").match(/^(\S+?(町|丁目|区|村|市|郡))\s+/);return m?m[1]:""};
+function clRow(u){const o=DB.offices.find(x=>x.id===clOffice(u)),cm=DB.cms.find(c=>c.id===u.cm),h=hospOf(u.id);return {u,o,town:clTown(u),name:nmBare(u.name),off:o?o.name:"",cm:cm?cm.name:"",staff:o?staffNames(o).replace(/^未設定$/,""):"",h,app:/アプリで登録/.test(u.recent||"")}}
+const CL_COLS=[["town","町名",x=>x.town],["name","利用者",x=>x.name],["off","居宅",x=>x.off],["cm","担当CM",x=>x.cm],["staff","担当営業",x=>x.staff],["lv","介護度",x=>x.u.lv||""],["items","品目",x=>x.u.items||""],["h","入院",x=>x.h?"1":""]];
+window.clSort=k=>{if(S.clSk===k)S.clSd=-(S.clSd||1);else{S.clSk=k;S.clSd=1}render()};
+function clList(){const q=(S.clq||"").trim();let rs=DB.clients.map(clRow);
+ if(S.clf==="h")rs=rs.filter(x=>x.h);else if(S.clf==="app")rs=rs.filter(x=>x.app);
+ if(q){const tk=qTokens(q);rs=rs.filter(x=>{const t=snorm([x.u.name,x.off,x.cm,x.staff,x.u.items].join(" "));return tk.every(y=>t.includes(y))})}
+ const c=CL_COLS.find(x=>x[0]===(S.clSk||"town")),d=S.clSk?(S.clSd||1):1;rs.sort((a,b)=>{const x=c[2](a),y=c[2](b);return (!x&&y?1:x&&!y?-1:String(x).localeCompare(String(y),"ja")*d)||a.name.localeCompare(b.name,"ja")});
+ return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+  <button class="btn primary" type="button" onclick="S.clOpen='new';render()">＋ 新規利用者</button>
+  <div class="seg">${[["","すべて"],["h","入院・入所中"],["app","アプリで追加した人"]].map(([k,l])=>`<button type="button" class="${(S.clf||"")===k?"on":""}" onclick="S.clf='${k}';render()">${l}</button>`).join("")}</div>
+  <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="名前・町名・居宅・CM・担当で探す" value="${esc(S.clq||"")}" onchange="S.clq=this.value;render()"><span class="meta">${rs.length}人</span></div>
+ <div class="rtw"><table class="rt"><thead><tr>${CL_COLS.map(([k,l])=>`<th style="cursor:pointer;white-space:nowrap" onclick="clSort('${k}')">${l}${(S.clSk||"town")===k?((S.clSk?(S.clSd||1):1)>0?" ▲":" ▼"):' <span class="meta">⇅</span>'}</th>`).join("")}</tr></thead><tbody>
+ ${rs.slice(0,S.clAll?5000:300).map(x=>`<tr onclick="S.clOpen='${x.u.id}';render()"><td>${esc(x.town)}</td><td><b>${esc(x.name)}</b>${x.app?' <span class="ac w">アプリで追加</span>':""}</td><td>${esc(x.off)}</td><td>${esc(x.cm)}</td><td>${esc(x.staff)}</td><td>${esc(x.u.lv||"")}</td><td>${esc(x.u.items||"")}</td><td>${x.h?`<span class="ac h">${esc(x.h.kind||"入院")}中</span>`:""}</td></tr>`).join("")||'<tr><td colspan="8" class="meta">該当なし</td></tr>'}
+ </tbody></table></div>${rs.length>300&&!S.clAll?`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.clAll=true;render()">すべて表示（${rs.length}人）</button>`:""}`}
+function clForm(){const isNew=S.clOpen==="new",u=isNew?{name:"",lv:"",items:""}:clientOf(S.clOpen);if(!u)return "";const x=clRow(u),o=x.o,cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];
+ return `<div class="form" style="max-width:640px"><b>${isNew?"新規利用者を登録":"🧑 "+esc(u.name)}</b>
+  <div class="row2"><label>町名<input id="cl-town" value="${esc(x.town)}" placeholder="例：横尾町"></label><label>氏名<input id="cl-name" value="${esc(isNew?"":x.name.replace(/ 様$/,""))}" placeholder="例：松井 太郎"></label></div>
+  <label>居宅<input id="cl-off" list="clOffs" value="${esc(x.off)}" placeholder="居宅名の一部を入れて候補から選ぶ" onchange="clOffPick(this.value)"></label>${officeList("clOffs")}
+  <label>担当ケアマネ<select id="cl-cm"><option value="">（未定）</option>${cms.map(c=>`<option value="${c.id}" ${u.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}</select></label>
+  <div class="row2"><label>要介護度<select id="cl-lv">${["","要支援1","要支援2","要介護1","要介護2","要介護3","要介護4","要介護5","申請中"].concat(u.lv&&!["要支援1","要支援2","要介護1","要介護2","要介護3","要介護4","要介護5","申請中"].includes(u.lv)?[u.lv]:[]).map(v=>`<option ${v===(u.lv||"")?"selected":""}>${v}</option>`).join("")}</select></label><label>品目<input id="cl-items" value="${esc(u.items||"")}" placeholder="例：特殊寝台・車いす"></label></div>
+  ${isNew?`<div class="meta">あとでケアレンツのマスターを取り込んだとき、同じ居宅・同じ名前の人はこの登録にまとめます。</div>`:""}
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="clSave('${isNew?"":u.id}',this)">保存</button><button class="btn" type="button" onclick="S.clOpen=null;render()">閉じる</button></div>
+  ${isNew?"":`<div class="meta" style="margin-top:8px">${x.h?"🏥 "+esc(x.h.kind||"入院")+"中（"+esc(md(x.h.inDate))+"〜） ・ ":""}${esc(u.recent||"")}</div>`}</div>`}
+window.clOffPick=v=>{const o=DB.offices.find(x=>x.name===v)||officeCands(v)[0];const sel=$("#cl-cm");if(!sel)return;const cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];sel.innerHTML='<option value="">（未定）</option>'+cms.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")};
+window.clSave=async(id,b)=>{const town=$("#cl-town").value.trim(),nm=$("#cl-name").value.trim().replace(/\s*様$/,"");if(!nm){toast("氏名を入れてください");return}
+ const ov=$("#cl-off").value.trim(),o=DB.offices.find(x=>x.name===ov)||(ov?(officeCands(ov).length===1?officeCands(ov)[0]:null):null);if(ov&&!o){toast("居宅は候補から選んでください");return}
+ const name=(town?town+" ":"")+nm+" 様",n2=snorm(name);if(!id&&DB.clients.some(u=>snorm(u.name)===n2&&(!o||clOffice(u)===o.id))){if(!confirm("同じ名前の利用者がもう登録されています。それでも登録しますか？"))return}
+ const row={id:id||newId("u"),name,office:o?o.id:"",cm:$("#cl-cm").value,lv:$("#cl-lv").value,items:$("#cl-items").value.trim()};
+ if(!id){row.status="ok";row.recent="アプリで登録（"+today()+" "+(USER?USER.name:"デモ")+"）"}
+ b.disabled=true;try{await persist([{table:"clients",row}]);toast(id?"保存しました":"利用者を登録しました");S.clOpen=null;render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
 /* ===== 入退院管理（紙の「入退院管理表」と同じ項目） ===== */
 const HM_KIND=["入院","入所","ショート"],HM_FAX=["","✓","自社","―"],HM_PICK=["","解約","死亡"];
 const hmName=h=>{const u=h.client?clientOf(h.client):null;return u?nmOnly(u.name):(h.clientName||"")};
@@ -2672,7 +2705,7 @@ function render(){
  if((isJimu()||(JIMU_URL&&seeJimu()&&!S.jimuInit))&&["visit","cards","sched"].includes(S.view)){S.view="jimu";S.jimuInit=true}
  document.body.classList.toggle("wide",S.view==="jimu");
  if(S.view==="jimu"&&!seeJimu())S.view="visit";
- {const tj=$("#t-jimu");if(tj)tj.hidden=!seeJimu();["t-jledger","t-jhosp","t-jreq"].forEach(id=>{const t=$("#"+id);if(t)t.hidden=!(seeJimu()&&jimuMode())});["t-visit","t-cards","t-sched"].forEach(id=>{const t=$("#"+id);if(t)t.hidden=isJimu()})}
+ {const tj=$("#t-jimu");if(tj)tj.hidden=!seeJimu();["t-jledger","t-jhosp","t-jcl","t-jreq"].forEach(id=>{const t=$("#"+id);if(t)t.hidden=!(seeJimu()&&jimuMode())});["t-visit","t-cards","t-sched"].forEach(id=>{const t=$("#"+id);if(t)t.hidden=isJimu()})}
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));jimuTabsUpd();
  if(S.view==="case"&&!(DB.cases||[]).some(c=>c.id===S.caseId))S.view="log";
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===(S.view==="case"?"log":S.view)));jimuTabsUpd();
