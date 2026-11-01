@@ -705,12 +705,14 @@ const CB={items:[],run:false,i:0},CB_MAX=10;
 function callPickBtn(){const io=S.impOpen;
  return `<button class="btn" type="button" style="display:flex;justify-content:center;width:100%;padding:10px;font-size:15px" onclick="S.impOpen=!S.impOpen;render()">📞✉️ 通話・SMS・LINEを取り込む</button>
  ${io?`<div class="form" style="margin-top:6px">
-  <label class="btn" for="ci-file" style="display:flex;justify-content:center;padding:12px;font-size:16px">📞 通話録音を選ぶ（複数まとめても可）</label>
+  <label class="btn" for="ci-file" style="display:flex;justify-content:center;padding:12px;font-size:16px;color:var(--ink)">📞 通話録音を選ぶ（複数まとめても可）</label>
   <input type="file" id="ci-file" accept="audio/*" multiple onchange="S.impOpen=false;pickCall(this)" style="position:absolute;opacity:0;width:1px;height:1px">
-  <b style="margin-top:6px">✉️ SMS・LINE の文章</b>
+  <label class="btn" for="ci-shot" style="display:flex;justify-content:center;padding:12px;font-size:16px;color:var(--ink);text-align:center">📷 SMS・LINEのスクショから（相手の名前・番号も読みます）</label>
+  <input type="file" id="ci-shot" accept="image/*" multiple onchange="S.impOpen=false;shotIn([...this.files]);this.value=''" style="position:absolute;opacity:0;width:1px;height:1px">
+  <b style="margin-top:6px">✉️ SMS・LINE の文章を貼り付け</b>
   <textarea id="imp-txt" rows="4" placeholder="メッセージを長押し →「コピー」して、ここに貼り付け"></textarea>
   <div style="display:flex;gap:8px;flex-wrap:wrap">${navigator.clipboard&&navigator.clipboard.readText?`<button class="btn" type="button" onclick="impPaste()">📋 コピーした文章を貼る</button>`:""}<button class="btn primary" type="button" onclick="impText()">この文章を取り込む</button></div>
-  <div class="meta">SMSは「共有」→「アスポッピー」でも送れます（ホーム画面に追加したスマホ）。
+  <div class="meta">スクショ・SMSは「共有」→「アスポッピー」でも送れます（ホーム画面に追加したスマホ）。
    <label for="ci-file2" style="text-decoration:underline;cursor:pointer">録音ファイルが一覧に出ないとき</label><input type="file" id="ci-file2" multiple onchange="S.impOpen=false;pickCall(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div></div>`:""}`}
 window.impPaste=async()=>{try{const t=await navigator.clipboard.readText();const el=$("#imp-txt");if(el&&t)el.value=t;if(!t)toast("コピーした文章がありません")}catch(e){toast("貼り付けできませんでした。長押しで貼り付けてください")}};
 window.impText=()=>{const t=String(($("#imp-txt")||{}).value||"").trim();if(!t){toast("文章を貼り付けてください");return}S.impOpen=false;smsIn(t)};
@@ -761,6 +763,7 @@ window.pickCall=async inp=>{let fs=[...(inp.files||[])];if(inp.value!==undefined
  if(CI.office){S.office=CI.office;S.view="visit"}else S.view="log";render();ciScroll()};
 const ciScroll=()=>setTimeout(()=>{const b=$("#callBox");b&&b.scrollIntoView({block:"center"})},80);
 function callBox(){const o=DB.offices.find(x=>x.id===CI.office);const cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];
+ if(CI.stage==="read")return `<div class="form" id="callBox"><div class="progress"><span class="spin"></span>スクショを読み取り中…（${CI.readN||1}枚・1枚10秒ほど）</div></div>`;
  if(CI.stage==="work")return `<div class="form" id="callBox"><div class="progress"><span class="spin"></span>${CI.sms?"メッセージを要約中…（10〜20秒）":"通話を文字起こしして要約中…（30秒〜1分）"}</div></div>`;
  const noMatch=CI.who&&!o&&!CI.cm&&!(CI.cc||[]).length&&!(CI.oc||[]).length&&!CI.err;
  return `<div class="form" id="callBox" style="border-color:var(--accent)"><b>${CI.sms?"✉️ SMS・LINEの取り込み":"📞 通話録音の取り込み"}</b>
@@ -868,7 +871,7 @@ async function checkShared(){if(!/[?&]shared=1/.test(location.search))return;
   const ks=(await c.keys()).filter(r=>/shared-file/.test(r.url)).sort((a,b)=>a.url.localeCompare(b.url,undefined,{numeric:true}));if(!ks.length)return;
   const files=[];for(const k of ks){const res=await c.match(k);await c.delete(k);if(!res)continue;
    const name=decodeURIComponent(res.headers.get("x-name")||"通話.m4a"),blob=await res.blob();files.push(new File([blob],name,{type:blob.type||res.headers.get("content-type")||""}))}
-  if(files.length)pickCall({files})}catch(e){toast("共有されたファイルを読み込めませんでした")}}
+  const im=files.filter(f=>/^image\//.test(f.type||"")),au=files.filter(f=>!/^image\//.test(f.type||""));if(im.length){shotIn(im);return}if(au.length)pickCall({files:au})}catch(e){toast("共有されたファイルを読み込めませんでした")}}
 /* ショートメール（SMS）の「共有」から届いた文章。文中のケアマネ名・居宅名で居宅を推定 */
 window.smsIn=t=>{const n=String(t).normalize("NFKC").replace(/[\s　]/g,"");
  const offs=DB.offices.filter(o=>!offGone(o)&&o.name&&n.includes(String(o.name).normalize("NFKC").replace(/[\s　]/g,"")));
@@ -876,6 +879,24 @@ window.smsIn=t=>{const n=String(t).normalize("NFKC").replace(/[\s　]/g,"");
  let office="",cm="";if(cms.length===1){cm=cms[0].id;office=cms[0].office}else if(offs.length===1)office=offs[0].id;else if(S.view==="visit"&&S.office)office=S.office;
  Object.assign(CI,{stage:"confirm",sms:String(t),file:null,who:"",date:today(),office,cm,cc:[],oc:[],ocq:"",err:"",party:"ケアマネ",client:"",cname:""});
  if(office){S.office=office;S.view="visit"}else S.view="log";render();ciScroll()};
+/* SMS・LINEのスクショ：AIが相手の名前・電話番号・やりとりを読み、電話番号や名前で居宅・ケアマネを決める（画像は保存しない） */
+window.shotIn=async files=>{files=(files||[]).filter(f=>/^image\//.test(f.type||"")||/\.(png|jpe?g|webp|heic)$/i.test(f.name||"")).slice(0,6);if(!files.length)return;
+ Object.assign(CI,{stage:"read",readN:files.length,sms:"",office:"",cm:"",file:null,err:""});S.view="log";render();ciScroll();
+ const parts=[];let sender="",phone="",date="";
+ for(const f of files){try{const {blob}=await shrink(f,2000);
+   const rr=await aiJson(`スマホのショートメール（SMS）またはLINEの画面のスクリーンショットです。画面の文字を読み取り、次のキーだけのJSONで返してください。
+{"sender":"画面上部に出ている相手の名前（表示どおり。なければ空）","phone":"相手の電話番号（写っていれば数字とハイフン。なければ空）","date":"いちばん新しいメッセージの日付 YYYY-MM-DD（年がなければ${new Date().getFullYear()}年として。分からなければ空）","messages":[{"from":"相手 または 自分","time":"表示されている日時（なければ空）","text":"本文（そのまま）"}]}
+吹き出しが右側なら「自分」、左側なら「相手」。ボタン・広告・入力欄の文字は入れない。`,blob);
+   const d=rr&&rr.data||{};sender=sender||String(d.sender||"").trim();phone=phone||String(d.phone||"").trim();if(/^\d{4}-\d{2}-\d{2}$/.test(String(d.date||""))&&String(d.date)>date)date=String(d.date);
+   (Array.isArray(d.messages)?d.messages:[]).forEach(m=>{const t=String(m&&m.text||"").trim();if(t)parts.push(`${m.from==="自分"?"自分":"相手"}${m.time?"（"+m.time+"）":""}：${t}`)})}
+  catch(e){CI.err="読み取れない画像がありました："+errText(e)}}
+ if(!parts.length){CI.stage="idle";render();toast("スクショから文字を読み取れませんでした");return}
+ const head=[sender?"相手："+sender:"",phone?"電話："+phone:""].filter(Boolean).join(" ");
+ const err=CI.err;smsIn((head?head+"\n":"")+parts.join("\n"));
+ const mt=matchCaller(digits(phone).length>=9?phone:sender);
+ if(mt.o||mt.cm){CI.office=(mt.o&&mt.o.id)||(mt.cm&&mt.cm.office)||CI.office;CI.cm=mt.cm?mt.cm.id:CI.cm}else{CI.cc=mt.cc||[];CI.oc=mt.oc||[];CI.who=sender||phone}
+ if(date&&date<=today())CI.date=date;CI.err=err;
+ if(CI.office){S.office=CI.office;S.view="visit"}else S.view="log";render();ciScroll()};
 /* ===== 記録の修正（居宅・ケアマネ・日付の選び直し、削除） ===== */
 const RE={id:null,office:"",cm:"",date:"",text:"",next:"",oc:[],ocq:"",err:""};
 window.recEditOpen=id=>{const r=DB.records.find(x=>x.id===id);if(!r)return;S.recEdit=id;Object.assign(RE,{id,office:r.office,cm:r.cm||"",date:r.date,text:r.text||"",next:r.next||"",party:r.party||"ケアマネ",client:r.client||"",cname:"",oc:[],ocq:"",err:""});render();
