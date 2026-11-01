@@ -38,6 +38,7 @@ body.wide .wrap{max-width:1500px}
 .rtw{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:10px}
 .ac{display:inline-block;border-radius:6px;padding:1px 7px;font-weight:700;font-size:12.5px}.ac.ok{color:#1e8449}.ac.na{color:var(--muted);font-weight:400}.ac.o{background:#fdebd8;color:#b35400}.ac.r{background:#fadbd8;color:#b03a2e}.ac.h{background:#f4ecf7;color:#8e44ad}.ac.w{color:var(--ink);font-weight:400}
 .board{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}.bcol{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:10px 12px}.bcol h3{font-size:17px;margin-bottom:6px}.bitem{display:block;width:100%;text-align:left;border:0;border-top:1px solid var(--line);background:none;padding:6px 2px;font:inherit;color:inherit;cursor:pointer}.bitem:hover{background:var(--accent-soft)}
+.rfl{display:flex;flex-direction:column;gap:6px;margin:10px 0 6px}.rfs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:2px solid var(--line);border-radius:12px;padding:6px 8px;background:var(--surface)}.rfs.on{border-color:#1e8449;background:#eefaf3}.rfb{flex:1;min-width:200px;display:flex;gap:10px;align-items:center;text-align:left;background:none;border:0;padding:6px 2px;font-size:17px;color:var(--ink);cursor:pointer}.rfc{flex:none;width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--line);font-weight:800;color:var(--muted)}.rfs.on .rfc{background:#1e8449;border-color:#1e8449;color:#fff}.rfx{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.rfx .sim{max-width:170px}
 .tgl{border:2px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;font-weight:700;min-width:70px}.tgl.on{border-color:#1e8449;background:#d5f5e3;color:#1e8449}
 .num{font-variant-numeric:tabular-nums}
 
@@ -1095,8 +1096,8 @@ function rtLedger(){const rs=rtList(),st=rtStaffs();
   <label class="meta" style="display:flex;gap:4px;align-items:center">取り込む期間：納品日<input type="date" class="sim" id="rt-since" value="${rtSinceDef()}">以降</label>
   <label class="btn" for="rtx" style="display:inline-flex">Excel を取り込む</label><input type="file" id="rtx" accept=".xlsx,.xlsm,.xls" onchange="S.rtSince=($('#rt-since')||{}).value;rtImport(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div>
  <div id="rtImp">${S.rtImp||""}</div>
- <div class="rtw"><table class="rt"><thead><tr><th>納品日</th><th>利用者</th><th>品目</th><th>居宅</th><th>担当</th><th>要注意（押すと全部の項目が開きます）</th></tr></thead><tbody>
- ${rs.slice(0,S.rtAll?5000:300).map(r=>{const a=rtAlerts(r);return `<tr onclick="S.rtOpen='${r.id}';render()"><td class="num">${esc(isD(r.deliv)?r.deliv.slice(2).replace(/-/g,"/"):r.deliv||"")}</td><td><b>${esc(r.cname||"")}</b></td><td>${esc(r.item||"")}</td><td>${esc(r.officeName||"")}</td><td>${esc(r.staff||"")}</td><td>${rtWarn(a)}</td></tr>`}).join("")}
+ <div class="rtw"><table class="rt"><thead><tr><th>納品日</th><th>利用者</th><th>品目</th><th>居宅</th><th>担当</th><th>進み具合</th><th>要注意</th></tr></thead><tbody>
+ ${rs.slice(0,S.rtAll?5000:300).map(r=>{const a=rtAlerts(r);return `<tr onclick="S.rtOpen='${r.id}';render()"><td class="num">${esc(isD(r.deliv)?r.deliv.slice(2).replace(/-/g,"/"):r.deliv||"")}</td><td><b>${esc(r.cname||"")}</b></td><td>${esc(r.item||"")}</td><td>${esc(r.officeName||"")}</td><td>${esc(r.staff||"")}</td><td>${rtProgHtml(r)}</td><td>${rtWarn(a)}</td></tr>`}).join("")}
  </tbody></table></div>${rs.length>300&&!S.rtAll?`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.rtAll=true;render()">すべて表示（${rs.length}件）</button>`:""}`}
 const RT_FIELDS=[["deliv","納品日","date"],["input","ケアレンツ入力","sel:有,―,ロング,入院中,申請中,新規申請中,無し"],["start","レンタル開始","date"],["jflag","実費・中止","sel:,実費,中止,デモ解約,済,保留"],["cname","利用者","text"],["item","品目","sel:ベット,ベット付属,車椅子,車付属,歩行器,手すり,杖,スロープ,床ずれ予防,体位変換,徘徊,リフト,吸引器"],["officeName","居宅","office"],["cmName","担当CM","text"],["staff","担当営業","staff"],["own","自社レン","sel:自社,他社,混合, 自社（実費）"],["kubun","区分","sel:新規,追加,交換,実費,切り替え,ﾒﾝﾃ交換,再新規,―"]];
 const RT_TG=[["報告書",[["rp_print","印刷"],["rp_sub","提出"]],[["rp_send","持出・FAX","sel:,ＦＡＸ,FAX予定分,ﾃﾞﾓ中FAX,予定分,提供表,メール,CM渡済,営業持出"],["rp_date","提出日","date"]]],
@@ -1109,19 +1110,66 @@ function rtInput(f,val){const [k,l,t]=f,id="rt-"+k;
  if(t==="office")return `<label>${l}<input id="${id}" list="rtOff" value="${esc(val||"")}"></label><datalist id="rtOff">${DB.offices.filter(o=>!offGone(o)).map(o=>`<option value="${esc(o.name)}">`).join("")}</datalist>`;
  if(t==="staff")return `<label>${l}<input id="${id}" list="rtStf" value="${esc(val||"")}"></label><datalist id="rtStf">${rtStaffs().concat((DB.users||[]).map(u=>u.name)).filter((x,i,a)=>a.indexOf(x)===i).map(n=>`<option value="${esc(n)}">`).join("")}</datalist>`;
  return `<label>${l}<input id="${id}" value="${esc(val||"")}"></label>`}
+/* ===== 台帳の「流れ」：デモから契約完了までをステップで見る =====
+   新規：デモ→居宅へ内容送付→借りるか確認→契約書→確認書→重要事項→個人情報→支払い手続き→楽々明細メール
+   既契約者の追加：デモ→居宅へ内容送付→借りるか確認→契約書→確認書
+   実費：デモ→借りるか確認→契約書→支払い手続き（既契約者なら方法を「―」） */
+const RF_L={"新規":"新規","追加":"既契約者の追加","実費":"実費"};
+const rtFlow=r=>rtJh(r)?"実費":rtKei(r)?"追加":"新規";
+const rtStop=r=>r.jflag==="中止"||r.jflag==="デモ解約";
+const MAIL_TAG=/【明細メール済([^】]*)】/;
+const PAY_OK=/口座有|集金|生保|^―$|^-$/;
+const ckDate=v=>{const m=String(v||"").match(/(\d{4}-\d{2}-\d{2})/);return m?md(m[1]):""};
+const RF_STEPS={
+ demo:{l:"デモ",done:r=>isD(r.deliv),sub:r=>isD(r.deliv)?"納品 "+md(r.deliv)+(isD(r.start)?"":"（"+((daysFrom(r.deliv)||0)+1)+"日目）"):"納品日が未入力"},
+ send:{l:"居宅へデモ内容を送付",done:r=>r.rp_sub==="済"||(/FAX|ＦＡＸ|メール|CM渡済|提供表/.test(r.rp_send||"")&&!/予定/.test(r.rp_send||"")),sub:r=>[r.rp_send,r.rp_date?md(r.rp_date):""].filter(Boolean).join(" ")},
+ conf:{l:"借りるか確認（約1週間）",done:r=>isD(r.start),sub:r=>isD(r.start)?"借りる・開始 "+md(r.start):""},
+ ct_doc:{l:"契約書",done:r=>rtDone(r.ct_doc),sub:r=>ckDate(r.ct_doc)},
+ ct_check:{l:"確認書",done:r=>rtDone(r.ct_check),sub:r=>ckDate(r.ct_check)},
+ ct_imp:{l:"重要事項",done:r=>rtDone(r.ct_imp),sub:r=>ckDate(r.ct_imp)},
+ ct_priv:{l:"個人情報同意書",done:r=>rtDone(r.ct_priv),sub:r=>ckDate(r.ct_priv)},
+ pay:{l:"支払い手続き（引落・集金など）",done:r=>r.db_ok==="済"||PAY_OK.test(String(r.db_way||"").trim()),sub:r=>[r.db_way,r.db_ok==="済"?"受理済":r.db_send==="済"?"発送済":r.db_col==="済"?"回収済":r.db_hand==="済"?"お渡し済":""].filter(Boolean).join(" ")},
+ mail:{l:"楽々明細のメール取得",done:r=>MAIL_TAG.test(r.biko||""),sub:r=>{const m=String(r.biko||"").match(MAIL_TAG);return m?m[1].trim():""}}};
+const RF_FLOW={"新規":["demo","send","conf","ct_doc","ct_check","ct_imp","ct_priv","pay","mail"],"追加":["demo","send","conf","ct_doc","ct_check"],"実費":["demo","conf","ct_doc","pay"]};
+function rtProg(r){if(rtStop(r))return {stop:true,done:true,n:0,all:0,next:null};const ks=RF_FLOW[rtFlow(r)],left=ks.filter(k=>!RF_STEPS[k].done(r));return {n:ks.length-left.length,all:ks.length,next:left[0]||null,done:!left.length}}
+const rtProgHtml=r=>{const p=rtProg(r);return p.stop?`<span class="ac na">デモで終了</span>`:p.done?`<span class="ac ok">完了</span>`:`<span class="meta">${p.n}/${p.all}</span> 次：<b>${esc(RF_STEPS[p.next].l.replace(/（.*$/,""))}</b>`};
+async function rtPut(id,row){row.id=id;try{await persist([{table:"rentals",row}]);buzz(30);render()}catch(e){toast("保存できませんでした："+errText(e))}}
+window.rfTap=(id,k)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;const st=RF_STEPS[k],on=st.done(r),t=today(),row={};
+ if(k==="send"){row.rp_sub=on?"":"済";if(!on&&!r.rp_date)row.rp_date=t}
+ else if(k==="conf"){row.start=on?"":t}
+ else if(k.startsWith("ct_"))row[k]=on?"":"済 "+t;
+ else if(k==="pay"){if(on&&PAY_OK.test(String(r.db_way||"").trim())&&r.db_ok!=="済"){toast("方法を選び直すと未完了になります");return}row.db_ok=on?"":"済";if(!on&&!r.db_date)row.db_date=t}
+ else if(k==="mail"){const b=String(r.biko||"").replace(MAIL_TAG,"").trim();row.biko=on?b:("【明細メール済 "+md(t)+"】"+(b?" "+b:""))}
+ else if(k==="demo"){toast("納品日は下の「詳しく」で入れてください");return}
+ rtPut(id,row)};
+window.rfFlow=(id,f)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;const row={kubun:f==="実費"?"実費":f==="追加"?"追加":"新規"};if(f!=="実費"&&r.jflag==="実費")row.jflag="";if(f==="実費"&&!r.jflag)row.jflag="実費";rtPut(id,row)};
+function rfStepRow(r,k,i){const st=RF_STEPS[k],on=st.done(r),sub=st.sub(r);let extra="";
+ if(k==="send")extra=`<select class="sim" onchange="rtPut('${r.id}',{rp_send:this.value})">${["","ＦＡＸ","メール","CM渡済","営業持出","提供表"].concat(r.rp_send&&!["ＦＡＸ","メール","CM渡済","営業持出","提供表"].includes(r.rp_send)?[r.rp_send]:[]).map(o=>`<option value="${o}" ${o===(r.rp_send||"")?"selected":""}>${o||"送り方"}</option>`).join("")}</select>`;
+ if(k==="conf")extra=`${on?`<input type="date" class="sim" value="${esc(r.start)}" onchange="rtPut('${r.id}',{start:this.value})">`:""}<button class="btn sm" type="button" onclick="if(confirm('借りないことになりましたか？（デモで終了にします）'))rtPut('${r.id}',{jflag:'デモ解約'})">借りない</button>`;
+ if(k==="pay")extra=`<select class="sim" onchange="rtPut('${r.id}',{db_way:this.value})">${(L=>L.concat(String(r.db_way||"").trim()&&!L.includes(String(r.db_way).trim())?[String(r.db_way).trim()]:[]))(["","口座有","NICOS","ゆうちょ","集金","生保","リコー","要手続","―"]).map(o=>`<option value="${o}" ${o===String(r.db_way||"").trim()?"selected":""}>${o||"方法を選ぶ"}</option>`).join("")}</select>`;
+ return `<div class="rfs ${on?"on":""}"><button type="button" class="rfb" onclick="rfTap('${r.id}','${k}')"><span class="rfc">${on?"✓":i+1}</span><span><b>${esc(st.l)}</b>${sub?`<span class="meta"> ${esc(sub)}</span>`:""}</span></button>${extra?`<div class="rfx">${extra}</div>`:""}</div>`}
+function rtSteps(r){const f=rtFlow(r),p=rtProg(r);
+ if(rtStop(r))return `<div class="form"><b>デモで終了（${esc(r.jflag)}）</b><div class="meta">借りないことになった件です。</div><button class="btn sm" type="button" onclick="rtPut('${r.id}',{jflag:''})">取り消す（流れに戻す）</button></div>`;
+ return `<div class="form"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between"><div class="seg">${Object.keys(RF_L).map(k=>`<button type="button" class="${f===k?"on":""}" onclick="rfFlow('${r.id}','${k}')">${RF_L[k]}</button>`).join("")}</div>
+  <div>${p.done?`<span class="ac ok" style="font-size:16px">✓ 完了</span>`:`<span class="meta">${p.n} / ${p.all} 済</span>`}</div></div>
+  <div class="rfl">${RF_FLOW[f].map((k,i)=>rfStepRow(r,k,i)).join("")}</div>
+  <div class="meta">押すと ✓ になり、日付が入ります。もう一度押すと取り消せます。</div></div>`}
 function rtDetail(){const isNew=S.rtOpen==="new",r=isNew?{id:"",deliv:today(),input:"",staff:""}:(DB.rentals||[]).find(x=>x.id===S.rtOpen);
  if(!r)return `<div class="empty">見つかりません <button class="btn sm" onclick="S.rtOpen=null;render()">戻る</button></div>`;
  const a=isNew?null:rtAlerts(r),u=r.client?clientOf(r.client):null,h=u?hospOf(u.id):null;
  const back=`<button class="btn" type="button" onclick="S.rtOpen=null;render()">← 一覧に戻る</button>`;
- return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">${back}<h2 style="font-size:20px">${isNew?"新しい納品":esc(r.cname||"")+" ・ "+esc(r.item||"")}</h2>${a?RT_KEYS.map(([k,l])=>`<span class="meta">${l}</span>${acHtml(a[k])}`).join(" "):""}</div>
+ return `<div style="max-width:760px"><div style="margin-bottom:8px"><h2 style="font-size:22px">${isNew?"新しい納品":esc(r.cname||"")+" 様 ・ "+esc(r.item||"")}</h2>${isNew?"":`<div class="meta">${[r.officeName,r.cmName?"CM "+r.cmName:"",r.staff?"担当 "+r.staff:"",isD(r.deliv)?"納品 "+md(r.deliv):""].filter(Boolean).map(esc).join(" ・ ")}${String(r.input||"").trim()!=="有"&&!rtStop(r)?` ・ <span class="ac ${a&&a.in.k||"w"}">ケアレンツ ${esc(r.input||"未入力")}</span>`:""}</div>`}</div>
  ${h?`<div class="hospl" style="margin-bottom:8px">${hospLine(h).replace(/^<div class="hospl[^"]*">|<\/div>$/g,"")}</div>`:""}
- <div class="form"><b>基本</b><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">${RT_FIELDS.map(f=>rtInput(f,r[f[0]])).join("")}</div>
+ ${isNew?"":rtSteps(r)}
+ <details ${isNew?"open":""} style="margin-top:10px"><summary class="btn" style="display:inline-flex">詳しく（台帳の全項目）</summary>
+ <div class="form" style="margin-top:8px"><b>基本</b><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">${RT_FIELDS.map(f=>rtInput(f,r[f[0]])).join("")}</div>
   <label>登録の利用者（入院情報とつなぐため）<input id="rt-client" list="rtCl" value="${esc(u?clientLabel(u):"")}" placeholder="名前の一部で候補から選ぶ"></label><datalist id="rtCl">${DB.clients.map(x=>`<option value="${esc(clientLabel(x))}">`).join("")}</datalist></div>
  ${RT_TG.map(([g,tg,fs])=>`<div class="form" style="margin-top:10px"><b>${g}</b><div style="display:flex;gap:6px;flex-wrap:wrap">${tg.map(([k,l])=>`<button type="button" class="tgl ${r[k]==="済"?"on":""}" data-k="${k}" data-v="${esc(r[k]||"")}" onclick="rtTg(this)">${r[k]==="済"?"✓ ":""}${l}${r[k]&&r[k]!=="済"?"："+esc(r[k]):""}</button>`).join("")}</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:6px">${fs.map(f=>rtInput(f,r[f[0]])).join("")}</div></div>`).join("")}
- <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn primary" type="button" onclick="rtSave('${r.id}',this)">保存</button>${back}
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn primary" type="button" onclick="rtSave('${r.id}',this)">詳しくの内容を保存</button></div></details>
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${back}
   ${isNew?"":`<button class="btn" type="button" onclick="rtMsg('${r.id}')">📨 この件で営業さんに連絡</button><button class="btn sm" type="button" style="color:var(--alert)" onclick="rtDel('${r.id}',this)">削除</button>`}</div>
- ${isNew?"":`<div id="rtMsgBox">${S.rtMsg===r.id?`<div class="form" style="margin-top:10px"><b>${esc(r.staff||"")}さんに連絡</b><textarea id="mr-new" rows="2">${esc((r.cname||"")+"様・"+(r.item||"")+"："+(a?RT_KEYS.filter(([k])=>a[k].k==="r"||a[k].k==="o").map(([k,l])=>l+" "+a[k].t).join("、"):""))}</textarea><select id="jto" class="sim"><option value="${esc(staffEmail(r.staff))}">${esc(r.staff||"選ぶ")}</option>${(DB.users||[]).map(x=>`<option value="${esc(x.email)}">${esc(x.name)}</option>`).join("")}</select><div><button class="btn primary" type="button" onclick="msgSend('new','','${esc(r.office||"")}',this)">送る</button></div></div>`:""}</div>`}`}
+ ${isNew?"":`<div id="rtMsgBox">${S.rtMsg===r.id?`<div class="form" style="margin-top:10px"><b>${esc(r.staff||"")}さんに連絡</b><textarea id="mr-new" rows="2">${esc((r.cname||"")+"様・"+(r.item||"")+"："+(a?RT_KEYS.filter(([k])=>a[k].k==="r"||a[k].k==="o").map(([k,l])=>l+" "+a[k].t).join("、"):""))}</textarea><select id="jto" class="sim"><option value="${esc(staffEmail(r.staff))}">${esc(r.staff||"選ぶ")}</option>${(DB.users||[]).map(x=>`<option value="${esc(x.email)}">${esc(x.name)}</option>`).join("")}</select><div><button class="btn primary" type="button" onclick="msgSend('new','','${esc(r.office||"")}',this)">送る</button></div></div>`:""}</div>`}</div>`}
 window.rtTg=b=>{const v=b.dataset.v;b.dataset.v=v==="済"?"":"済";b.classList.toggle("on",b.dataset.v==="済");b.textContent=(b.dataset.v==="済"?"✓ ":"")+b.textContent.replace(/^✓ /,"").replace(/：.*$/,"")};
 window.rtMsg=id=>{S.rtMsg=S.rtMsg===id?null:id;render()};
 window.rtSave=async(id,b)=>{const row={id:id||newId("x")},g=k=>{const el=$("#rt-"+k);return el?el.value.trim():undefined};
