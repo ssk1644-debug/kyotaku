@@ -773,7 +773,7 @@ function callBox(){const o=DB.offices.find(x=>x.id===CI.office);const cms=o?DB.c
  ${officeList("ciOffices")}
  <label>${CI.party==="利用者"?"担当ケアマネ":"話したケアマネ"}<select id="ci-cm"><option value="">${CI.party==="ケアマネ"||!CI.party?"AIが会話から判断（分からなければあとで選ぶ）":"選ばない"}</option>${cms.map(c=>`<option value="${c.id}" ${CI.cm===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}<option value="none" ${CI.cm==="none"?"selected":""}>CM不在・事業所のみ</option></select></label>
  <label>日付<input type="date" id="ci-date" value="${esc(CI.date)}"></label>
- <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" ${o?"":"disabled"} onclick="runCall(this)">AIで要約して保存</button><button class="btn" type="button" onclick="CI.stage='idle';render()">やめる</button></div></div>`}
+ <div style="display:flex;gap:8px;flex-wrap:wrap">${o?"":`${CI.sms?"":`<div class="notice">居宅を選んでください</div>`}${(L=>L.length?`<div class="meta">最近の居宅から選ぶ</div><div class="chips" style="gap:6px;margin:2px 0 6px">${L.map(x=>`<button type="button" class="btn sm" onclick="ciPickOffice('${x.o.id}')">${esc(x.o.name)}</button>`).join("")}</div>`:"")(recentOffices())}`}<button class="btn primary" type="button" ${o||CI.sms?"":"disabled"} onclick="runCall(this)">${o||!CI.sms?"AIで要約して保存":"AIで居宅を見つけて要約・保存"}</button><button class="btn" type="button" onclick="CI.stage='idle';render()">やめる</button></div></div>`}
 const ciKeep=()=>{const d=$("#ci-date");if(d&&d.value)CI.date=d.value};
 window.ciSetOffice=v=>{ciKeep();const oc=officeCands(v);CI.cm="";CI.cc=[];
  if(oc.length===1){Object.assign(CI,{office:oc[0].id,oc:[],err:""});S.office=CI.office;S.view="visit"}
@@ -806,9 +806,23 @@ ${sms}`:`福祉用具貸与事業所（アスポート）の営業担当と、${
  let cm=it.cm||"";if(!cm&&d.cm&&(it.party||"ケアマネ")==="ケアマネ"){const h=cmCands(d.cm,o.id);if(h.length===1)cm=h[0].id}
  const row={id:newId("r"),office:o.id,cm,date:it.date||today(),text:(isCl&&!cl?cnTag(it.cname):"")+(d.summary||""),next:d.next||"",trans:"",staff:USER?USER.name:"",kind:sms?"SMS":"電話",party:it.party||"ケアマネ",client:isCl?it.client:""};
  await persist([{table:"records",row}]);await linkCont(row.id,cands,d.cont);addFound(d,row.id,o.id,cm,row.date);return {o,cm}}
-window.runCall=async b=>{if(!DB.offices.some(x=>x.id===CI.office)){toast("居宅を選んでください");return}
- const smsEl=$("#ci-sms");if(smsEl)CI.sms=smsEl.value;
- CI.cm=$("#ci-cm").value;CI.date=$("#ci-date").value||CI.date;CI.stage="work";render();
+/* メッセージで居宅が分からないとき：自分の担当居宅（なければ全部）とそのケアマネの中から、AIに選ばせる */
+async function smsFindOffice(t){const me=myId();let os=DB.offices.filter(o=>!offGone(o)&&staffOf(o).includes(me));if(os.length<3)os=DB.offices.filter(o=>!offGone(o));os=os.slice(0,150);
+ const list=os.map((o,i)=>`[${i+1}] ${o.name}（CM：${DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>c.name).join("、")||"―"}）`).join("\n");
+ const rr=await aiJson(`福祉用具の営業担当が受け取ったメッセージです。送り主（またはやりとりの相手）がどの居宅介護支援事業所か、次の一覧から番号で選んでください。ケアマネの名前・事業所名・利用者の話などから判断し、分からなければ 0。
+{"no":番号,"cm":"分かればケアマネの名前、なければ空"}
+${list}
+--- メッセージ ---
+${t}`);const d=rr&&rr.data||{},n=parseInt(d.no,10);if(!(n>=1&&n<=os.length))return null;const o=os[n-1];
+ const cc=d.cm?cmCands(d.cm,o.id):[];return {o,cm:cc.length===1?cc[0].id:""}}
+window.runCall=async b=>{const smsEl=$("#ci-sms");if(smsEl)CI.sms=smsEl.value;
+ if(!DB.offices.some(x=>x.id===CI.office)){if(!CI.sms){toast("居宅を選んでください");return}
+  if(b){b.disabled=true;b.innerHTML='<span class="spin"></span> 居宅を探しています…'}
+  let f=null;try{f=await smsFindOffice(CI.sms)}catch(e){}
+  if(!f){if(b){b.disabled=false;b.textContent="AIで居宅を見つけて要約・保存"}CI.err="居宅が分かりませんでした。下の「居宅」に名前の一部を入れて選んでください。";render();return}
+  CI.office=f.o.id;if(f.cm)CI.cm=f.cm;S.office=f.o.id;toast(f.o.name+" として保存します")}
+ if(b){b.disabled=true;b.innerHTML='<span class="spin"></span> 要約中…'}
+ {const cs=$("#ci-cm");if(cs&&cs.value)CI.cm=cs.value}const dd=$("#ci-date");CI.date=(dd&&dd.value)||CI.date;CI.stage="work";render();
  try{const {o,cm}=await saveCall(CI);CI.stage="idle";beep(SND.checkin);buzz(60);
   toast((CI.sms?"メッセージ":"電話")+(cm?"の記録を保存しました":"の記録を保存しました（ケアマネは記録の横で選べます）"));CI.sms="";S.office=o.id;S.view="visit";render()}
  catch(e){CI.stage="confirm";CI.err="取り込めませんでした："+errText(e);render()}};
