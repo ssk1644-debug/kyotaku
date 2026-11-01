@@ -651,12 +651,15 @@ const PPS_K="kyotaku-ppsnd";
 const ppSndOn=()=>{try{return localStorage.getItem(PPS_K)!=="off"}catch(e){return true}};
 window.ppSndSet=on=>{try{localStorage.setItem(PPS_K,on?"on":"off")}catch(e){}if(on)woof(1)};
 function acx(){ACX=ACX||new (window.AudioContext||window.webkitAudioContext)();if(ACX.state==="suspended")ACX.resume();return ACX}
-function woof(n){if(!ppSndOn())return;try{const c=acx();for(let i=0;i<(n||1);i++){const t=c.currentTime+0.03+i*0.26;
-  const o=c.createOscillator(),f=c.createBiquadFilter(),g=c.createGain();o.type="sawtooth";o.frequency.setValueAtTime(560,t);o.frequency.exponentialRampToValueAtTime(330,t+0.07);o.frequency.exponentialRampToValueAtTime(240,t+0.15);
-  f.type="bandpass";f.frequency.value=1000;f.Q.value=1.1;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.9,t+0.012);g.gain.exponentialRampToValueAtTime(0.0001,t+0.17);
-  o.connect(f).connect(g).connect(c.destination);o.start(t);o.stop(t+0.19);
-  const len=Math.floor(c.sampleRate*0.05),buf=c.createBuffer(1,len,c.sampleRate),d=buf.getChannelData(0);for(let k=0;k<len;k++)d[k]=(Math.random()*2-1)*(1-k/len);
-  const nz=c.createBufferSource(),nf=c.createBiquadFilter(),ng=c.createGain();nz.buffer=buf;nf.type="bandpass";nf.frequency.value=1800;nf.Q.value=0.8;ng.gain.value=0.35;nz.connect(nf).connect(ng).connect(c.destination);nz.start(t)}}catch(e){}}
+function woof(n){if(!ppSndOn())return;try{const c=acx();for(let i=0;i<(n||1);i++){const t=c.currentTime+0.03+i*0.34;
+  const o=c.createOscillator(),o2=c.createOscillator(),mix=c.createGain(),g=c.createGain(),f1=c.createBiquadFilter(),f2=c.createBiquadFilter(),g1=c.createGain(),g2=c.createGain();
+  o.type="sawtooth";o2.type="triangle";[o,o2].forEach(x=>{x.frequency.setValueAtTime(360,t);x.frequency.linearRampToValueAtTime(640,t+0.07);x.frequency.exponentialRampToValueAtTime(430,t+0.26)});
+  o.connect(mix);o2.connect(mix);mix.gain.value=0.5;
+  f1.type="bandpass";f1.Q.value=6;f1.frequency.setValueAtTime(380,t);f1.frequency.linearRampToValueAtTime(820,t+0.08);
+  f2.type="bandpass";f2.Q.value=7;f2.frequency.setValueAtTime(800,t);f2.frequency.linearRampToValueAtTime(1250,t+0.08);
+  mix.connect(f1).connect(g1);mix.connect(f2).connect(g2);g1.gain.value=1.6;g2.gain.value=0.9;g1.connect(g);g2.connect(g);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.9,t+0.045);g.gain.setValueAtTime(0.9,t+0.12);g.gain.exponentialRampToValueAtTime(0.0001,t+0.3);
+  g.connect(c.destination);o.start(t);o2.start(t);o.stop(t+0.32);o2.stop(t+0.32)}}catch(e){}}
 function whine(){if(!ppSndOn())return;try{const c=acx(),t=c.currentTime+0.03,o=c.createOscillator(),l=c.createOscillator(),lg=c.createGain(),g=c.createGain();
   o.type="triangle";o.frequency.setValueAtTime(760,t);o.frequency.linearRampToValueAtTime(1050,t+0.18);o.frequency.exponentialRampToValueAtTime(520,t+0.75);
   l.frequency.value=7;lg.gain.value=22;l.connect(lg).connect(o.frequency);g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.45,t+0.06);g.gain.setValueAtTime(0.45,t+0.5);g.gain.exponentialRampToValueAtTime(0.0001,t+0.8);
@@ -2591,7 +2594,7 @@ function ppSay(){const h=new Date().getHours(),night=h>=20||h<5;
  return {face,html:`<b>アスポッピー</b>　${hi}${L.length?"<br>"+L.join("、")+"あります":""}`}}
 function ppHeadUpd(){const el=$("#ppHead");if(!el)return;if(MODE==="setup"||(MODE==="live"&&(!USER||S.loading))){el.innerHTML="";el.dataset.k="";return}
  const r=ppSay(),k=r.face+r.html;if(el.dataset.k===k)return;el.dataset.k=k;el.innerHTML=`<span class="pp" aria-hidden="true" style="background-image:var(--pp-${r.face})"></span>${r.face==="wow"?'<span class="ppdot"></span>':""}<span class="say">${r.html}</span>`;el.onclick=ppTap}
-/* 隠しコマンド：アスポッピーを素早く5回タップ → 遠吠え「アオーン」。ふつうのタップでも 1/30 でレア鳴き「キャンキャン♪」 */
+/* 隠しコマンド：アスポッピーを素早く5回タップ → 遠吠え「アオーン」。ふつうのタップでも 1/30 でレア鳴き「キャンキャン♪」（表示は出さない） */
 function howl(){if(!ppSndOn())return;try{const c=acx(),t=c.currentTime+0.03,o=c.createOscillator(),l=c.createOscillator(),lg=c.createGain(),g=c.createGain();
   o.type="sine";o.frequency.setValueAtTime(420,t);o.frequency.exponentialRampToValueAtTime(880,t+0.45);o.frequency.setValueAtTime(880,t+1.0);o.frequency.exponentialRampToValueAtTime(560,t+1.7);
   l.frequency.value=5.5;lg.gain.value=14;l.connect(lg).connect(o.frequency);g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.5,t+0.15);g.gain.setValueAtTime(0.5,t+1.3);g.gain.exponentialRampToValueAtTime(0.0001,t+1.8);
@@ -2601,8 +2604,8 @@ function yip(){if(!ppSndOn())return;try{const c=acx();for(let i=0;i<3;i++){const
 let PPT=[];
 const ppMsg=(face,html,ms)=>{document.querySelectorAll(".toast").forEach(x=>x.remove());const d=document.createElement("div");d.className="toast";const q=document.createElement("span");q.className="pp";q.style.backgroundImage="var(--pp-"+face+")";const x=document.createElement("span");x.innerHTML=html;d.append(q,x);document.body.appendChild(d);setTimeout(()=>d.remove(),ms||3000)};
 window.ppTap=()=>{const el=$("#ppHead");if(!el)return;const now=Date.now();PPT=PPT.filter(x=>now-x<2000).concat(now);
- if(PPT.length>=5){PPT=[];howl();el.classList.remove("tap");void el.offsetWidth;el.classList.add("tap");const p=el.querySelector(".pp");if(p){p.style.backgroundImage="var(--pp-deep)";setTimeout(()=>{el.dataset.k="";ppHeadUpd()},2500)}ppMsg("wow","<b>アオーーン！</b> 隠しコマンド発見！",3500);return}
- if(Math.random()<1/30){yip();const p=el.querySelector(".pp");if(p){p.style.backgroundImage="var(--pp-smile)";setTimeout(()=>{el.dataset.k="";ppHeadUpd()},1600)}ppMsg("smile","<b>キャンキャン♪</b> レア鳴きが出ました！",3000);return}
+ if(PPT.length>=5){PPT=[];howl();el.classList.remove("tap");void el.offsetWidth;el.classList.add("tap");const p=el.querySelector(".pp");if(p){p.style.backgroundImage="var(--pp-deep)";setTimeout(()=>{el.dataset.k="";ppHeadUpd()},2500)}return}
+ if(Math.random()<1/30){yip();const p=el.querySelector(".pp");if(p){p.style.backgroundImage="var(--pp-smile)";setTimeout(()=>{el.dataset.k="";ppHeadUpd()},1600)}return}
  woof(1);el.classList.remove("tap");void el.offsetWidth;el.classList.add("tap");const p=el.querySelector(".pp");if(p){p.style.backgroundImage="var(--pp-smile)";setTimeout(()=>{el.dataset.k="";ppHeadUpd()},1600)}
  if(!PP_PC()&&PPT.length===1){const r=ppSay();ppMsg(r.face,r.html,3500)}};
 setInterval(()=>{try{ppHeadUpd()}catch(e){}},300000);
