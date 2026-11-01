@@ -38,6 +38,7 @@ body.wide .wrap{max-width:1500px}
 .rtw{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:10px}
 .ac{display:inline-block;border-radius:6px;padding:1px 7px;font-weight:700;font-size:12.5px}.ac.ok{color:#1e8449}.ac.na{color:var(--muted);font-weight:400}.ac.o{background:#fdebd8;color:#b35400}.ac.r{background:#fadbd8;color:#b03a2e}.ac.h{background:#f4ecf7;color:#8e44ad}.ac.w{color:var(--ink);font-weight:400}
 .board{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}.bcol{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:10px 12px}.bcol h3{font-size:17px;margin-bottom:6px}.bitem{display:block;width:100%;text-align:left;border:0;border-top:1px solid var(--line);background:none;padding:6px 2px;font:inherit;color:inherit;cursor:pointer}.bitem:hover{background:var(--accent-soft)}
+.thr{border-left:4px solid var(--accent);border-radius:10px;background:var(--accent-soft);padding:4px 0 4px 6px;margin:4px 0}.thr-h{font-size:13px;font-weight:700;color:var(--accent);padding:2px 6px}.thr .rrow+.rrow{margin-left:14px}
 .rfl{display:flex;flex-direction:column;gap:6px;margin:10px 0 6px}.rfs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:2px solid var(--line);border-radius:12px;padding:6px 8px;background:var(--surface)}.rfs.on{border-color:#1e8449;background:#eefaf3}.rfb{flex:1;min-width:200px;display:flex;gap:10px;align-items:center;text-align:left;background:none;border:0;padding:6px 2px;font-size:17px;color:var(--ink);cursor:pointer}.rfc{flex:none;width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--line);font-weight:800;color:var(--muted)}.rfs.on .rfc{background:#1e8449;border-color:#1e8449;color:#fff}.rfx{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.rfx .sim{max-width:170px}
 .tgl{border:2px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;font-weight:700;min-width:70px}.tgl.on{border-color:#1e8449;background:#d5f5e3;color:#1e8449}
 .num{font-variant-numeric:tabular-nums}
@@ -355,7 +356,10 @@ function toServer(t,r){r=Object.assign({},r);
  if(t==="cms"&&r.traits!==undefined)r.traits=(r.traits||[]).join("、");
  if(t==="cards"&&r.photo&&String(r.photo).startsWith("data:")){r.photoData=r.photo.split(",")[1];delete r.photo}
  return r}
-function applyOp(t,row){const arr=DB[t];const i=arr.findIndex(x=>x.id===row.id);
+/* 営業さんには自分の記録だけ（ほかの営業の履歴は管理者・事務だけが見る） */
+const seeAllRec=()=>MODE!=="live"||!USER||USER.role==="admin"||isJimu();
+const mineRec=r=>seeAllRec()||!r||String(r.staff||"")===String(USER.name||"")||(!r.staff&&String(r.updatedBy||"").toLowerCase()===String(USER.email||"").toLowerCase());
+function applyOp(t,row){if(t==="records"&&!mineRec(row)){DB.records=DB.records.filter(x=>x.id!==row.id);return}const arr=DB[t];const i=arr.findIndex(x=>x.id===row.id);
  if(i>=0)Object.assign(arr[i],row);else if(t==="cards")arr.unshift(row);else arr.push(row)}
 /* 保存：デモはこの端末に、本番はスプレッドシートに */
 async function persist(ops){
@@ -366,7 +370,7 @@ async function persist(ops){
  else{ops.forEach(o=>applyOp(o.table,o.row));save()}}
 async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.offices=d.offices.map(r=>fromServer("offices",r,d.notices||[]));
- DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r)).filter(r=>r.kind!=="削除");
+ DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r)).filter(r=>r.kind!=="削除"&&mineRec(r));
  DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[];
  ["items","dist","visits","contracts","jisseki","reqs","sched","msgs","cases","caselog","hosp","rentals"].forEach(k=>DB[k]=d[k]||[]);
  DB.recCutoff=d.recCutoff||"";if(d.now)SYNC_TS=new Date(new Date(d.now).getTime()-90000).toISOString()}
@@ -542,7 +546,7 @@ function viewVisit(){
   </div>
   <div>
    <div class="section-t"><h2>これまでの面談・電話</h2><span class="meta">タップで全文</span></div>
-   <div class="log">${recs.map(recRow).join("")||'<div class="meta">まだ記録がありません</div>'}</div>
+   <div class="log">${threads(recs).map(thrHtml).join("")||'<div class="meta">まだ記録がありません</div>'}</div>
   </div>
  </div>
  <details class="form" style="margin-top:16px"><summary class="meta" style="cursor:pointer">居宅の設定（実績の渡し方${canAdmin()?"・状態":""}）</summary>
@@ -752,7 +756,7 @@ async function saveCall(it){const o=DB.offices.find(x=>x.id===it.office);if(!o)t
  const isCl=it.party==="利用者",cl=isCl?clientOf(it.client):null;
  if(isCl&&!cl&&!it.cname)throw new Error("利用者の名前を入れてください（新規の方は名前だけでOK）");
  const clName=cl?cl.name:String(it.cname||"").replace(/[\s　]*様$/,"");
- const sms=String(it.sms||"").trim();
+ const sms=String(it.sms||"").trim(),cands=contCands(o.id,"");
  const prompt=sms?`福祉用具貸与事業所（アスポート）の営業担当が受け取った（または送った）ショートメール（SMS）です。${isCl?"相手は利用者（"+clName+"様）またはそのご家族、担当の居宅介護支援事業所は「"+o.name+"」":"相手は居宅介護支援事業所「"+o.name+"」などの関係者"}です。
 営業日報向けに要約して、次のキーだけのJSONで返してください。
 {"summary":"メールの内容の要約（1〜4行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"相手のケアマネジャーの名前（文面から分かる場合。候補：${cms||"なし"}。分からなければ空）"${FIND_KEYS}}${FIND_RULE(it.date||today())}
@@ -763,11 +767,11 @@ ${sms}`:`福祉用具貸与事業所（アスポート）の営業担当と、${
 音声を聞き取り、営業日報向けに要約して、次のキーだけのJSONで返してください。
 {"summary":"話した内容の要約（3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。なければ空）","cm":"電話の相手のケアマネジャーの名前（会話から分かる場合。候補：${cms||"なし"}。分からなければ空）"${FIND_KEYS}}${FIND_RULE(it.date||today())}
 利用者の名前は聞き取れたとおりに「加藤様」のように書くこと。住所・電話番号・生年月日は書かないこと。
-参考：この居宅の当社利用者は ${DB.clients.filter(u=>clOffice(u)===o.id).map(u=>nmOnly(u.name)).join("、")||"なし"}。`;
+参考：この居宅の当社利用者は ${DB.clients.filter(u=>clOffice(u)===o.id).map(u=>nmOnly(u.name)).join("、")||"なし"}。`+contTxt(cands);
  const r=sms?await aiJson(prompt):await aiAudio(prompt,it.file);if(!r)throw new Error("この画面ではAIが使えません");const d=r.data||{};
  let cm=it.cm||"";if(!cm&&d.cm&&(it.party||"ケアマネ")==="ケアマネ"){const h=cmCands(d.cm,o.id);if(h.length===1)cm=h[0].id}
  const row={id:newId("r"),office:o.id,cm,date:it.date||today(),text:(isCl&&!cl?cnTag(it.cname):"")+(d.summary||""),next:d.next||"",trans:"",staff:USER?USER.name:"",kind:sms?"SMS":"電話",party:it.party||"ケアマネ",client:isCl?it.client:""};
- await persist([{table:"records",row}]);addFound(d,row.id,o.id,cm,row.date);return {o,cm}}
+ await persist([{table:"records",row}]);await linkCont(row.id,cands,d.cont);addFound(d,row.id,o.id,cm,row.date);return {o,cm}}
 window.runCall=async b=>{if(!DB.offices.some(x=>x.id===CI.office)){toast("居宅を選んでください");return}
  const smsEl=$("#ci-sms");if(smsEl)CI.sms=smsEl.value;
  CI.cm=$("#ci-cm").value;CI.date=$("#ci-date").value||CI.date;CI.stage="work";render();
@@ -1397,7 +1401,7 @@ function clientTree(cs){const g=new Map();
    if(lg)leaves.push(`<li><span class="meta">${esc(String(lg.at||"").slice(5,10).replace("-","/"))} ${esc(lg.kind||"")}</span> ${esc(String(lg.text||"").slice(0,40))}</li>`);
    return `<li><button type="button" class="tnode c-${cColor(c)} ${cOver(c)?"over":""}" onclick="caseOpen('${c.id}')"><b class="ct-topic">${esc(cTopic(c))}</b> ${cTopic(c).startsWith(c.type||"その他")?"":`<span class="ct-type">${esc(c.type||"その他")}</span>`} ${esc(cStage(c))}${c.due?` ・ <span class="${cOver(c)?"ovt":""}">期限 ${esc(c.due.slice(5).replace("-","/"))}${cOver(c)?"（過ぎています）":""}</span>`:""}
    <div class="ct-bar">${st.map((x,k)=>`<i class="${k<=i?"on":""}"></i>`).join("")}</div></button>${leaves.length?`<ul class="tree">${leaves.join("")}</ul>`:""}</li>`}).join("")}</ul></div>`}).join("")}
-function casesList(office){const q=(S.cq||"").trim(),me=myId(),all=office?true:S.cmine===false;
+function casesList(office){const q=(S.cq||"").trim(),me=myId(),all=seeAllRec()&&(office?true:S.cmine===false);
  let cs=(DB.cases||[]).filter(c=>cLive(c)&&(office?c.office===office&&!cDone(c):(S.cdone||!cDone(c))&&(all||c.staff===me)));
  if(q&&!office){const tk=qTokens(q);cs=cs.filter(c=>{const o=DB.offices.find(x=>x.id===c.office);const h=snorm([cFull(c),c.type,c.title,c.next,o?o.name:""].join(" "));return tk.every(t=>h.includes(t))})}
  return cs.sort((a,b)=>(cOver(b)-cOver(a))||(cDone(a)-cDone(b))||String(a.due||"9999").localeCompare(String(b.due||"9999"))||String(b.updatedAt||b.createdAt||"").localeCompare(String(a.updatedAt||a.createdAt||"")))}
@@ -1406,7 +1410,7 @@ function casesSection(office){const cs=casesList(office);
  if(office&&!cs.length&&!newf)return `<div style="margin:6px 0"><button class="btn sm" type="button" onclick="S.caseNew={office:'${office}'};render()">＋ この居宅の案件カードを作る</button></div>`;
  return `<div class="section-t"><h2>${office?"この居宅の案件カード":"案件カード"}</h2><span class="meta">${cs.length}件</span>
   <button class="btn sm" type="button" onclick="S.caseNew={office:'${office||""}'};render()">＋ 案件カードを作る</button></div>
- ${office?"":`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><div class="seg"><button type="button" class="${S.cmine!==false?"on":""}" onclick="S.cmine=true;render()">自分の</button><button type="button" class="${S.cmine===false?"on":""}" onclick="S.cmine=false;render()">全員の</button></div>
+ ${office?"":`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">${seeAllRec()?`<div class="seg"><button type="button" class="${S.cmine!==false?"on":""}" onclick="S.cmine=true;render()">自分の</button><button type="button" class="${S.cmine===false?"on":""}" onclick="S.cmine=false;render()">全員の</button></div>`:""}
   <label style="display:flex;gap:6px;align-items:center;font-size:14px"><input type="checkbox" style="width:auto" ${S.cdone?"checked":""} onchange="S.cdone=this.checked;render()"> 完了も表示</label>
   <input class="search" id="cq" style="flex:1;min-width:160px;margin:0" placeholder="利用者・居宅で探す" value="${esc(S.cq||"")}" oninput="S.cq=this.value;ctUpd()"></div>`}
  ${newf}
@@ -1460,7 +1464,7 @@ function viewCase(){const c=(DB.cases||[]).find(x=>x.id===S.caseId);if(!c)return
 /* 案件カードにつながる事務への依頼：カードから送ったもの（rec=c:案件ID）と、カードに入れた会話から送ったもの */
 function caseReqs(c){const recs=new Set((DB.caselog||[]).filter(l=>l.case===c.id&&l.rec).map(l=>l.rec));
  return (DB.reqs||[]).filter(r=>r.rec==="c:"+c.id||(r.rec&&recs.has(r.rec))).sort((a,b)=>String(b.at||"").localeCompare(String(a.at||"")))}
-const caseOfReq=r=>{if(!r||!r.rec)return null;if(String(r.rec).startsWith("c:"))return (DB.cases||[]).find(c=>c.id===r.rec.slice(2))||null;const l=(DB.caselog||[]).find(x=>x.rec===r.rec);return l?(DB.cases||[]).find(c=>c.id===l.case)||null:null};
+const caseOfReq=r=>{if(!r||!r.rec)return null;if(String(r.rec).startsWith("c:"))return (DB.cases||[]).find(c=>c.id===r.rec.slice(2))||null;const l=(DB.caselog||[]).find(x=>x.rec===r.rec&&!isCont(x)&&x.kind!=="続き解除");return l?(DB.cases||[]).find(c=>c.id===l.case)||null:null};
 function caseRentals(c){const rs=c.client?(DB.rentals||[]).filter(r=>r.state!=="削除"&&r.client===c.client):[];if(!rs.length)return "";
  return `<div class="section-t"><h2>レンタル台帳</h2><span class="meta">${rs.length}件</span></div><div class="log">${rs.map(r=>`<div class="logi"><b>${esc(r.item||"")}</b> <span class="meta">納品 ${md(r.deliv)}</span><div>${rtWarn(rtAlerts(r))}</div></div>`).join("")}</div>`}
 window.caseAsk=async(id,b)=>{const c=DB.cases.find(y=>y.id===id),t=($("#cs-jimu").value||"").trim();if(!c)return;if(!t){toast("文を入れてください");return}
@@ -1483,9 +1487,27 @@ window.caseMerge=async(id,b)=>{const to=$("#cs-merge").value;if(!to){toast("ま�
 window.caseDel=async(id,b)=>{if(!confirm("この案件を削除しますか？（経過も見えなくなります）"))return;
  if(await caseOps([{table:"cases",row:{id,state:"削除"}}],b,"削除しました")){S.view="log";S.caseId=null;render()}};
 window.recShow=id=>{S.view="log";S.caseId=null;S.recAll=true;render();setTimeout(()=>{const el=document.getElementById("rec-"+id);if(el){el.open=true;el.scrollIntoView({block:"center"})}},80)};
+/* 続きの通話・面談：caselog に {case:"r:前の記録", kind:"続き", rec:この記録} で紐付けて、一覧では1つの流れにまとめる */
+const isCont=l=>l&&l.kind==="続き";
+const recParent=r=>{const l=(DB.caselog||[]).find(x=>isCont(x)&&x.rec===r.id&&x.state!=="削除");return l?String(l.case).slice(2):""};
+function recRoot(r){let x=r,seen={};for(let i=0;i<30;i++){const p=recParent(x);if(!p||seen[p])break;seen[p]=1;const pr=DB.records.find(y=>y.id===p);if(!pr)break;x=pr}return x}
+function threads(recs){const g=new Map();recs.forEach(r=>{const k=recRoot(r).id;if(!g.has(k))g.set(k,[]);g.get(k).push(r)});
+ return [...g.values()].map(l=>l.sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.id).localeCompare(String(a.id)))).sort((a,b)=>String(b[0].date).localeCompare(String(a[0].date)))}
+const thrHtml=list=>list.length<2?recRow(list[0]):`<div class="thr"><div class="thr-h">🔗 同じ件のやりとり ${list.length}件（新しい順）</div>${list.map(recRow).join("")}</div>`;
+const contCands=(office,excl)=>DB.records.filter(r=>r.office===office&&r.id!==excl&&r.kind!=="削除"&&daysFrom(r.date)!=null&&daysFrom(r.date)<=45).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,8);
+const contTxt=cs=>cs.length?`
+続きの判定：この会話が、次の過去の記録と同じ件（同じ利用者・同じ用件）のやりとりの続きなら、JSONの "cont" にその番号を1つ入れる。違えば 0。
+${cs.map((r,i)=>`[${i+1}] ${r.date} ${r.kind||"面談"}：${firstLine(r.text).replace(/^・/,"").slice(0,60)}`).join("\n")}`:"";
+async function linkCont(recId,cands,n){n=parseInt(n,10);if(!recId||!cands||!(n>=1&&n<=cands.length))return;
+ try{await persist([{table:"caselog",row:{id:newId("l"),case:"r:"+cands[n-1].id,kind:"続き",text:"",rec:recId,by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}])}catch(e){}}
+window.contSet=async(id,v)=>{const ops=(DB.caselog||[]).filter(l=>isCont(l)&&l.rec===id&&l.state!=="削除").map(l=>({table:"caselog",row:{id:l.id,state:"削除",kind:"続き解除"}}));
+ if(v)ops.push({table:"caselog",row:{id:newId("l"),case:"r:"+v,kind:"続き",text:"",rec:id,by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}});
+ try{await persist(ops);toast(v?"前の記録の続きにしました":"続きを外しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
+function contCtl(r){const p=recParent(r),cs=contCands(r.office,r.id).filter(x=>x.date<=r.date);if(!p&&!cs.length)return "";
+ return `<div class="meta" style="margin-top:6px">🔗 <select class="sim" style="max-width:100%" onchange="contSet('${r.id}',this.value)"><option value="">${p?"続きを外す":"前の記録の続きにする…"}</option>${cs.map(x=>`<option value="${x.id}" ${x.id===p?"selected":""}>${esc(md(x.date))} ${esc(x.kind||"面談")}：${esc(firstLine(x.text).replace(/^・/,"").slice(0,30))}</option>`).join("")}</select></div>`}
 /* 会話の記録は1行ずつ（タップで全文）。どの案件に入ったかを色の札で出す */
 function recRow(r){const o=DB.offices.find(x=>x.id===r.office),cm=DB.cms.find(c=>c.id===r.cm);
- const cs=[...new Set((DB.caselog||[]).filter(l=>l.rec===r.id).map(l=>l.case))].map(id=>(DB.cases||[]).find(c=>c.id===id&&cLive(c))).filter(Boolean);
+ const cs=[...new Set((DB.caselog||[]).filter(l=>l.rec===r.id&&!isCont(l)).map(l=>l.case))].map(id=>(DB.cases||[]).find(c=>c.id===id&&cLive(c))).filter(Boolean);
  return `<details class="rrow" id="rec-${r.id}" ${S.recEdit===r.id?"open":""}><summary><span class="num meta">${esc(String(r.date||"").slice(5).replace("-","/"))}</span> ${r.kind==="電話"?"📞":r.kind==="SMS"?"✉️":"🗣"} ${S.view==="visit"?"":"<b>"+esc(o?o.name:"")+"</b> "}<span class="meta">${whoHtml(r,cm,"")}</span>${cs.map(c=>`<span class="cchip c-${cColor(c)}">${esc(cName(c))}・${esc(cTopic(c))}</span>`).join("")}<div class="rr1">${esc(firstLine(r.text))}</div></summary>${logItem(r)}</details>`}
 /* AIの振り分け案（会話 → 案件） */
 function fcHtml(f,fi){if(f.casesDone)return `<div style="margin-top:8px"><b>🗂 案件</b><div class="meta">✅ 案件カードに入れました（「やること」で見られます）</div></div>`;
@@ -1852,7 +1874,7 @@ window.rqUpd=()=>{const b=$("#rqBox");if(b)b.innerHTML=rqHtml()};
 window.recAt=id=>{S.office=id;S.view="visit";S.selCm=null;S.recOpen=true;S.autoOpened=id;S.rq="";render();setTimeout(()=>{const f=$("#recForm");if(f)f.scrollIntoView({block:"start"});else scrollTo(0,0)},60)};
 function logItem(r){if(S.recEdit===r.id)return recEditForm(r);const cm=DB.cms.find(c=>c.id===r.cm);const o=DB.offices.find(x=>x.id===r.office);
  const pick=!r.cm&&o&&r.party!=="利用者"&&r.party!=="その他"?`<select class="sim" onchange="setRecCm('${r.id}',this.value)"><option value="">面談者を選ぶ</option>${DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍").map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}<option value="none">CM不在・事業所のみ</option></select>`:"";
- return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":r.kind==="SMS"?" ✉️SMS":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${whoHtml(r,cm,pick)}${r.staff?" ・ 記録："+esc(r.staff):""} <button class="btn sm" type="button" style="padding:2px 8px" onclick="recEditOpen('${r.id}')">修正</button>${(DB.caselog||[]).some(l=>l.rec===r.id)?"":` <button class="btn sm" type="button" style="padding:2px 8px" onclick="caseSplit('${r.id}',this)">🗂 案件に振り分け</button>`}${(q=>q.length?` <span class="status" style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:999px;font-weight:700">📨 事務に送信済み${q.every(x=>x.state==="済")?"・対応済":"・未対応"}</span> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">もう一度送る</button>`:` <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdQuick('${r.id}',this)">📨 そのまま事務へ</button> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">一言つけて送る</button>`)((DB.reqs||[]).filter(x=>x.rec===r.id))}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${transHtml(r,"文字起こしを見る")}</div>`}
+ return `<div class="logi"><div class="meta num">${r.date}${r.kind==="電話"?" 📞電話":r.kind==="SMS"?" ✉️SMS":""} ・ ${S.view==="log"&&o?esc(o.name)+" ・ ":""}${whoHtml(r,cm,pick)}${r.staff?" ・ 記録："+esc(r.staff):""} <button class="btn sm" type="button" style="padding:2px 8px" onclick="recEditOpen('${r.id}')">修正</button>${(DB.caselog||[]).some(l=>l.rec===r.id&&!isCont(l)&&l.kind!=="続き解除")?"":` <button class="btn sm" type="button" style="padding:2px 8px" onclick="caseSplit('${r.id}',this)">🗂 案件に振り分け</button>`}${(q=>q.length?` <span class="status" style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:999px;font-weight:700">📨 事務に送信済み${q.every(x=>x.state==="済")?"・対応済":"・未対応"}</span> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">もう一度送る</button>`:` <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdQuick('${r.id}',this)">📨 そのまま事務へ</button> <button class="btn sm" type="button" style="padding:2px 8px" onclick="fdFromRec('${r.id}')">一言つけて送る</button>`)((DB.reqs||[]).filter(x=>x.rec===r.id))}</div>${esc(r.text)}${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}${transHtml(r,"文字起こしを見る")}${contCtl(r)}</div>`}
 window.setRecCm=async(id,cm)=>{if(!cm)return;try{await persist([{table:"records",row:{id,cm}}]);toast("面談者を登録しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
 window.addRecord=async(e,oid)=>{e.preventDefault();
  const t=$("#f-text").value.trim();if(!t)return;const b=e.target.querySelector("[type=submit]");b.disabled=true;
@@ -1860,7 +1882,7 @@ window.addRecord=async(e,oid)=>{e.preventDefault();
  if(RF.party==="利用者"&&!RF.client&&!RF.cname){b.disabled=false;toast("利用者の名前を入れてください（新規の方は名前だけでOK）");return}
  const roff=RF.recOffice||oid,cmSel=$("#f-cm").value;
  const row={id:newId("r"),office:roff,cm:cmSel||(RF.party==="利用者"?RF.cm:""),date:$("#f-date").value,text:(RF.party==="利用者"&&!RF.client?cnTag(RF.cname):"")+t,next:$("#f-next").value.trim(),trans:$("#f-trans").value.trim(),staff:USER?USER.name:"",party:RF.party||"ケアマネ",client:RF.party==="利用者"?RF.client:""};
- try{await persist([{table:"records",row}]);if(RC.found){addFound(RC.found,row.id,roff,row.cm,row.date);RC.found=null}rfClear();S.recOpen=false;toast("面談記録を保存しました");render()}
+ try{await persist([{table:"records",row}]);if(RC.cont&&RC.cands){await linkCont(row.id,RC.cands,RC.cont);RC.cont=0}if(RC.found){addFound(RC.found,row.id,roff,row.cm,row.date);RC.found=null}rfClear();S.recOpen=false;toast("面談記録を保存しました");render()}
  catch(err){b.disabled=false;toast("保存できませんでした："+errText(err))}};
 
 /* ===== 居宅の定休日（曜日＋祝日＋メモ） ===== */
@@ -2384,11 +2406,11 @@ window.summarize=async(btn)=>{RC.found=null;if(RC.on){stopRec();await new Promis
  `福祉用具貸与事業所（アスポート）の営業担当が、${RF.party==="利用者"?"利用者（"+((clientOf(RF.client)||{}).name||RF.cname||"")+"様）またはそのご家族":RF.party==="その他"?"居宅介護支援事業所「"+o.name+"」の関係者":"居宅介護支援事業所「"+o.name+"」のケアマネジャー（"+cmName+"）"}と面談したときの文字起こしです。音声認識のため誤字があります。
 営業日報向けに要約し、次のキーだけのJSONで返してください。
 {"summary":"話した内容の要約（箇条書き風に3〜6行、改行区切り、各行は「・」で始める）","next":"次回アクション（営業がやること。期限があれば含める。1〜2行）","clients":["話題に出た利用者名"]${FIND_KEYS}}${FIND_RULE(RF.date||today())}
-参考：この居宅の当社利用者は ${names||"なし"}。
+参考：この居宅の当社利用者は ${names||"なし"}。${contTxt(RC.cands=contCands(o.id,""))}
 --- 文字起こし ---
 ${tr.slice(0,20000)}`);
   if(!rr){stx("この画面ではAI要約が使えません。");if(btn)btn.disabled=false;return}
-  const r=rr.data||{};RC.found={events:r.events,requests:r.requests,cases:r.cases};
+  const r=rr.data||{};RC.found={events:r.events,requests:r.requests,cases:r.cases};RC.cont=r.cont;
   setF("text",r.summary||"");setF("next",r.next||"");
   RC.msg="要約を入れました。確認して「記録を保存」を押してください。"+(r.clients&&r.clients.length?"（話題の利用者："+r.clients.join("、")+"）":"");stx(esc(RC.msg));
  }catch(e){stx("要約できませんでした："+esc(errText(e)))}
@@ -2470,7 +2492,7 @@ function viewLog(){
 const top=quickRec()+`<div style="margin:8px 0 4px">${foundBox()}${cbBox()}${CB.items.length?"":CI.stage!=="idle"&&!CI.office?callBox():callPickBtn()}</div>`;
  const todo=recs.filter(r=>r.next);
  return top+`<div class="section-t"><h2>会話の記録</h2><span class="meta">全${recs.length}件 ・ タップで全文</span></div>${MODE==="live"&&DB.recCutoff?`<div class="meta" style="margin:-4px 0 6px">直近6か月分を表示しています。それより前の記録は、各居宅の画面で見られます。</div>`:""}
- <div class="log">${recs.slice(0,S.recAll?9999:60).map(recRow).join("")}</div>${recs.length>60&&!S.recAll?`<button class="btn sm" type="button" style="margin-top:8px" onclick="S.recAll=true;render()">すべて表示（${recs.length}件）</button>`:""}
+ <div class="log">${threads(recs).slice(0,S.recAll?9999:60).map(thrHtml).join("")}</div>${recs.length>60&&!S.recAll?`<button class="btn sm" type="button" style="margin-top:8px" onclick="S.recAll=true;render()">すべて表示（${recs.length}件）</button>`:""}
 `;
 }
 window.reloadAll=async b=>{b.disabled=true;try{await loadAll();fillSim();cacheSave();toast("最新のデータにしました");render()}catch(e){b.disabled=false;toast("更新できませんでした："+errText(e))}};
