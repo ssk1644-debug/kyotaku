@@ -1,6 +1,6 @@
 {
-  "name": "アスポッピー（居宅営業管理システム）",
-  "short_name": "アスポッピー",
+  "name": "アスポッピー営業ナビ",
+  "short_name": "営業ナビ",
   "start_url": "/kyotaku/",
   "scope": "/kyotaku/",
   "display": "standalone",

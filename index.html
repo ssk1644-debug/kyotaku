@@ -1,5 +1,5 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>居宅営業管理システム</title>
+<title>アスポッピー営業ナビ</title>
 <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="theme-color" content="#0d6e62">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap">
@@ -248,14 +248,25 @@ body.noscroll{overflow:hidden}
   .split{display:grid;grid-template-columns:1.25fr 1fr;gap:20px;align-items:start}
 }
 @media (prefers-reduced-motion:no-preference){.cm,.oitem{transition:border-color .15s}}
+
+/* スマホの上の段は1行（営業ナビ だけ・位置は点だけ） */
+@media (max-width:767px){.locbar-in{flex-wrap:nowrap;gap:6px;padding:8px 10px}.brand{white-space:nowrap;font-size:17px}.brand .bfull,#brandSub{display:none}.backbtn .bl{display:none}#gpsText{display:none}.pill{padding:6px}.chatbtn .cbl{font-size:13px}}
+/* 連絡ボタン（目立たせる） */
+.chatbtn{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0;font-size:16px;padding:6px 12px;background:var(--accent);color:#fff;border-color:var(--accent)}.chatbtn .cbl{font-size:14px;font-weight:700}
+.chatbtn.has{background:var(--alert);border-color:var(--alert)}.chatbtn .tbadge{position:absolute;top:-8px;right:-8px;left:auto;font-size:13px;min-width:22px;height:22px;line-height:22px;background:#fff;color:var(--alert);border:2px solid var(--alert)}
+@keyframes cbBlink{0%,100%{box-shadow:0 0 0 0 rgba(176,58,46,.7)}50%{box-shadow:0 0 0 7px rgba(176,58,46,0)}}
+.chatbtn.urg{animation:cbBlink 1s infinite}
+/* PCの「音を出す」 */
+.sndpill{position:fixed;right:16px;bottom:88px;z-index:9;border:0;border-radius:999px;padding:10px 16px;font:inherit;font-weight:700;font-size:15px;background:var(--accent);color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.2);cursor:pointer}
+.smsbox .tpl{display:flex;gap:6px;flex-wrap:wrap}
 </style>
 
 <header class="locbar">
   <div class="locbar-in">
-    <button id="backBtn" class="backbtn" type="button" hidden onclick="history.back()">← 戻る</button>
+    <button id="backBtn" class="backbtn" type="button" hidden onclick="history.back()" aria-label="戻る">←<span class="bl"> 戻る</span></button>
     <button id="syncBtn" class="backbtn" type="button" hidden onclick="syncNow(true)" title="最新にする" aria-label="最新にする">↻</button>
-    <div class="brand">居宅営業管理システム<small id="brandSub">アスポート 営業用</small></div>
-    <div id="ppHead" class="pphead" aria-live="polite"></div><button id="chatBtn" class="backbtn chatbtn" type="button" hidden onclick="S.view='chat';S.room=null;render();scrollTo(0,0)" aria-label="連絡チャット">💬<span id="chatN" class="tbadge" hidden></span></button>
+    <div class="brand"><span class="bfull">アスポッピー</span>営業ナビ<small id="brandSub">アスポート 営業用</small></div>
+    <div id="ppHead" class="pphead" aria-live="polite"></div><button id="chatBtn" class="backbtn chatbtn" type="button" hidden onclick="S.view='chat';S.room=null;render();scrollTo(0,0)" aria-label="連絡">💬<span class="cbl">連絡</span><span id="chatN" class="tbadge" hidden></span></button>
     <button id="gpsPill" class="pill" type="button" onclick="S.gpsHelp=!S.gpsHelp;S.view='visit';S.office=null;render()"><span class="dot"></span><span id="gpsText">位置を確認中…</span></button>
     <select id="sim" class="sim" aria-label="位置を試す">
       <option value="">📍 位置を試す（デモ）</option>
@@ -574,6 +585,7 @@ function cmCard(c){
   <dl class="kv"><dt>担当件数</dt><dd class="num">${c.count!=null&&c.count!==""?c.count+"件":"—"}（当社 ${n}件）</dd>
    ${c.note?`<dt>傾向</dt><dd>${esc(c.note)}</dd>`:""}${c.likes?`<dt>話題</dt><dd>${esc(c.likes)}</dd>`:""}</dl>
   ${(y=>y.length?`<div class="meta">紹介（新規契約）：直近12か月 <b class="num">${y.filter(x=>x.date>=ago(365)).length}</b>件 ・ 累計 <span class="num">${y.length}</span>件 ・ 最終 <span class="num">${y.map(x=>x.date).sort().pop()}</span></div>`:"")(DB.contracts.filter(x=>x.cm===c.id))}
+  ${(tel=>`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"><button class="btn sm" type="button" onclick="event.stopPropagation();smsOpen('${c.id}')">📱 SMS</button>${tel?`<a class="btn sm" href="tel:${esc(tel)}" onclick="event.stopPropagation()">📞 電話</a>`:""}</div>`)(cmMobile(c))}
   ${cmDupBox(c)}${cmPlaces(c)}
   ${c.history?`<div class="meta" style="white-space:pre-wrap">${esc(c.history)}</div>`:""}
   ${last?`<div class="last"><div class="meta num">前回 ${last.date}</div>${esc(last.text)}${last.next?`<div class="meta">次回：${esc(last.next)}</div>`:""}</div>`:""}
@@ -903,7 +915,7 @@ window.shotIn=async files=>{files=(files||[]).filter(f=>/^image\//.test(f.type||
  if(mt.o||mt.cm){CI.office=(mt.o&&mt.o.id)||(mt.cm&&mt.cm.office)||CI.office;CI.cm=mt.cm?mt.cm.id:CI.cm}else{CI.cc=mt.cc||[];CI.oc=mt.oc||[];CI.who=sender||phone}
  if(date&&date<=today())CI.date=date;CI.err=err;
  if(CI.office){S.office=CI.office;S.view="visit"}else S.view="log";render();ciScroll()};
-/* ===== 連絡チャット：全員の部屋・事務の部屋・1対1。【至急】は相手のアプリでアラーム（＋SMS） ===== */
+/* ===== 連絡チャット：全員の部屋・事務の部屋・1対1。【至急】は相手のアプリでアラーム。新しい連絡はプッシュ通知（GASが送る） ===== */
 const msgBody=t=>esc(String(t||"")).replace(/\[case:([A-Za-z0-9_-]+)\]/g,(x,id)=>{const c=(DB.cases||[]).find(y=>y.id===id);return c?`<button type="button" class="btn sm" style="margin:4px 0" onclick="caseOpen('${id}')">🗂 ${esc(caseHead(c))}</button>`:""});
 const URG="【至急】",isUrg=m=>String(m&&m.text||"").startsWith(URG);
 const dmKey=(a,b)=>"dm:"+[String(a).toLowerCase(),String(b).toLowerCase()].sort().join("|");
@@ -933,14 +945,69 @@ function viewChat(){const rs=roomsOf(),r=S.room?rs.find(x=>x.k===S.room):null;
   ${ph?`<a class="btn sm" href="tel:${esc(ph)}">📞 電話</a>`:""}</div>
  <div class="chat">${roomMsgs(r.k).map(m=>`<div class="msg ${m.from===me?"me":""} ${isUrg(m)?"urg":""}"><div class="meta">${esc(m.fromName||uName(m.from))}${m.to===JIMU?" → 事務":""} ・ ${fmtAt(m.at)}${m.from===me&&m.read&&r.k!=="room:all"?" ・ 既読":""}</div>${msgBody(m.text)}</div>`).join("")||'<div class="meta">まだやりとりはありません</div>'}</div>
  <div class="form"><textarea id="ch-t" rows="2" placeholder="メッセージ"></textarea>
-  <label style="display:flex;gap:8px;align-items:center;font-size:15px;color:var(--ink)"><input type="checkbox" id="ch-u" style="width:auto"> 🚨 至急（相手のアプリでアラームを鳴らす${r.peer?"・SMSも送る":""}）</label>
+  <label style="display:flex;gap:8px;align-items:center;font-size:15px;color:var(--ink)"><input type="checkbox" id="ch-u" style="width:auto"> 🚨 至急（相手のスマホに通知・アプリでアラームを鳴らす）</label>
   <button class="btn primary" type="button" onclick="chatSend('${r.k}',this)">送る</button>
-  ${r.peer&&!ph?`<div class="meta">SMSで呼ぶには、この人の携帯番号を「ユーザー」シートのE列に入れてください。</div>`:""}</div>`}
+</div>`}
 window.chatSend=async(k,b)=>{const r=roomsOf().find(x=>x.k===k);if(!r)return;let t=String(($("#ch-t")||{}).value||"").trim();if(!t){toast("文を入れてください");return}
  const urg=($("#ch-u")||{}).checked;if(urg)t=URG+t;b.disabled=true;
  const row={id:newId("m"),req:k,office:"",to:r.to,from:myId(),fromName:USER?USER.name:"デモ",text:t,at:new Date().toISOString(),read:""};
- try{await persist([{table:"msgs",row}]);buzz(40);if(urg&&r.peer&&r.peer.phone){location.href="sms:"+String(r.peer.phone).replace(/[^0-9+]/g,"")+"?body="+encodeURIComponent("【アスポッピー至急】"+t.slice(URG.length).replace(/\[case:[^\]]+\]/g,"")+"（"+(USER?USER.name:"")+"）")}render()}
+ try{await persist([{table:"msgs",row}]);buzz(40);render()}
  catch(e){b.disabled=false;toast("送れませんでした："+errText(e))}};
+/* ===== ケアマネへのSMS（スマホのSMSアプリを開く。送った文面は記録に残す） ===== */
+const SMS_TPL=[["訪問のお約束","いつもお世話になっております。○月○日（○）○時ごろにお伺いしてもよろしいでしょうか。"],["デモをお届けしました","いつもお世話になっております。本日、○○様へデモ機をお届けしました。ご確認をお願いいたします。"],["書類を送りました","いつもお世話になっております。○○の書類をお送りしました。ご確認をお願いいたします。"]];
+const telDigits=t=>String(t||"").normalize("NFKC").replace(/[^0-9]/g,"");
+function cmMobile(c){if(!c)return "";if(c.tel)return String(c.tel);const cs=(DB.cards||[]).filter(x=>x.cm===c.id&&x.tel);const m=cs.map(x=>String(x.tel)).find(t=>/^0[789]0/.test(telDigits(t)));return m||""}
+const smsSign=()=>"\nアスポート "+(USER?USER.name:"");
+window.smsOpen=id=>{const c=DB.cms.find(x=>x.id===id);if(!c)return;document.querySelectorAll(".smsfull").forEach(x=>x.remove());
+ const d=document.createElement("div");d.className="full smsfull";d.setAttribute("role","dialog");
+ d.innerHTML=`<div class="full-in"><div class="form smsbox" style="max-width:560px;margin:0 auto"><b>📱 ${esc(c.name)} さんへSMS</b>
+  <label>携帯番号<input id="sms-tel" inputmode="tel" value="${esc(cmMobile(c))}" placeholder="例：090-1234-5678"></label>
+  <div class="meta">よく使う文（押すと下に入ります。○の所を直してください）</div>
+  <div class="tpl">${SMS_TPL.map((x,i)=>`<button type="button" class="btn sm" onclick="smsTpl(${i})">${esc(x[0])}</button>`).join("")}</div>
+  <label>本文<textarea id="sms-body" rows="5" placeholder="本文"></textarea></label>
+  <div class="meta">最後に「${esc(smsSign().trim())}」を付けて送ります。送った文はこのケアマネの記録に「SMS」として残ります。</div>
+  ${PP_PC()?'<div class="notice">SMSはスマホから送ってください（パソコンからは送れません）。</div>':""}
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="smsGo('${c.id}',this)">SMSアプリで開く</button><button class="btn" type="button" onclick="this.closest('.smsfull').remove()">やめる</button></div></div></div>`;
+ document.body.appendChild(d)};
+window.smsTpl=i=>{const b=$("#sms-body");if(b){b.value=SMS_TPL[i][1];b.focus()}};
+window.smsGo=async(id,b)=>{const c=DB.cms.find(x=>x.id===id);if(!c)return;const tel=($("#sms-tel")||{}).value||"",n=telDigits(tel),body=String(($("#sms-body")||{}).value||"").trim();
+ if(n.length<10||n.length>11){toast("携帯番号を入れてください");return}if(!body){toast("本文を入れてください");return}
+ const text=body+smsSign();b.disabled=true;
+ const ops=[{table:"records",row:{id:newId("r"),office:c.office,cm:c.id,date:today(),text:"【SMS送信】"+text,next:"",trans:"",staff:USER?USER.name:"",kind:"SMS",party:"ケアマネ",client:""}}];
+ if(telDigits(c.tel)!==n)ops.push({table:"cms",row:{id:c.id,tel:tel.trim()}});
+ try{await persist(ops)}catch(e){}
+ const ios=/iPhone|iPad|iPod/.test(navigator.userAgent);document.querySelectorAll(".smsfull").forEach(x=>x.remove());render();
+ location.href="sms:"+n+(ios?"&":"?")+"body="+encodeURIComponent(text)};
+
+/* ===== プッシュ通知（Firebase Cloud Messaging）。通知の送信はGAS、受け取りは sw.js ===== */
+const FB_CFG={apiKey:"AIzaSyAf2B9QzwSSKVpSPBFeeF5VsalGCu3HPGE",authDomain:"asuport-eigyo-navi.firebaseapp.com",projectId:"asuport-eigyo-navi",storageBucket:"asuport-eigyo-navi.firebasestorage.app",messagingSenderId:"666281683745",appId:"1:666281683745:web:aae6f2f2a758f8ec2cec60",vapidKey:"BDlriUuCg4W1Ybd7HMlrgRNwJIbNyuUs94jDNhJ5h5bGhs7_dtLvMqm0T6GAY9WOsD78Y57pyuRDB6aimt2_NF0"};
+const PUSH_K="kyotaku-push-token";
+function loadJs(u){return new Promise((ok,ng)=>{const x=document.createElement("script");x.src=u;x.onload=ok;x.onerror=ng;document.head.appendChild(x)})}
+let FBM=null;async function fbMsg(){if(FBM)return FBM;const v="https://www.gstatic.com/firebasejs/10.12.2/";await loadJs(v+"firebase-app-compat.js");await loadJs(v+"firebase-messaging-compat.js");
+ if(!firebase.apps.length)firebase.initializeApp(FB_CFG);FBM=firebase.messaging();FBM.onMessage(()=>{try{syncNow(false)}catch(e){}});return FBM}
+const pushCan=()=>"Notification" in window&&"serviceWorker" in navigator&&"PushManager" in window;
+const pushState=()=>!pushCan()?"no":Notification.permission;
+async function pushReg(quiet){const reg=await navigator.serviceWorker.register("sw.js");await navigator.serviceWorker.ready;const m=await fbMsg();
+ const token=await m.getToken({vapidKey:FB_CFG.vapidKey,serviceWorkerRegistration:reg});if(!token)throw {message:"通知の登録ができませんでした"};
+ let old="";try{old=localStorage.getItem(PUSH_K)||""}catch(e){}
+ if(!quiet||old!==token+"|"+myId()){await api("pushReg",{token,ua:navigator.userAgent.slice(0,150)});try{localStorage.setItem(PUSH_K,token+"|"+myId())}catch(e){}}
+ return token}
+window.pushOn=async b=>{if(MODE!=="live"){toast("デモでは通知は使えません");return}
+ if(!pushCan()){const ios=/iPhone|iPad|iPod/.test(navigator.userAgent),sa=matchMedia("(display-mode: standalone)").matches||navigator.standalone;toast(ios&&!sa?"iPhoneは、ホーム画面に追加した営業ナビから通知を受け取れます":"この端末では通知を受け取れません");return}
+ if(b)b.disabled=true;try{const p=await Notification.requestPermission();if(p!=="granted"){toast("通知が許可されませんでした（端末の設定で許可してください）");return}
+  await pushReg(false);toast("通知を受け取れるようにしました");render()}catch(e){toast("通知の登録ができませんでした："+(e&&e.message||errText(e)))}finally{if(b)b.disabled=false}};
+function pushBox(){const st=pushState();return `<div class="form"><b>🔔 通知</b>
+  ${st==="granted"?'<div>この端末で通知を受け取ります（連絡・至急・案件のお知らせ）。</div><div><button class="btn sm" type="button" onclick="pushOn(this)">通知を登録し直す</button></div>':st==="denied"?'<div class="notice">通知がブロックされています。端末（ブラウザ）の設定で、このサイトの通知を「許可」にしてください。</div>':`<div>アプリを閉じていても、連絡や至急の呼び出しがスマホ（パソコン）に届くようにします。</div><div><button class="btn primary" type="button" onclick="pushOn(this)">🔔 通知を受け取る</button></div>`}</div>`}
+/* 通知を押したとき（sw.js から）→ 連絡の画面へ */
+if("serviceWorker" in navigator)navigator.serviceWorker.addEventListener("message",e=>{if(e.data&&e.data.type==="openChat"){S.view="chat";S.room=e.data.room||null;try{syncNow(false)}catch(x){}render();scrollTo(0,0)}});
+if(/[?&]open=chat\b/.test(location.search)){S.view="chat";try{history.replaceState(null,"",location.pathname+location.search.replace(/[?&]open=chat\b/,"").replace(/^&/,"?")+location.hash)}catch(e){}}
+/* アイコンの数字（未読の連絡） */
+let BADGE_N=-1;function badgeSet(n){if(n===BADGE_N)return;BADGE_N=n;try{if(navigator.setAppBadge){n?navigator.setAppBadge(n):navigator.clearAppBadge()}}catch(e){}try{caches.open("kyotaku-badge").then(c=>c.put("n",new Response(String(n)))).catch(()=>{})}catch(e){}}
+/* PCは最初のクリックまで音が出ない（ブラウザの決まり）→「音を出す」ボタン。どこかをクリック・タップしたら音を出せるようにする */
+document.addEventListener("pointerdown",()=>{try{if(ACX&&ACX.state!=="running")ACX.resume().then(sndPillUpd)}catch(e){}},true);
+function sndPillUpd(){let b=$("#sndPill");const need=MODE==="live"&&USER&&!S.loading&&ppSndOn()&&PP_PC()&&(()=>{try{return acx().state!=="running"}catch(e){return false}})();
+ if(!need){if(b)b.remove();return}if(b)return;b=document.createElement("button");b.id="sndPill";b.className="sndpill";b.type="button";b.textContent="🔊 音を出す";
+ b.onclick=()=>{try{acx().resume().then(()=>{woof(1);sndPillUpd()})}catch(e){}};document.body.appendChild(b)}
 /* 至急の呼び出し：自分あて（1対1・事務あて・全員）の【至急】が来たら全画面で鳴らし続ける。「見た」で止まる */
 let ALARM=null,ALARM_T=null;setInterval(()=>{try{alarmCheck()}catch(e){}},15000);
 function alarmCheck(){if(MODE==="live"&&!USER)return;const me=myId(),ack=lsSet(ACK_K),lim=new Date(Date.now()-864e5).toISOString();
@@ -1040,7 +1107,7 @@ function calUrl(e,o,cm){const d=e.date.replace(/-/g,""),tm=s=>{const m=String(s|
  let dates;const st=tm(e.start);
  if(st){let en=tm(e.end);if(!en||en<=st){const h=Math.min(23,+st.slice(0,2)+1);en=String(h).padStart(2,"0")+st.slice(2)}dates=d+"T"+st+"/"+d+"T"+en}
  else{const n=new Date(e.date+"T00:00:00");n.setDate(n.getDate()+1);dates=d+"/"+n.toLocaleDateString("sv-SE").replace(/-/g,"")}
- const q=new URLSearchParams({action:"TEMPLATE",text:e.title+(o&&o.name?"（"+o.name+"）":""),dates,details:`居宅：${o?o.name:""}${cm?"\nケアマネ："+cm.name:""}\n（居宅営業管理から追加）`,location:e.place||"",ctz:"Asia/Tokyo"});
+ const q=new URLSearchParams({action:"TEMPLATE",text:e.title+(o&&o.name?"（"+o.name+"）":""),dates,details:`居宅：${o?o.name:""}${cm?"\nケアマネ："+cm.name:""}\n（アスポッピー営業ナビから追加）`,location:e.place||"",ctz:"Asia/Tokyo"});
  return "https://calendar.google.com/calendar/render?"+q.toString()}
 /* 記録を保存した直後のカード：見つかったやることを1件ずつ「予定に入れる／事務に連絡／いらない」で振り分ける */
 function fcardsHtml(f,fi){const o=DB.offices.find(x=>x.id===f.office),cm=DB.cms.find(c=>c.id===f.cm),its=f.items||[],left=its.filter(x=>!x.st).length;
@@ -2595,6 +2662,7 @@ function viewSettings(){const imp=DB.importedAt;
   ${canAdmin()?`<label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" ${S.showAll==="all"?"checked":""} onchange="S.showAll=this.checked?'all':false;saveUI();render()"> 非表示の居宅も表示する（管理者）</label>`:""}
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" ${ppSndOn()?"checked":""} onchange="ppSndSet(this.checked)"> アスポッピーの声（ワン！）を鳴らす</label>
   <div class="meta">この設定はこの端末に覚えておきます。</div></div>
+ ${MODE==="live"?pushBox():""}
  ${MODE==="demo"?`<p style="margin-top:16px"><button class="btn sm" onclick="resetDemo(this)">ダミーデータに戻す</button></p>`:`<div class="section-t"><h2>アカウント</h2></div>
  <div class="form"><div>${esc(USER?USER.name:"")}<span class="meta"> ${esc(USER?USER.email:"")}${USER&&USER.role==="admin"?" ・ 管理者":""}</span></div>
  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" onclick="reloadAll(this)">最新のデータに更新</button><button class="btn" type="button" onclick="logout()">ログアウト</button></div></div>`}
@@ -2688,7 +2756,7 @@ window.saveSetup=()=>{const u=$("#s-url").value.trim(),c=$("#s-cid").value.trim(
  MODE="live";initGis();render()};
 function viewLogin(){
  return `<div class="form" style="max-width:420px;margin:32px auto;text-align:center;justify-items:center">
-  <h2 style="font-size:19px">居宅営業管理システム</h2>
+  <h2 style="font-size:19px">アスポッピー営業ナビ</h2>
   <div class="meta">アスポートの営業用です。登録されたGoogleアカウントでログインしてください。</div>
   ${S.loading?`<div class="progress"><span class="spin"></span>データを読み込み中…</div>`:`<div id="gbtn" style="min-height:44px"></div>`}
   ${S.loginMsg?`<div class="${/確認中/.test(S.loginMsg)?"meta":"notice"}" style="text-align:left">${esc(S.loginMsg)}</div>`:""}
@@ -2744,10 +2812,17 @@ function ppSay(){const h=new Date().getHours(),night=h>=20||h<5;
 function ppHeadUpd(){const el=$("#ppHead");if(!el)return;if(MODE==="setup"||(MODE==="live"&&(!USER||S.loading))){el.innerHTML="";el.dataset.k="";return}
  const r=ppSay(),k=r.face+r.html;if(el.dataset.k===k)return;el.dataset.k=k;el.innerHTML=`<span class="pp" aria-hidden="true" style="background-image:var(--pp-${r.face})"></span>${r.face==="wow"?'<span class="ppdot"></span>':""}<span class="say">${r.html}</span>`;el.onclick=ppTap}
 /* 隠しコマンド：アスポッピーを素早く5回タップ → 遠吠え「アオーン」。ふつうのタップでも 1/30 でレア鳴き「キャンキャン♪」（表示は出さない） */
-function howl(){if(!ppSndOn())return;try{const c=acx(),t=c.currentTime+0.03,o=c.createOscillator(),l=c.createOscillator(),lg=c.createGain(),g=c.createGain();
-  o.type="sine";o.frequency.setValueAtTime(420,t);o.frequency.exponentialRampToValueAtTime(880,t+0.45);o.frequency.setValueAtTime(880,t+1.0);o.frequency.exponentialRampToValueAtTime(560,t+1.7);
-  l.frequency.value=5.5;lg.gain.value=14;l.connect(lg).connect(o.frequency);g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.5,t+0.15);g.gain.setValueAtTime(0.5,t+1.3);g.gain.exponentialRampToValueAtTime(0.0001,t+1.8);
-  o.connect(g).connect(c.destination);o.start(t);l.start(t);o.stop(t+1.85);l.stop(t+1.85)}catch(e){}}
+function howl(){if(!ppSndOn())return;try{woof(1);const c=acx(),t=c.currentTime+0.32;   /* 「ワゥ」→「アオーーン」（のどを通した犬の声。上げて伸ばして下げる） */
+  const o=c.createOscillator(),o2=c.createOscillator(),mix=c.createGain(),f1=c.createBiquadFilter(),f2=c.createBiquadFilter(),g1=c.createGain(),g2=c.createGain(),g=c.createGain(),l=c.createOscillator(),lg=c.createGain();
+  o.type="sawtooth";o2.type="square";o2.detune.value=7;
+  [o,o2].forEach(x=>{x.frequency.setValueAtTime(360,t);x.frequency.exponentialRampToValueAtTime(600,t+0.32);x.frequency.linearRampToValueAtTime(640,t+0.85);x.frequency.exponentialRampToValueAtTime(400,t+1.2)});
+  l.frequency.value=4.5;lg.gain.value=4;l.connect(lg);lg.connect(o.frequency);lg.connect(o2.frequency);
+  o.connect(mix);o2.connect(mix);mix.gain.value=0.35;
+  f1.type="bandpass";f1.Q.value=4;f1.frequency.setValueAtTime(820,t);f1.frequency.linearRampToValueAtTime(950,t+0.3);f1.frequency.linearRampToValueAtTime(620,t+0.9);
+  f2.type="bandpass";f2.Q.value=5;f2.frequency.setValueAtTime(1250,t);f2.frequency.linearRampToValueAtTime(950,t+0.6);
+  mix.connect(f1);mix.connect(f2);f1.connect(g1);f2.connect(g2);g1.gain.value=1;g2.gain.value=0.55;g1.connect(g);g2.connect(g);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.6,t+0.12);g.gain.setValueAtTime(0.6,t+0.9);g.gain.exponentialRampToValueAtTime(0.0001,t+1.25);
+  g.connect(c.destination);o.start(t);o2.start(t);l.start(t);o.stop(t+1.3);o2.stop(t+1.3);l.stop(t+1.3)}catch(e){}}
 function yip(){if(!ppSndOn())return;try{const c=acx();for(let i=0;i<3;i++){const t=c.currentTime+0.03+i*0.13,o=c.createOscillator(),g=c.createGain();o.type="triangle";o.frequency.setValueAtTime(1300,t);o.frequency.exponentialRampToValueAtTime(1900,t+0.05);o.frequency.exponentialRampToValueAtTime(1100,t+0.09);
   g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.5,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+0.1);o.connect(g).connect(c.destination);o.start(t);o.stop(t+0.11)}}catch(e){}}
 let PPT=[];
@@ -2758,7 +2833,7 @@ window.ppTap=()=>{const el=$("#ppHead");if(!el)return;const now=Date.now();PPT=P
  woof(1);el.classList.remove("tap");void el.offsetWidth;el.classList.add("tap");const p=el.querySelector(".pp");if(p){p.style.backgroundImage="var(--pp-smile)";setTimeout(()=>{el.dataset.k="";ppHeadUpd()},1600)}
  if(!PP_PC()&&PPT.length===1){const r=ppSay();ppMsg(r.face,r.html,3500)}};
 setInterval(()=>{try{ppHeadUpd()}catch(e){}},300000);
-const _render3=render;render=function(){_render3();try{ppHeadUpd()}catch(e){}try{wantOlder()}catch(e){}try{const cb=$("#chatBtn");if(cb){cb.hidden=MODE==="setup"||(MODE==="live"&&(!USER||S.loading));const n=chatUnread(),b=$("#chatN");if(b){b.hidden=!n;b.textContent=n>99?"99+":n}}alarmCheck()}catch(e){}const sb=$("#syncBtn");if(sb){sb.hidden=!(MODE==="live"&&USER&&!S.loading);sb.textContent=S.bgLoad||SYNC_BUSY?"…":"↻"}};
+const _render3=render;render=function(){_render3();try{ppHeadUpd()}catch(e){}try{wantOlder()}catch(e){}try{const cb=$("#chatBtn");if(cb){cb.hidden=MODE==="setup"||(MODE==="live"&&(!USER||S.loading));const n=chatUnread(),b=$("#chatN");if(b){b.hidden=!n;b.textContent=n>99?"99+":n}cb.classList.toggle("has",n>0);const me=myId();cb.classList.toggle("urg",(DB.msgs||[]).some(m=>isUrg(m)&&!m.read&&m.from!==me&&(m.to===me||(m.to===JIMU&&meJ()))));if(MODE==="live"&&USER)badgeSet(n)}alarmCheck()}catch(e){}try{sndPillUpd()}catch(e){}try{if(MODE==="live"&&USER&&!S.loading&&!window._pushChk&&pushState()==="granted"){window._pushChk=1;pushReg(true).catch(()=>{})}}catch(e){}const sb=$("#syncBtn");if(sb){sb.hidden=!(MODE==="live"&&USER&&!S.loading);sb.textContent=S.bgLoad||SYNC_BUSY?"…":"↻"}};
 /* 起動 */
 startGps();
 if(MODE==="demo"){S.office=DB.offices.some(o=>o.id==="o1")?"o1":null;render()}
