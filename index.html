@@ -38,6 +38,10 @@ body.wide .wrap{max-width:1500px}
 .rtw{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:10px}
 .ac{display:inline-block;border-radius:6px;padding:1px 7px;font-weight:700;font-size:12.5px}.ac.ok{color:#1e8449}.ac.na{color:var(--muted);font-weight:400}.ac.o{background:#fdebd8;color:#b35400}.ac.r{background:#fadbd8;color:#b03a2e}.ac.h{background:#f4ecf7;color:#8e44ad}.ac.w{color:var(--ink);font-weight:400}
 .board{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}.bcol{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:10px 12px}.bcol h3{font-size:17px;margin-bottom:6px}.bitem{display:block;width:100%;text-align:left;border:0;border-top:1px solid var(--line);background:none;padding:6px 2px;font:inherit;color:inherit;cursor:pointer}.bitem:hover{background:var(--accent-soft)}
+.chatbtn{position:relative;font-size:18px;padding:6px 12px}.chatbtn .tbadge{position:absolute;top:-4px;right:-4px}
+.chl{display:flex;flex-direction:column;gap:6px}.chl button{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:16px;cursor:pointer}.chl .cnt{background:var(--alert);color:#fff;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:700}
+.chat{display:flex;flex-direction:column;gap:6px;margin:8px 0 10px}.chat .msg{max-width:85%}.chat .msg.me{align-self:flex-end}.msg.urg{border:2px solid var(--alert);background:var(--alert-soft)}
+.alarm{position:fixed;inset:0;z-index:20;background:rgba(176,58,46,.96);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center}.alarm .pp{width:110px;height:110px;animation:ppBob .5s ease-in-out infinite}.alarm .t{font-size:22px;font-weight:800;white-space:pre-wrap;max-width:640px}.alarm .btn{font-size:18px;padding:12px 22px;color:var(--ink)}.alarm .btn.primary{color:#fff}
 .thr{border-left:4px solid var(--accent);border-radius:10px;background:var(--accent-soft);padding:4px 0 4px 6px;margin:4px 0}.thr-h{font-size:13px;font-weight:700;color:var(--accent);padding:2px 6px}.thr .rrow+.rrow{margin-left:14px}
 .rfl{display:flex;flex-direction:column;gap:6px;margin:10px 0 6px}.rfs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:2px solid var(--line);border-radius:12px;padding:6px 8px;background:var(--surface)}.rfs.on{border-color:#1e8449;background:#eefaf3}.rfb{flex:1;min-width:200px;display:flex;gap:10px;align-items:center;text-align:left;background:none;border:0;padding:6px 2px;font-size:17px;color:var(--ink);cursor:pointer}.rfc{flex:none;width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--line);font-weight:800;color:var(--muted)}.rfs.on .rfc{background:#1e8449;border-color:#1e8449;color:#fff}.rfx{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.rfx .sim{max-width:170px}
 .tgl{border:2px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;font-weight:700;min-width:70px}.tgl.on{border-color:#1e8449;background:#d5f5e3;color:#1e8449}
@@ -251,7 +255,7 @@ body.noscroll{overflow:hidden}
     <button id="backBtn" class="backbtn" type="button" hidden onclick="history.back()">← 戻る</button>
     <button id="syncBtn" class="backbtn" type="button" hidden onclick="syncNow(true)" title="最新にする" aria-label="最新にする">↻</button>
     <div class="brand">居宅営業管理システム<small id="brandSub">アスポート 営業用</small></div>
-    <div id="ppHead" class="pphead" aria-live="polite"></div>
+    <div id="ppHead" class="pphead" aria-live="polite"></div><button id="chatBtn" class="backbtn chatbtn" type="button" hidden onclick="S.view='chat';S.room=null;render();scrollTo(0,0)" aria-label="連絡チャット">💬<span id="chatN" class="tbadge" hidden></span></button>
     <button id="gpsPill" class="pill" type="button" onclick="S.gpsHelp=!S.gpsHelp;S.view='visit';S.office=null;render()"><span class="dot"></span><span id="gpsText">位置を確認中…</span></button>
     <select id="sim" class="sim" aria-label="位置を試す">
       <option value="">📍 位置を試す（デモ）</option>
@@ -897,6 +901,56 @@ window.shotIn=async files=>{files=(files||[]).filter(f=>/^image\//.test(f.type||
  if(mt.o||mt.cm){CI.office=(mt.o&&mt.o.id)||(mt.cm&&mt.cm.office)||CI.office;CI.cm=mt.cm?mt.cm.id:CI.cm}else{CI.cc=mt.cc||[];CI.oc=mt.oc||[];CI.who=sender||phone}
  if(date&&date<=today())CI.date=date;CI.err=err;
  if(CI.office){S.office=CI.office;S.view="visit"}else S.view="log";render();ciScroll()};
+/* ===== 連絡チャット：全員の部屋・事務の部屋・1対1。【至急】は相手のアプリでアラーム（＋SMS） ===== */
+const URG="【至急】",isUrg=m=>String(m&&m.text||"").startsWith(URG);
+const dmKey=(a,b)=>"dm:"+[String(a).toLowerCase(),String(b).toLowerCase()].sort().join("|");
+const SEEN_K="kyotaku-seen-all",ACK_K="kyotaku-alarm-ack";
+const seenAll=()=>{try{return localStorage.getItem(SEEN_K)||""}catch(e){return ""}};
+const lsSet=(k)=>{try{return new Set(JSON.parse(localStorage.getItem(k)||"[]"))}catch(e){return new Set()}};
+const roomMsgs=k=>(DB.msgs||[]).filter(m=>m.req===k).sort((a,b)=>String(a.at).localeCompare(String(b.at)));
+const meJ=()=>isJimu()||jimuMode();
+function roomsOf(){const me=myId(),R=[];
+ R.push({k:"room:all",name:"📢 全員の部屋",to:"all"});
+ if(meJ()||(USER&&USER.role==="admin")){const ss=[...new Set((DB.msgs||[]).filter(m=>String(m.req).startsWith("room:jimu:")).map(m=>m.req.slice(10)))];
+   ss.forEach(e=>R.push({k:"room:jimu:"+e,name:"🏢 事務の部屋：" +uName(e),to:e,jimu:true}))}
+ if(!meJ())R.push({k:"room:jimu:"+me,name:"🏢 事務の部屋（事務のだれかが答えます）",to:JIMU});
+ (DB.users||[]).filter(u=>u.email&&u.email!==me).forEach(u=>R.push({k:dmKey(me,u.email),name:"👤 "+u.name,to:u.email,peer:u}));
+ return R}
+function roomUnread(r){const me=myId(),ms=roomMsgs(r.k).filter(m=>m.from!==me);
+ if(r.k==="room:all"){const t=seenAll();return ms.filter(m=>String(m.at)>t).length}
+ return ms.filter(m=>!m.read&&(m.to===me||(m.to===JIMU&&meJ()))).length}
+const chatUnread=()=>{try{return roomsOf().reduce((n,r)=>n+roomUnread(r),0)}catch(e){return 0}};
+function roomRead(r){const me=myId();const bu=()=>{const n=chatUnread(),b=$("#chatN");if(b){b.hidden=!n;b.textContent=n}};if(r.k==="room:all"){try{localStorage.setItem(SEEN_K,new Date().toISOString())}catch(e){}bu();return}
+ const now=new Date().toISOString(),list=roomMsgs(r.k).filter(m=>!m.read&&m.from!==me&&(m.to===me||(m.to===JIMU&&meJ())));if(!list.length||MODE==="demo"&&false)return;
+ list.forEach(m=>m.read=now);bu();persist(list.map(m=>({table:"msgs",row:{id:m.id,read:now}}))).catch(()=>{})}
+function viewChat(){const rs=roomsOf(),r=S.room?rs.find(x=>x.k===S.room):null;
+ if(!r)return `<div class="section-t"><h2>💬 連絡</h2></div><div class="chl">${rs.map(x=>{const n=roomUnread(x),last=roomMsgs(x.k).slice(-1)[0];return `<button type="button" onclick="S.room='${x.k}';render();scrollTo(0,0)"><span><b>${esc(x.name)}</b>${last?`<span class="meta"><br>${esc(fmtAt(last.at))} ${esc(String(last.text).slice(0,24))}</span>`:""}</span>${n?`<span class="cnt">${n}</span>`:""}</button>`}).join("")}</div>`;
+ setTimeout(()=>roomRead(r),300);const me=myId(),ph=r.peer&&r.peer.phone?String(r.peer.phone):"";
+ return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><button class="btn sm" type="button" onclick="S.room=null;render()">← 部屋の一覧</button><h2 style="font-size:18px">${esc(r.name)}</h2>
+  ${ph?`<a class="btn sm" href="tel:${esc(ph)}">📞 電話</a>`:""}</div>
+ <div class="chat">${roomMsgs(r.k).map(m=>`<div class="msg ${m.from===me?"me":""} ${isUrg(m)?"urg":""}"><div class="meta">${esc(m.fromName||uName(m.from))}${m.to===JIMU?" → 事務":""} ・ ${fmtAt(m.at)}${m.from===me&&m.read&&r.k!=="room:all"?" ・ 既読":""}</div>${esc(m.text)}</div>`).join("")||'<div class="meta">まだやりとりはありません</div>'}</div>
+ <div class="form"><textarea id="ch-t" rows="2" placeholder="メッセージ"></textarea>
+  <label style="display:flex;gap:8px;align-items:center;font-size:15px;color:var(--ink)"><input type="checkbox" id="ch-u" style="width:auto"> 🚨 至急（相手のアプリでアラームを鳴らす${r.peer?"・SMSも送る":""}）</label>
+  <button class="btn primary" type="button" onclick="chatSend('${r.k}',this)">送る</button>
+  ${r.peer&&!ph?`<div class="meta">SMSで呼ぶには、この人の携帯番号を「ユーザー」シートのE列に入れてください。</div>`:""}</div>`}
+window.chatSend=async(k,b)=>{const r=roomsOf().find(x=>x.k===k);if(!r)return;let t=String(($("#ch-t")||{}).value||"").trim();if(!t){toast("文を入れてください");return}
+ const urg=($("#ch-u")||{}).checked;if(urg)t=URG+t;b.disabled=true;
+ const row={id:newId("m"),req:k,office:"",to:r.to,from:myId(),fromName:USER?USER.name:"デモ",text:t,at:new Date().toISOString(),read:""};
+ try{await persist([{table:"msgs",row}]);buzz(40);if(urg&&r.peer&&r.peer.phone){location.href="sms:"+String(r.peer.phone).replace(/[^0-9+]/g,"")+"?body="+encodeURIComponent("【アスポッピー至急】"+t.slice(URG.length)+"（"+(USER?USER.name:"")+"）")}render()}
+ catch(e){b.disabled=false;toast("送れませんでした："+errText(e))}};
+/* 至急の呼び出し：自分あて（1対1・事務あて・全員）の【至急】が来たら全画面で鳴らし続ける。「見た」で止まる */
+let ALARM=null,ALARM_T=null;setInterval(()=>{try{alarmCheck()}catch(e){}},15000);
+function alarmCheck(){if(MODE==="live"&&!USER)return;const me=myId(),ack=lsSet(ACK_K),lim=new Date(Date.now()-864e5).toISOString();
+ const m=(DB.msgs||[]).filter(x=>isUrg(x)&&x.from!==me&&String(x.at)>lim&&!ack.has(x.id)&&(x.to===me||x.to==="all"||(x.to===JIMU&&meJ()))).sort((a,b)=>String(a.at).localeCompare(String(b.at)))[0];
+ if(!m||ALARM===m.id)return;ALARM=m.id;const d=document.createElement("div");d.className="alarm";d.id="alarm";
+ d.innerHTML=`<span class="pp" style="background-image:var(--pp-wow)"></span><div style="font-size:18px">🚨 至急の連絡 ・ ${esc(m.fromName||uName(m.from))} ・ ${esc(fmtAt(m.at))}</div><div class="t">${esc(m.text.slice(URG.length))}</div><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><button class="btn primary" type="button" onclick="alarmOff('${m.id}',true)">見た・返事する</button><button class="btn" type="button" onclick="alarmOff('${m.id}',false)">見た</button></div>`;
+ document.body.appendChild(d);const ring=()=>{try{const c=acx(),save=ppSndOn;woofF(3)}catch(e){}try{navigator.vibrate&&navigator.vibrate([400,200,400])}catch(e){}};ring();ALARM_T=setInterval(ring,2500)}
+function woofF(n){const k=PPS_K;let was=null;try{was=localStorage.getItem(k);localStorage.removeItem(k)}catch(e){}woof(n);try{if(was!==null)localStorage.setItem(k,was)}catch(e){}}
+window.alarmOff=(id,go)=>{clearInterval(ALARM_T);ALARM_T=null;const a=lsSet(ACK_K);a.add(id);try{localStorage.setItem(ACK_K,JSON.stringify([...a].slice(-200)))}catch(e){}
+ const el=$("#alarm");if(el)el.remove();ALARM=null;const m=(DB.msgs||[]).find(x=>x.id===id);if(go&&m){S.view="chat";S.room=m.req&&(m.req.startsWith("room:")||m.req.startsWith("dm:"))?m.req:null;render()}setTimeout(alarmCheck,500)};
+/* 確認した人を残す（案件カード） */
+const caseChecks=id=>(DB.caselog||[]).filter(l=>l.case===id&&l.kind==="確認").sort((a,b)=>String(a.at).localeCompare(String(b.at)));
+window.caseCheck=async(id,b)=>{if(caseChecks(id).some(l=>l.by===myId())){toast("確認済みです");return}if(b)b.disabled=true;try{await persist([clog(id,"確認","確認しました")]);render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
 /* ===== 記録の修正（居宅・ケアマネ・日付の選び直し、削除） ===== */
 const RE={id:null,office:"",cm:"",date:"",text:"",next:"",oc:[],ocq:"",err:""};
 window.recEditOpen=id=>{const r=DB.records.find(x=>x.id===id);if(!r)return;S.recEdit=id;Object.assign(RE,{id,office:r.office,cm:r.cm||"",date:r.date,text:r.text||"",next:r.next||"",party:r.party||"ケアマネ",client:r.client||"",cname:"",oc:[],ocq:"",err:""});render();
@@ -1067,7 +1121,7 @@ window.msgSend=async(key,to,office,b)=>{const el=document.getElementById("mr-"+k
  const row={id:newId("m"),req:key==="new"?"":key,office,to,from:myId(),fromName:USER?USER.name:(S.view==="jimu"?"事務（デモ）":"デモ"),text:t,at:new Date().toISOString(),read:""};
  try{await persist([{table:"msgs",row}]);if(el)el.value="";buzz(40);toast("送りました");render()}
  catch(e){if(b)b.disabled=false;toast("送れませんでした："+errText(e))}};
-function unreadFor(side){const me=myId();return (DB.msgs||[]).filter(m=>!m.read&&(side==="jimu"?m.to===JIMU:m.to===me&&m.to!==JIMU))}
+function unreadFor(side){const me=myId();return (DB.msgs||[]).filter(m=>!m.read&&!/^(room:|dm:)/.test(String(m.req||""))&&(side==="jimu"?m.to===JIMU:m.to===me&&m.to!==JIMU))}
 let MR_BUSY=false;
 function markRead(side){if(MR_BUSY||(side==="jimu"&&!seeJimu()))return;const list=unreadFor(side);if(!list.length)return;const now=new Date().toISOString();
  list.forEach(m=>{m.read=now;NEWM.add(m.id)});MR_BUSY=true;
@@ -1078,7 +1132,7 @@ function updBadges(){const set=(id,n)=>{const t=$("#"+id);if(!t)return;let b=t.q
  set("t-log",0);set("t-sched",isJimu()?0:todoCount());
  const jn=seeJimu()?unreadFor("jimu").length+(DB.reqs||[]).filter(r=>!r.state||r.state==="未対応").length:0;set(jimuMode()?"t-jreq":"t-jimu",jn);if(jimuMode())set("t-jimu",0);
  try{if(jimuMode())set("t-jhosp",(DB.hosp||[]).filter(h=>hmLeft(h).length).length)}catch(e){}
- try{const un=isJimu()||jimuMode()?unreadFor("jimu").length:unreadFor("sales").length;if(window._ppUn!=null&&un>window._ppUn)woof(2);window._ppUn=un}catch(e){}}
+ try{const un=isJimu()||jimuMode()?unreadFor("jimu").length:unreadFor("sales").length;const cu=chatUnread();if((window._ppUn!=null&&un>window._ppUn)||(window._ppCu!=null&&cu>window._ppCu))woof(2);window._ppUn=un;window._ppCu=cu}catch(e){}}
 const peerOf=m=>m.to===JIMU?m.from:m.to;
 function directItem(root,side){const peer=peerOf(root),key="m:"+root.id;
  return `<div class="jreq st-doing"><div class="meta">${side==="jimu"?esc(uName(peer))+" さんとの連絡":"事務からの連絡"}</div>
@@ -1509,7 +1563,8 @@ function viewCase(){const c=(DB.cases||[]).find(x=>x.id===S.caseId);if(!c)return
   <div class="meta">${o?`<a href="#" onclick="openOffice('${o.id}');return false">${esc(o.name)}</a>`:"居宅未設定"}${cm?" ・ CM "+esc(cm.name):""}${u&&u.lv?" ・ "+esc(u.lv):""}${c.staffName?" ・ 担当 "+esc(c.staffName):""}</div>
   ${c.due?`<div class="ct-st">期限 <span class="${cOver(c)?"ovt":""}">${esc(c.due)}${cOver(c)?"（過ぎています）":""}</span></div>`:""}
   <div class="meta" style="margin-top:4px">進み具合（押すと変わります）</div>
-  <div class="steps">${st.map((x,k)=>`<button type="button" class="${k===ci?"on":k<ci?"past":""}" onclick="caseStage('${c.id}','${x}',this)">${k<ci?"✓ ":""}${x}</button>`).join("")}</div></div>
+  <div class="steps">${st.map((x,k)=>`<button type="button" class="${k===ci?"on":k<ci?"past":""}" onclick="caseStage('${c.id}','${x}',this)">${k<ci?"✓ ":""}${x}</button>`).join("")}</div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">${(cc=>`<button class="btn sm" type="button" onclick="caseCheck('${c.id}',this)">${cc.some(l=>l.by===myId())?"✓ 確認済み":"✓ 確認した"}</button>${cc.length?`<span class="meta">確認：${cc.map(l=>esc(l.byName||"")+" "+esc(fmtAt(l.at))).join("、")}</span>`:`<span class="meta">まだだれも確認していません</span>`}`)(caseChecks(c.id))}</div></div>
  ${c.next||c.title?`<div class="form" style="margin-top:10px;gap:2px"><div class="meta">次にやること</div><b style="font-size:17px">${esc(c.next||c.title)}</b>${c.due?`<div class="meta">期限 ${esc(c.due.slice(5).replace("-","/"))}</div>`:""}</div>`:""}
  <details class="form" style="margin-top:10px"><summary style="cursor:pointer"><b>用件・次にやること・期限を直す</b></summary>
   <label>見出し（用件をひとこと。例：車いす引上げ）<input id="cs-title" maxlength="20" value="${esc(c.title||"")}"></label>
@@ -1522,7 +1577,7 @@ function viewCase(){const c=(DB.cases||[]).find(x=>x.id===S.caseId);if(!c)return
  ${caseRentals(c)}
  <div class="section-t"><h2>事務とのやりとり</h2></div>
  <div class="rbox"><textarea id="cs-jimu" rows="1" placeholder="${S.view==="case"&&jimuMode()?"営業さんへの連絡は、下の依頼に返事してください":"事務に一言（例：契約書の準備をお願いします）"}"></textarea><button class="btn sm primary" type="button" style="padding:10px 14px" onclick="caseAsk('${c.id}',this)">事務へ送る</button></div>
- <div class="log" style="margin-top:8px">${caseReqs(c).map(r=>`<div class="logi" style="${r.state==="済"?"opacity:.7":""}"><div class="meta">${fmtAt(r.at)} ・ ${esc(r.staff||"")} → 事務 ・ <b>${esc(r.state||"未対応")}</b></div>${esc(r.text)}
+ <div class="log" style="margin-top:8px">${caseReqs(c).map(r=>`<div class="logi" style="${r.state==="済"?"opacity:.7":""}"><div class="meta">${fmtAt(r.at)} ・ ${esc(r.staff||"")} → 事務 ・ <b>${esc(r.state||"未対応")}</b>${r.state==="済"&&r.doneBy?"（"+esc(r.doneBy)+"）":""}</div>${esc(r.text)}
   <div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${replyBox(r.id,seeJimu()&&jimuMode()?(r.email||""):JIMU,r.office||"",seeJimu()&&jimuMode()?"営業さんに返事":"事務に一言")}
   ${seeJimu()?`<div style="margin-top:4px"><button class="btn sm" type="button" onclick="reqState('${r.id}',${r.state==="済"?"false":"true"},this)">${r.state==="済"?"未対応に戻す":"済にする"}</button></div>`:""}</div>`).join("")||'<div class="meta">まだありません</div>'}</div>
  <div class="section-t"><h2>経過</h2></div>
@@ -2607,7 +2662,7 @@ function render(){
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));jimuTabsUpd();
  if(S.view==="case"&&!(DB.cases||[]).some(c=>c.id===S.caseId))S.view="log";
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===(S.view==="case"?"log":S.view)));jimuTabsUpd();
- const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog,sched:viewSched,settings:viewSettings,jimu:viewJimu,case:viewCase}[S.view]();
+ const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog,sched:viewSched,settings:viewSettings,jimu:viewJimu,case:viewCase,chat:viewChat}[S.view]();
  if(MAP&&!(S.view==="list"&&S.listMode==="map")){try{MAP.remove()}catch(e){}MAP=null}
  $("#app").innerHTML=(S.view==="visit"||S.view==="log"?pendBox():"")+v+(MODE==="demo"?`<p class="demo">デモ：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`:`<p class="demo">データは会社のスプレッドシートに保存されます。すぐ開けるよう前回の内容と保存前の録音をこの端末に覚えています（ログアウトで消えます）。</p>`);
 }
@@ -2656,7 +2711,7 @@ window.ppTap=()=>{const el=$("#ppHead");if(!el)return;const now=Date.now();PPT=P
  woof(1);el.classList.remove("tap");void el.offsetWidth;el.classList.add("tap");const p=el.querySelector(".pp");if(p){p.style.backgroundImage="var(--pp-smile)";setTimeout(()=>{el.dataset.k="";ppHeadUpd()},1600)}
  if(!PP_PC()&&PPT.length===1){const r=ppSay();ppMsg(r.face,r.html,3500)}};
 setInterval(()=>{try{ppHeadUpd()}catch(e){}},300000);
-const _render3=render;render=function(){_render3();try{ppHeadUpd()}catch(e){}try{wantOlder()}catch(e){}const sb=$("#syncBtn");if(sb){sb.hidden=!(MODE==="live"&&USER&&!S.loading);sb.textContent=S.bgLoad||SYNC_BUSY?"…":"↻"}};
+const _render3=render;render=function(){_render3();try{ppHeadUpd()}catch(e){}try{wantOlder()}catch(e){}try{const cb=$("#chatBtn");if(cb){cb.hidden=MODE==="setup"||(MODE==="live"&&(!USER||S.loading));const n=chatUnread(),b=$("#chatN");if(b){b.hidden=!n;b.textContent=n>99?"99+":n}}alarmCheck()}catch(e){}const sb=$("#syncBtn");if(sb){sb.hidden=!(MODE==="live"&&USER&&!S.loading);sb.textContent=S.bgLoad||SYNC_BUSY?"…":"↻"}};
 /* 起動 */
 startGps();
 if(MODE==="demo"){S.office=DB.offices.some(o=>o.id==="o1")?"o1":null;render()}
