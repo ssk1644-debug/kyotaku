@@ -1177,19 +1177,23 @@ function addFound(d,rec,office,cm,date){d=d||{};
   return {cname:String(x.client||""),client:u?u.id:"",kind:x.kind==="退院"?"退院":"入院",date:dt(x.date)||(x.kind==="退院"?"":date||""),outPlan:dt(x.outPlan),note:String(x.note||"").trim(),on:true}});
  const items=ev.map(e=>({t:e.title,date:e.date,time:e.start,place:e.place,def:"sched",st:""})).concat(rq.map(x=>({t:x.text,date:"",def:"jimu",st:""})));
  const nx=String(d.next||"").trim();if(nx&&!items.some(x=>x.t===nx))items.push({t:nx,date:"",def:/事務|FAX|ＦＡＸ|書類を送|手配/.test(nx)?"jimu":"sched",st:""});
- const ha=hs.length?hospAuto(hs,office,cm,date,rec):0;
- if(items.length||ha||cs.length)FOUND.push({id:newId("f"),rec,office,cm,date,events:[],reqs:[],cases:cs,hosp:[],hospAuto:ha,items,sent:false})}
+ const fe={id:newId("f"),rec,office,cm,date,events:[],reqs:[],cases:cs,hosp:[],hospAuto:hs.length,items,sent:false};
+ if(items.length||hs.length||cs.length)FOUND.push(fe);if(hs.length)hospAuto(hs,office,cm,date,rec,fe)}
 /* 入院・退院の話は「確認待ち」で入退院表へ自動で入れる。利用者は名前だけなので候補を探し、1人にしぼれたときだけ仮に入れる */
 function hospCands(cname,office,cm){const w=pnorm(String(cname||"").replace(/様$/,""));if(!w)return [];
  return DB.clients.map(u=>{const p=pnorm(nmBare(u.name).replace(/ 様$/,"")),pf=pnorm(nmOnly(u.name).replace(/ 様$/,""));if(!(p&&(p.includes(w)||w.includes(p)||(pf&&w.includes(pf)))))return null;
   return {u,s:1+(cm&&u.cm===cm?4:0)+(office&&clOffice(u)===office?2:0)+(p===w||pf===w?1:0)}}).filter(Boolean).sort((a,b)=>b.s-a.s)}
 function hospBest(cname,office,cm){const cs=hospCands(cname,office,cm);return cs.length&&(!cs[1]||cs[0].s>cs[1].s)?cs[0].u:null}
-function hospAuto(hs,office,cm,date,rec){const now=new Date().toISOString(),c=DB.cms.find(x=>x.id===cm),ops=[];
+function hospAuto(hs,office,cm,date,rec,fe){const now=new Date().toISOString(),c=DB.cms.find(x=>x.id===cm),ops=[];
  hs.forEach(x=>{const u=hospBest(x.cname,office,cm),out=x.kind==="退院";
   ops.push({table:"hosp",row:{id:newId("h"),client:u?u.id:"",clientName:x.cname,office:u?clOffice(u):(office||""),kind:"入院",contactAt:date||today(),contactFrom:c?c.name:"",
    inDate:out?"":(x.date||date||today()),outPlan:x.outPlan||"",outDate:out?(x.date||date||today()):"",note:x.note||"",reason:out?"（退院の知らせ）":"",source:"AI（会話の記録）"+(rec?" "+rec:""),state:"確認待ち",by:myId(),byName:USER?USER.name:"デモ",createdAt:now}})});
- if(ops.length)persist(ops).then(()=>{try{render()}catch(e){}}).catch(e=>toast("入院の知らせを入れられませんでした："+errText(e)));
+ fe=fe||{};fe.hospOps=ops;if(ops.length)hospAutoSave(fe);
  return ops.length}
+/* 自動登録の保存：終わってから「入れました」を出す。失敗したら赤で出して、もう一度入れられるように */
+function hospAutoSave(fe){fe.hospSt="busy";fe.hospErr="";const rr=()=>{try{render()}catch(e){}};rr();
+ persist(fe.hospOps).then(()=>{fe.hospSt="ok";rr()}).catch(e=>{fe.hospSt="err";fe.hospErr=errText(e);toast("入院の知らせを入退院表に入れられませんでした："+fe.hospErr);rr()})}
+window.haRetry=id=>{const fe=FOUND.find(x=>x.id===id);if(fe&&fe.hospOps&&fe.hospSt!=="busy")hospAutoSave(fe)};
 const hospPend=()=>(DB.hosp||[]).filter(h=>h.state==="確認待ち");
 function hospPendBox(){const ps=hospPend();if(!ps.length)return "";
  return `<div class="form hpend" style="margin-bottom:10px"><b>⚠ 確認待ちの入院・退院 ${ps.length}件</b><div class="meta">AIがケアマネとの会話から見つけて入れました。利用者は名前だけで探しているので、合っているか確かめてください。確かめるまで「入院中」の数には入りません。</div>
@@ -1222,7 +1226,7 @@ function fcardsHtml(f,fi){const o=DB.offices.find(x=>x.id===f.office),cm=DB.cms.
  return `<div class="form found" style="border-color:var(--accent);margin:8px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>記録を保存しました。${its.length?"会話から "+its.length+"件 見つかりました":""}</b></div>
  <div class="meta">${esc(o?o.name:"")}${cm?" ・ "+esc(cm.name):""} ・ ${esc(f.date)} の記録から ・ AIのおすすめに色が付いています</div>
  ${(f.cases||[]).length?fcHtml(f,fi):""}
- ${(f.hosp||[]).length?fhHtml(f,fi):""}${f.hospAuto?`<div style="margin-top:8px"><b>🏥 入院・退院の知らせ</b><div class="meta">✅ ${f.hospAuto}件を「確認待ち」で入退院表に入れました。利用者が合っているかは、入退院表（事務所）で確認します。</div></div>`:""}
+ ${(f.hosp||[]).length?fhHtml(f,fi):""}${f.hospAuto?`<div style="margin-top:8px"><b>🏥 入院・退院の知らせ</b>${f.hospSt==="err"?`<div class="meta" style="color:var(--alert);font-weight:700">⚠ ${f.hospAuto}件を入退院表に入れられませんでした（${esc(f.hospErr||"")}）</div><button class="btn sm" type="button" onclick="haRetry('${f.id}')">もう一度入れる</button>`:f.hospSt==="busy"?`<div class="meta">⏳ ${f.hospAuto}件を入退院表に入れています…</div>`:`<div class="meta">✅ ${f.hospAuto}件を「確認待ち」で入退院表に入れました。利用者が合っているかは、入退院表（事務所）で確認します。</div>`}</div>`:""}
  ${its.map((x,i)=>x.st?`<div class="logi"><span class="meta">${lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}</div>`:`<div class="fcard">
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="date" value="${esc(x.date||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].date=this.value" aria-label="日付"><span class="meta">${x.date?"":"日付なしでも入れられます"}</span></div>
   <textarea rows="2" oninput="FOUND[${fi}].items[${i}].t=this.value">${esc(x.t)}</textarea>
