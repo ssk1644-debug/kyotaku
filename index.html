@@ -259,14 +259,40 @@ body.noscroll{overflow:hidden}
 /* PCの「音を出す」 */
 .sndpill{position:fixed;right:16px;bottom:88px;z-index:9;border:0;border-radius:999px;padding:10px 16px;font:inherit;font-weight:700;font-size:15px;background:var(--accent);color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.2);cursor:pointer}
 .smsbox .tpl{display:flex;gap:6px;flex-wrap:wrap}
+
+/* 保存中の表示 */
+.saveind{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);transform:translateX(-50%);z-index:30;background:var(--ink);color:var(--surface);border-radius:999px;padding:6px 16px;font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .15s}
+.saveind.on{opacity:.92}.saveind.ok{background:var(--accent);color:#fff}
+.jdone{background:var(--accent-soft);border-radius:10px;padding:6px 10px;margin-top:6px;display:flex;gap:8px;align-items:center;font-weight:700}
+.jsv{margin-left:8px}
+.jwho{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted);margin-top:4px}.jwho b{color:var(--ink)}
+.jico{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;flex:none}
+/* AIの処理中 */
+body.aibusy .locbar{background:#fff4cc}
+.aibar{max-width:1100px;margin:0 auto;padding:4px 16px 8px;display:flex;align-items:center;gap:8px;font-size:14px;color:#6b5200}
+.aibar .pp{width:30px;height:30px;flex:none;animation:ppThink 1.1s ease-in-out infinite}
+body.aibusy .pphead .pp{animation:ppThink 1.1s ease-in-out infinite}
+@keyframes ppThink{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(10deg) translateY(-2px)}}
+@media (prefers-color-scheme:dark){body.aibusy .locbar{background:#4a3b00}.aibar{color:#ffe08a}}
+/* 見出しの「事務所」、管理者の切り替え */
+.bmode{color:var(--accent)}.modebtn{font-size:13px;padding:5px 10px;white-space:nowrap}
+@media (max-width:767px){.modebtn,.bmode{display:none!important}}
+.hpend{border-color:var(--warn,#d68910)}
+
+/* 連絡は下のタブの右端に色付きで */
+.tabs-in .tab.chatbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:var(--accent);color:#fff;border:0;border-radius:14px;margin:5px 4px;padding:3px 0;font-size:12px;font-weight:700;box-shadow:none}
+.tabs-in .tab.chatbtn .cbl{font-size:12px}.tabs-in .tab.chatbtn svg{width:22px;height:22px}
+.tabs-in .tab.chatbtn.has{background:var(--alert)}.tabs-in .tab.chatbtn[aria-current="true"]{color:#fff;outline:3px solid var(--accent-soft)}
+.tabs-in .tab.chatbtn .tbadge{top:-6px;right:2px;left:auto;background:#fff;color:var(--alert);border:2px solid var(--alert);font-size:13px;min-width:22px;height:22px;line-height:18px}
+.toast{z-index:31}
 </style>
 
 <header class="locbar">
   <div class="locbar-in">
     <button id="backBtn" class="backbtn" type="button" hidden onclick="history.back()" aria-label="戻る">←<span class="bl"> 戻る</span></button>
     <button id="syncBtn" class="backbtn" type="button" hidden onclick="syncNow(true)" title="最新にする" aria-label="最新にする">↻</button>
-    <div class="brand"><span class="bfull">アスポッピー</span>営業ナビ<small id="brandSub">アスポート 営業用</small></div>
-    <div id="ppHead" class="pphead" aria-live="polite"></div><button id="chatBtn" class="backbtn chatbtn" type="button" hidden onclick="S.view='chat';S.room=null;render();scrollTo(0,0)" aria-label="連絡">💬<span class="cbl">連絡</span><span id="chatN" class="tbadge" hidden></span></button>
+    <div class="brand"><span class="bfull">アスポッピー</span>営業ナビ<span class="bmode" id="bMode" hidden> ｜ 事務所</span><small id="brandSub">アスポート 営業用</small></div><button id="modeBtn" class="backbtn modebtn" type="button" hidden onclick="viewSwitch()"></button>
+    <div id="ppHead" class="pphead" aria-live="polite"></div>
     <button id="gpsPill" class="pill" type="button" onclick="S.gpsHelp=!S.gpsHelp;S.view='visit';S.office=null;render()"><span class="dot"></span><span id="gpsText">位置を確認中…</span></button>
     <select id="sim" class="sim" aria-label="位置を試す">
       <option value="">📍 位置を試す（デモ）</option>
@@ -289,6 +315,7 @@ body.noscroll{overflow:hidden}
     <button class="tab" data-v="cards" id="t-cards" style="order:3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14 10h4M14 13h3"/></svg>名刺</button>
     <button class="tab" data-v="settings" id="t-settings" style="order:5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>設定</button>
     <button class="tab" data-v="log" id="t-log" style="order:2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg>記録</button>
+    <button class="tab chatbtn" data-v="chat" id="chatBtn" style="order:9" hidden aria-label="連絡"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01" stroke-width="3"/></svg><span class="cbl">連絡</span><span id="chatN" class="tbadge" hidden></span></button>
     <button class="tab" data-v="sched" id="t-sched" style="order:1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h3"/></svg>やること</button>
   </div>
 </nav>
@@ -378,7 +405,7 @@ function toServer(t,r){r=Object.assign({},r);
 /* 営業さんには自分の記録だけ（ほかの営業の履歴は管理者・事務だけが見る） */
 const seeAllRec=()=>MODE!=="live"||!USER||USER.role==="admin"||isJimu();
 const mineRec=r=>seeAllRec()||!r||String(r.staff||"")===String(USER.name||"")||(!r.staff&&String(r.updatedBy||"").toLowerCase()===String(USER.email||"").toLowerCase());
-function applyOp(t,row){if(t==="records"&&!mineRec(row)){DB.records=DB.records.filter(x=>x.id!==row.id);return}const arr=DB[t];const i=arr.findIndex(x=>x.id===row.id);
+function applyOp(t,row){if(t==="records"&&!mineRec(row)){DB.records=DB.records.filter(x=>x.id!==row.id);return}const arr=DB[t]||(DB[t]=[]);const i=arr.findIndex(x=>x.id===row.id);
  if(i>=0)Object.assign(arr[i],row);else if(t==="cards")arr.unshift(row);else arr.push(row)}
 /* 保存：デモはこの端末に、本番はスプレッドシートに */
 async function persist(ops){
@@ -387,11 +414,23 @@ async function persist(ops){
   catch(e){if(e&&e.code==="conflict")syncNow(true);throw e}
   d.rows.forEach((r,i)=>{const v=fromServer(ops[i].table,r);if(ops[i].table==="records"){const ex=DB.records.find(x=>x.id===v.id);if(ex&&ex.trans&&!v.trans)v.trans=ex.trans;if(!v.trans&&ex&&ex.hasTrans)v.hasTrans=ex.hasTrans}applyOp(ops[i].table,v)});cacheSoon()}
  else{ops.forEach(o=>applyOp(o.table,o.row));save()}}
+/* どの保存でも、上に「保存中…」→「✓ 保存しました」を出す（押したのが分かるように） */
+let SAVE_N=0,SAVE_T=null;function saveInd(st){let el=$("#saveInd");if(!el){el=document.createElement("div");el.id="saveInd";el.className="saveind";document.body.appendChild(el)}
+ clearTimeout(SAVE_T);if(st==="busy"){el.textContent="保存中…";el.className="saveind on"}else if(st==="ok"){el.textContent="✓ 保存しました";el.className="saveind on ok";SAVE_T=setTimeout(()=>{el.className="saveind"},1400)}else el.className="saveind"}
+{const _p0=persist;persist=async function(ops){SAVE_N++;saveInd("busy");let ok=false;try{const r=await _p0(ops);ok=true;return r}finally{SAVE_N--;if(!SAVE_N)saveInd(ok?"ok":"")}}}
+/* AIの処理中は、上の段の色を変えてアスポッピーが考え中の顔に（どの画面に移っても分かる） */
+let AI_N=0,AI_T0=0,AI_IV=null,AI_TX="";
+function aiBusy(d,pl){AI_N=Math.max(0,AI_N+d);const lb=document.querySelector(".locbar");if(!lb)return;let bar=$("#aiBar");
+ if(AI_N>0){if(d>0){const m=String(pl&&pl.mime||"");AI_TX=/^audio/.test(m)?"録音を文字にして、要約しています":/pdf/.test(m)?"ファイルを読み取っています":/^image/.test(m)?"画像を読み取っています":"会話の内容を要約しています";AI_T0=Date.now()}
+  document.body.classList.add("aibusy");if(!bar){bar=document.createElement("div");bar.id="aiBar";bar.className="aibar";lb.appendChild(bar)}
+  const up=()=>{const s=Math.round((Date.now()-AI_T0)/1000);bar.innerHTML=`<span class="pp" aria-hidden="true" style="background-image:var(--pp-wow)"></span><b>アスポッピー考え中…</b> ${esc(AI_TX)}（${s}秒）${s>=30?" ・ もう少しかかります…":""}`};up();clearInterval(AI_IV);AI_IV=setInterval(up,1000)}
+ else{clearInterval(AI_IV);document.body.classList.remove("aibusy");if(bar)bar.remove()}}
+{const _a0=api;api=async function(action,payload){if(action!=="json")return _a0(action,payload);aiBusy(1,payload);try{return await _a0(action,payload)}finally{aiBusy(-1)}}}
 async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.offices=d.offices.map(r=>fromServer("offices",r,d.notices||[]));
  DB.cms=d.cms.map(r=>fromServer("cms",r));DB.clients=d.clients;DB.records=d.records.map(r=>fromServer("records",r)).filter(r=>r.kind!=="削除"&&mineRec(r));
  DB.cards=d.cards.slice().reverse();DB.importedAt=d.importedAt||"";DB.users=d.users||[];DB.calendar=d.calendar||[];
- ["items","dist","visits","contracts","jisseki","reqs","sched","msgs","cases","caselog","hosp","rentals"].forEach(k=>DB[k]=d[k]||[]);
+ ["items","dist","visits","contracts","jisseki","reqs","sched","msgs","cases","caselog","hosp","rentals","fb"].forEach(k=>DB[k]=d[k]||[]);
  DB.recCutoff=d.recCutoff||"";if(d.now)SYNC_TS=new Date(new Date(d.now).getTime()-90000).toISOString()}
 /* 前回のデータをこの端末に覚えておき、次に開いたときすぐ表示する（ログアウトで消す） */
 const CKEY="kyotaku-c";
@@ -429,7 +468,7 @@ window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;S.bgLoad=false;try{lo
 const ARRIVE_M=150; // この距離以内で「到着」とみなす
 const S={view:"visit",office:null,pos:null,gps:"wait",selCm:null,autoOpened:null,q:"",cmEdit:null,loginMsg:"",loading:false,mine:true,recOpen:false,listMode:"list"};
 /* 表示の設定はこの端末に覚えておく（自分の担当だけ・利用者なしも表示など） */
-const UIKEY="kyotaku-ui",UI_FIELDS=["mine","showAll","gap","listMode","sort"];
+const UIKEY="kyotaku-ui",UI_FIELDS=["mine","showAll","gap","listMode","sort","cardSort","staffF"];
 try{const u=JSON.parse(localStorage.getItem(UIKEY)||"{}");UI_FIELDS.forEach(k=>{if(k in u)S[k]=u[k]})}catch(e){}
 function saveUI(){try{const u={};UI_FIELDS.forEach(k=>u[k]=S[k]);localStorage.setItem(UIKEY,JSON.stringify(u))}catch(e){}}
 
@@ -549,9 +588,9 @@ function viewVisit(){
   <button class="btn sm" type="button" onclick="S.cmEdit='new';render()">＋ ケアマネを追加</button>
   ${cms.length?`<button class="btn sm" type="button" onclick="S.bulk=!S.bulk;render()">${S.bulk?"整理をやめる":"退職者をまとめて整理"}</button>`:""}</div>
  ${S.cmEdit?cmForm(o):""}
- ${S.bulk?bulkForm(o,cms):cms.length?`<div class="chips" style="gap:8px">${cms.map(c=>`<button type="button" class="btn sm" style="font-size:15px;padding:7px 12px;${S.selCm===c.id?"background:var(--accent);color:var(--surface);border-color:var(--accent)":""}" onclick="S.selCm=S.selCm==='${c.id}'?null:'${c.id}';render()">${esc(c.name)}${(n=>n?` <span class="num" title="直近12か月の紹介">（紹介${n}）</span>`:"")(refCount(c.id,365))}</button>`).join("")}</div>
+ ${S.bulk?bulkForm(o,cms):cms.length?`<div class="chips" style="gap:8px">${cms.map(c=>`<button type="button" class="btn sm" style="font-size:15px;padding:7px 12px;${S.selCm===c.id?"background:var(--accent);color:var(--surface);border-color:var(--accent)":""}" onclick="S.selCm=S.selCm==='${c.id}'?null:'${c.id}';render()">${cmDups(c).length?'<span title="同じ名前の登録が別の居宅にもあります">⚠ </span>':""}${esc(c.name)}${(n=>n?` <span class="num" title="直近12か月の紹介">（紹介${n}）</span>`:"")(refCount(c.id,365))}</button>`).join("")}</div>
   ${S.selCm&&cms.some(c=>c.id===S.selCm)?`<div class="cms" style="margin-top:10px">${cmCard(cms.find(c=>c.id===S.selCm))}</div>`:""}`:'<div class="empty">登録されたCMがいません。「＋ ケアマネを追加」か、名刺の読み取りで登録できます。</div>'}
- ${dupNotice(cms)}
+ ${seeAllRec()&&MODE==="live"||canAdmin()?dupNotice(cms):""}
  ${gone.length?`<details style="margin-top:10px"><summary class="meta">退職・異動したケアマネ（${gone.length}名）</summary><div class="log" style="margin-top:6px">${gone.map(c=>`<div class="logi"><b>${esc(c.name)}</b> <span class="status st-warn">${esc(cst(c))}</span> <button class="btn sm" type="button" onclick="S.cmEdit='${c.id}';render()">編集</button>${c.history?`<div class="meta" style="white-space:pre-wrap">${esc(c.history)}</div>`:""}</div>`).join("")}</div></details>`:""}
 
  <div class="split">
@@ -580,12 +619,11 @@ function cmCard(c){
  return `<div class="cm ${S.selCm===c.id?"sel":""}" role="button" tabindex="0" onclick="S.selCm=S.selCm==='${c.id}'?null:'${c.id}';render()">
   <div class="cm-top"><div class="avatar">${card?`<img src="${card.photo}" alt="">`:esc(c.name[0])}</div>
    <div style="min-width:0;flex:1"><div class="kana">${esc(c.kana)}</div><h3>${esc(c.name)}</h3><div class="meta">${esc(c.role||"CM")}${c.years?" ・ 経験"+esc(c.years):""}</div></div>
-   <button class="btn sm" type="button" onclick="event.stopPropagation();S.cmEdit='${c.id}';render();scrollTo(0,$('#cmForm').offsetTop-80)">編集</button></div>
-  <div class="chips">${c.traits.map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${(tel=>`<button class="btn sm" type="button" onclick="event.stopPropagation();smsOpen('${c.id}')">📱 SMS</button>${tel?`<a class="btn sm" href="tel:${esc(tel)}" onclick="event.stopPropagation()">📞</a>`:""}`)(cmMobile(c))}<button class="btn sm" type="button" onclick="event.stopPropagation();S.cmEdit='${c.id}';render();scrollTo(0,$('#cmForm').offsetTop-80)">編集</button></div></div>
+  ${c.traits.length?`<div class="chips">${c.traits.map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>`:""}
   <dl class="kv"><dt>担当件数</dt><dd class="num">${c.count!=null&&c.count!==""?c.count+"件":"—"}（当社 ${n}件）</dd>
    ${c.note?`<dt>傾向</dt><dd>${esc(c.note)}</dd>`:""}${c.likes?`<dt>話題</dt><dd>${esc(c.likes)}</dd>`:""}</dl>
   ${(y=>y.length?`<div class="meta">紹介（新規契約）：直近12か月 <b class="num">${y.filter(x=>x.date>=ago(365)).length}</b>件 ・ 累計 <span class="num">${y.length}</span>件 ・ 最終 <span class="num">${y.map(x=>x.date).sort().pop()}</span></div>`:"")(DB.contracts.filter(x=>x.cm===c.id))}
-  ${(tel=>`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"><button class="btn sm" type="button" onclick="event.stopPropagation();smsOpen('${c.id}')">📱 SMS</button>${tel?`<a class="btn sm" href="tel:${esc(tel)}" onclick="event.stopPropagation()">📞 電話</a>`:""}</div>`)(cmMobile(c))}
   ${cmDupBox(c)}${cmPlaces(c)}
   ${c.history?`<div class="meta" style="white-space:pre-wrap">${esc(c.history)}</div>`:""}
   ${last?`<div class="last"><div class="meta num">前回 ${last.date}</div>${esc(last.text)}${last.next?`<div class="meta">次回：${esc(last.next)}</div>`:""}</div>`:""}
@@ -1008,6 +1046,45 @@ document.addEventListener("pointerdown",()=>{try{if(ACX&&ACX.state!=="running")A
 function sndPillUpd(){let b=$("#sndPill");const need=MODE==="live"&&USER&&!S.loading&&ppSndOn()&&PP_PC()&&(()=>{try{return acx().state!=="running"}catch(e){return false}})();
  if(!need){if(b)b.remove();return}if(b)return;b=document.createElement("button");b.id="sndPill";b.className="sndpill";b.type="button";b.textContent="🔊 音を出す";
  b.onclick=()=>{try{acx().resume().then(()=>{woof(1);sndPillUpd()})}catch(e){}};document.body.appendChild(b)}
+/* ===== 改善の声（使う人からの要望・不具合。写真付き。管理者が一覧で管理し、まとめてコピーできる） ===== */
+const FB={kind:"要望",shots:[]};
+const scrName=()=>{const v={visit:"訪問中",list:"居宅一覧",cards:"名刺",log:"記録",sched:"やること",settings:"設定",chat:"連絡",case:"案件",fb:"改善の声"}[S.view]||S.view;
+ const o=S.view==="visit"&&S.office?DB.offices.find(x=>x.id===S.office):null;return S.view==="jimu"?"事務所："+(JT_L[S.jt||"board"]||""):v+(o?"（"+o.name+"）":"")};
+window.fbOpen=()=>{FB.kind="要望";FB.shots=[];FB.scr=scrName();document.querySelectorAll(".fbfull").forEach(x=>x.remove());
+ const d=document.createElement("div");d.className="full fbfull";d.setAttribute("role","dialog");d.innerHTML=`<div class="full-in"><div class="form" style="max-width:640px;margin:0 auto" id="fbBox"></div></div>`;document.body.appendChild(d);fbDraw()};
+function fbDraw(){const b=$("#fbBox");if(!b)return;const t=($("#fb-t")||{}).value||FB.text||"";
+ b.innerHTML=`<b>💡 改善の声を送る</b><div class="meta">いた画面：${esc(FB.scr)}</div>
+  <div class="seg">${["不具合","要望","その他"].map(k=>`<button type="button" class="${FB.kind===k?"on":""}" onclick="FB.text=$('#fb-t').value;FB.kind='${k}';fbDraw()">${k}</button>`).join("")}</div>
+  <textarea id="fb-t" rows="5" placeholder="例：〇〇の画面で、△△を押しても反応がない／こうなっていると使いやすい">${esc(t)}</textarea>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" type="button" onclick="fbShot(this)">📸 今の画面を付ける</button><label class="btn sm" for="fb-f">🖼 写真・スクショを選ぶ</label><input type="file" id="fb-f" accept="image/*" multiple onchange="fbFiles(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div>
+  ${FB.shots.length?`<div style="display:flex;gap:6px;flex-wrap:wrap">${FB.shots.map((x,i)=>`<span style="position:relative"><img src="${x}" alt="" style="height:90px;border:1px solid var(--line);border-radius:6px"><button type="button" class="btn sm" style="position:absolute;top:2px;right:2px;padding:0 6px" onclick="FB.text=$('#fb-t').value;FB.shots.splice(${i},1);fbDraw()">×</button></span>`).join("")}</div>`:""}
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="fbSend(this)">送る</button><button class="btn" type="button" onclick="this.closest('.fbfull').remove()">やめる</button></div>`}
+window.fbShot=async b=>{if(FB.shots.length>=4){toast("写真は4枚までです");return}FB.text=$("#fb-t").value;b.disabled=true;b.textContent="画面を写しています…";const box=document.querySelector(".fbfull");
+ try{if(!window.html2canvas)await loadJs("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js");if(box)box.style.display="none";
+  const cv=await html2canvas(document.body,{x:scrollX,y:scrollY,width:innerWidth,height:innerHeight,scale:Math.min(1.5,devicePixelRatio||1),useCORS:true,logging:false});
+  FB.shots.push(cv.toDataURL("image/jpeg",0.8))}catch(e){toast("画面を写せませんでした。スクショを選ぶ方を使ってください")}finally{if(box)box.style.display="";fbDraw()}};
+window.fbFiles=async inp=>{FB.text=$("#fb-t").value;for(const f of [...inp.files].slice(0,4-FB.shots.length)){try{const {blob}=await shrink(f,1600);FB.shots.push("data:image/jpeg;base64,"+await b64(blob))}catch(e){}}fbDraw()};
+window.fbSend=async b=>{const t=String($("#fb-t").value||"").trim();if(!t&&!FB.shots.length){toast("内容を書いてください");return}b.disabled=true;
+ const row={id:newId("v"),kind:FB.kind,text:t,screen:FB.scr,device:(PP_PC()?"パソコン":"スマホ")+" ・ "+navigator.userAgent.replace(/^.*?\(([^)]*)\).*$/,"$1").slice(0,80),state:"未対応",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()};
+ if(FB.shots.length)row.photoData=FB.shots.map(x=>x.split(",")[1]);
+ try{await persist([{table:"fb",row}]);document.querySelectorAll(".fbfull").forEach(x=>x.remove());toast("送りました。ありがとうございます！")}catch(e){b.disabled=false;toast("送れませんでした："+errText(e))}};
+function viewFb(){if(!canAdmin())return '<div class="empty">管理者だけが見られます</div>';const f=S.fbf||"未対応",L=(DB.fb||[]).filter(x=>f==="all"||(x.state||"未対応")===f).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+ const n=k=>(DB.fb||[]).filter(x=>(x.state||"未対応")===k).length;
+ return `<div class="section-t"><h2>💡 改善の声</h2><button class="btn sm" type="button" onclick="S.view='settings';render()">← 設定へ</button></div>
+ <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><div class="seg">${[["未対応","未対応 "+n("未対応")],["検討中","検討中 "+n("検討中")],["対応済","対応済 "+n("対応済")],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="S.fbf='${k}';render()">${l}</button>`).join("")}</div>
+ <button class="btn sm" type="button" onclick="fbCopy()">📋 チェックした分をまとめてコピー（Claudeに渡す用）</button></div>
+ <div class="log">${L.map(x=>`<div class="jreq"><label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" class="fbc" value="${x.id}" style="width:auto" ${(x.state||"未対応")==="未対応"?"checked":""}> <span class="ac ${x.kind==="不具合"?"r":x.kind==="要望"?"o":""}">${esc(x.kind||"")}</span> <span class="meta">${esc(fmtAt(x.at))} ・ ${esc(x.byName||uName(x.by))} ・ ${esc(x.screen||"")}</span></label>
+  <div style="white-space:pre-wrap;font-size:16px;margin:4px 0">${esc(x.text||"")}</div>
+  ${String(x.photos||"").split(",").filter(Boolean).map(id=>`<div class="ph" style="max-width:420px">${PH[id]?`<img src="${PH[id]}" alt="" style="max-width:100%">`:`<button class="btn sm" type="button" onclick="loadPhoto(this,'${esc(id)}')">写真を表示</button>`}</div>`).join("")}
+  <div class="meta">${esc(x.device||"")}</div>
+  <div class="seg" style="margin-top:6px">${["未対応","検討中","対応済"].map(k=>`<button type="button" class="${(x.state||"未対応")===k?"on":""}" onclick="fbState('${x.id}','${k}',this)">${k}</button>`).join("")}</div></div>`).join("")||'<div class="empty">ありません</div>'}</div>`}
+window.fbState=async(id,k,b)=>{const sg=b.parentNode;[...sg.children].forEach(y=>y.classList.toggle("on",y===b));try{await persist([{table:"fb",row:{id,state:k}}]);render()}catch(e){toast("保存できませんでした："+errText(e));render()}};
+window.fbCopy=async()=>{const ids=[...document.querySelectorAll(".fbc:checked")].map(x=>x.value),L=(DB.fb||[]).filter(x=>ids.includes(x.id));if(!L.length){toast("コピーするものにチェックを入れてください");return}
+ const t="アスポッピー営業ナビへの改善の声です（"+L.length+"件）。まとめて直す方向で、方向性を提案してください。\n\n"+L.map((x,i)=>`${i+1}. 【${x.kind||""}】${x.text||""}\n   （${fmtAt(x.at)} ${x.byName||""} ・ 画面：${x.screen||""} ・ ${String(x.device||"").split(" ・ ")[0]}${x.photos?" ・ 写真"+String(x.photos).split(",").filter(Boolean).length+"枚あり（一覧で見られます）":""}）`).join("\n");
+ try{await navigator.clipboard.writeText(t);toast("コピーしました。Claudeに貼り付けてください")}catch(e){prompt("下の文をコピーしてください",t)}};
+/* アスポッピーを長押し → 改善の声 */
+{let lpT=null;document.addEventListener("pointerdown",e=>{const h=e.target.closest&&e.target.closest("#ppHead");if(!h||MODE==="setup")return;clearTimeout(lpT);lpT=setTimeout(()=>{window._ppLP=1;fbOpen()},700)},true);
+ ["pointerup","pointerleave","pointercancel"].forEach(ev=>document.addEventListener(ev,()=>clearTimeout(lpT),true))}
 /* 至急の呼び出し：自分あて（1対1・事務あて・全員）の【至急】が来たら全画面で鳴らし続ける。「見た」で止まる */
 let ALARM=null,ALARM_T=null;setInterval(()=>{try{alarmCheck()}catch(e){}},15000);
 function alarmCheck(){if(MODE==="live"&&!USER)return;const me=myId(),ack=lsSet(ACK_K),lim=new Date(Date.now()-864e5).toISOString();
@@ -1075,11 +1152,11 @@ window.cmSameOk=async(cid,b)=>{const c=DB.cms.find(x=>x.id===cid);if(!c)return;c
 function cmPlaces(c){const past=DB.cms.filter(x=>x.id!==c.id&&cst(x)!=="在籍"&&pnorm(x.name)&&pnorm(x.name)===pnorm(c.name)&&!okPair(c,x));
  return past.length?`<div class="meta">これまでの所属：${past.map(x=>esc((DB.offices.find(z=>z.id===x.office)||{name:"居宅不明"}).name)+"（"+esc(cst(x))+"）").join("、")}</div>`:""}
 function cmDupBox(c){const d=cmDups(c);if(!d.length)return "";
- return `<div class="notice" style="margin:8px 0" onclick="event.stopPropagation()"><b>同じ名前の登録が${d.length+1}か所にあります。今いる居宅はどこですか？</b>
+ return `<details class="notice" style="margin:8px 0;padding:6px 10px" onclick="event.stopPropagation()"><summary style="cursor:pointer">⚠ このケアマネと同じ名前の登録が別の居宅にもあります（押すと説明）</summary><div class="meta" style="margin:6px 0">異動したなら今いる居宅を選んでください。同姓同名の別人なら「別の人です」を押すと、以後は出ません。</div><b>今いる居宅はどこですか？</b>
  <div class="chips" style="gap:6px;margin-top:6px">${[c,...d].map(x=>{const xo=DB.offices.find(z=>z.id===x.office)||{name:"居宅不明"};return `<button class="btn sm" type="button" onclick="event.stopPropagation();cmPickCur('${c.id}','${x.id}',this)">${esc(xo.name)}${x.id===c.id?"（この居宅）":""}</button>`}).join("")}</div>
- <button class="btn sm" type="button" style="margin-top:6px" onclick="event.stopPropagation();cmSameOk('${c.id}',this)">別の人です（今後この注意を出さない）</button></div>`}
+ <button class="btn sm" type="button" style="margin-top:6px" onclick="event.stopPropagation();cmSameOk('${c.id}',this)">別の人です（今後この注意を出さない）</button></details>`}
 function dupNotice(cms){const ds=cms.map(c=>({c,d:cmDups(c)})).filter(x=>x.d.length);if(!ds.length)return "";
- return `<div class="notice" style="margin-top:8px">⚠ 同じ名前のケアマネが別の居宅にも「在籍」で登録されています。通話録音の取り込みで居宅を間違える原因になります。異動した場合は、古い方の居宅でそのケアマネを「退職」にするか、「別の居宅へ異動」に移籍先を入れてください。
+ return `<div class="notice" style="margin-top:8px">⚠ この居宅のケアマネのうち、下の人と同じ名前の「在籍」の登録が別の居宅にもあります（同一人物の二重登録か、同姓同名の別人）。通話録音の取り込みで居宅を間違える原因になります。異動した場合は、古い方の居宅でそのケアマネを「退職」にするか、「別の居宅へ異動」に移籍先を入れてください。
  ${ds.map(x=>`<div style="margin-top:4px"><b>${esc(x.c.name)}</b>：${x.d.map(y=>{const yo=DB.offices.find(z=>z.id===y.office);return yo?`<button class="btn sm" type="button" style="margin:2px" onclick="S.office='${yo.id}';S.view='visit';S.selCm='${y.id}';S.autoOpened='${yo.id}';render();scrollTo(0,0)">${esc(yo.name)}を開く</button>`:"居宅不明"}).join("")}</div>`).join("")}</div>`}
 /* ===== AIが見つけた予定・事務への依頼（保存のあとに確認カードを出す。勝手には入れない） ===== */
 const FOUND=[];
@@ -1100,7 +1177,37 @@ function addFound(d,rec,office,cm,date){d=d||{};
   return {cname:String(x.client||""),client:u?u.id:"",kind:x.kind==="退院"?"退院":"入院",date:dt(x.date)||(x.kind==="退院"?"":date||""),outPlan:dt(x.outPlan),note:String(x.note||"").trim(),on:true}});
  const items=ev.map(e=>({t:e.title,date:e.date,time:e.start,place:e.place,def:"sched",st:""})).concat(rq.map(x=>({t:x.text,date:"",def:"jimu",st:""})));
  const nx=String(d.next||"").trim();if(nx&&!items.some(x=>x.t===nx))items.push({t:nx,date:"",def:/事務|FAX|ＦＡＸ|書類を送|手配/.test(nx)?"jimu":"sched",st:""});
- if(items.length||hs.length||cs.length)FOUND.push({id:newId("f"),rec,office,cm,date,events:[],reqs:[],cases:cs,hosp:hs,items,sent:false})}
+ const ha=hs.length?hospAuto(hs,office,cm,date,rec):0;
+ if(items.length||ha||cs.length)FOUND.push({id:newId("f"),rec,office,cm,date,events:[],reqs:[],cases:cs,hosp:[],hospAuto:ha,items,sent:false})}
+/* 入院・退院の話は「確認待ち」で入退院表へ自動で入れる。利用者は名前だけなので候補を探し、1人にしぼれたときだけ仮に入れる */
+function hospCands(cname,office,cm){const w=pnorm(String(cname||"").replace(/様$/,""));if(!w)return [];
+ return DB.clients.map(u=>{const p=pnorm(nmBare(u.name).replace(/ 様$/,"")),pf=pnorm(nmOnly(u.name).replace(/ 様$/,""));if(!(p&&(p.includes(w)||w.includes(p)||(pf&&w.includes(pf)))))return null;
+  return {u,s:1+(cm&&u.cm===cm?4:0)+(office&&clOffice(u)===office?2:0)+(p===w||pf===w?1:0)}}).filter(Boolean).sort((a,b)=>b.s-a.s)}
+function hospBest(cname,office,cm){const cs=hospCands(cname,office,cm);return cs.length&&(!cs[1]||cs[0].s>cs[1].s)?cs[0].u:null}
+function hospAuto(hs,office,cm,date,rec){const now=new Date().toISOString(),c=DB.cms.find(x=>x.id===cm),ops=[];
+ hs.forEach(x=>{const u=hospBest(x.cname,office,cm),out=x.kind==="退院";
+  ops.push({table:"hosp",row:{id:newId("h"),client:u?u.id:"",clientName:x.cname,office:u?clOffice(u):(office||""),kind:"入院",contactAt:date||today(),contactFrom:c?c.name:"",
+   inDate:out?"":(x.date||date||today()),outPlan:x.outPlan||"",outDate:out?(x.date||date||today()):"",note:x.note||"",reason:out?"（退院の知らせ）":"",source:"AI（会話の記録）"+(rec?" "+rec:""),state:"確認待ち",by:myId(),byName:USER?USER.name:"デモ",createdAt:now}})});
+ if(ops.length)persist(ops).then(()=>{try{render()}catch(e){}}).catch(e=>toast("入院の知らせを入れられませんでした："+errText(e)));
+ return ops.length}
+const hospPend=()=>(DB.hosp||[]).filter(h=>h.state==="確認待ち");
+function hospPendBox(){const ps=hospPend();if(!ps.length)return "";
+ return `<div class="form hpend" style="margin-bottom:10px"><b>⚠ 確認待ちの入院・退院 ${ps.length}件</b><div class="meta">AIがケアマネとの会話から見つけて入れました。利用者は名前だけで探しているので、合っているか確かめてください。確かめるまで「入院中」の数には入りません。</div>
+ ${ps.map(h=>{const out=!!h.outDate&&!h.inDate,cs=hospCands(h.clientName,h.office,(DB.cms.find(c=>c.name===h.contactFrom&&c.office===h.office)||{}).id).map(x=>x.u),o=DB.offices.find(x=>x.id===h.office);
+  return `<div class="cbx"><div><b>${esc(h.clientName||"（名前なし）")}</b> さんが <b>${out?"退院":"入院"}</b>（${esc(md(out?h.outDate:h.inDate))}${h.outPlan?" ・ 退院予定 "+esc(md(h.outPlan)):""}）</div>
+   <div class="meta">${esc(o?o.name:"")}${h.contactFrom?" ・ CM "+esc(h.contactFrom):""} ・ ${esc(md(h.contactAt))}の会話${h.note?" ・ "+esc(h.note):""}</div>
+   <label>利用者<select id="hp-${h.id}"><option value="">${cs.length?"選んでください":"候補が見つかりません"}</option>${cs.map(u=>`<option value="${u.id}" ${u.id===h.client?"selected":""}>${esc(clientLabel(u))}</option>`).join("")}</select></label>
+   <input list="hpAll" placeholder="候補にいないときは、名前の一部で全員から探す" onchange="hpPick('${h.id}',this.value)">
+   <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" type="button" onclick="hpOk('${h.id}',this)">✓ この人で合っている</button><button class="btn sm" type="button" onclick="hpNo('${h.id}',this)">入院の話ではなかった</button></div></div>`}).join("")}
+ <datalist id="hpAll">${DB.clients.slice(0,3000).map(u=>`<option value="${esc(clientLabel(u))}">`).join("")}</datalist></div>`}
+window.hpPick=(id,v)=>{const u=findClient(v);const sel=$("#hp-"+id);if(!u||!sel){toast("見つかりませんでした");return}if(![...sel.options].some(o=>o.value===u.id)){const op=document.createElement("option");op.value=u.id;op.textContent=clientLabel(u);sel.appendChild(op)}sel.value=u.id};
+window.hpOk=async(id,b)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h)return;const uid=($("#hp-"+id)||{}).value||"";if(!uid){toast("利用者を選んでください");return}
+ const u=clientOf(uid),out=!!h.outDate&&!h.inDate,ex=hospOf(uid),who="（確認："+(USER?USER.name:"デモ")+" "+fmtAt(new Date().toISOString())+"）",ops=[];
+ if(out&&ex){ops.push({table:"hosp",row:{id:ex.id,outDate:h.outDate,outContactAt:h.contactAt,outFrom:h.contactFrom,state:"退院",note:(ex.note?ex.note+" / ":"")+(h.note||"")+who}});ops.push({table:"hosp",row:{id:h.id,state:"削除"}})}
+ else if(!out&&ex){ops.push({table:"hosp",row:{id:ex.id,inDate:ex.inDate||h.inDate,outPlan:h.outPlan||ex.outPlan,note:(ex.note?ex.note+" / ":"")+(h.note||"")+who}});ops.push({table:"hosp",row:{id:h.id,state:"削除"}})}
+ else ops.push({table:"hosp",row:{id:h.id,client:uid,clientName:"",office:u?clOffice(u):h.office,state:out?"退院":"入院中",note:(h.note||"")+who}});
+ if(b)b.disabled=true;try{await persist(ops);toast("入退院表に登録しました");render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
+window.hpNo=async(id,b)=>{if(!confirm("この知らせを取り消しますか？"))return;if(b)b.disabled=true;try{await persist([{table:"hosp",row:{id,state:"削除",note:"（取り消し："+(USER?USER.name:"デモ")+"）"}}]);render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
 window.fdManual=()=>{FOUND.unshift({id:newId("f"),rec:"",office:S.view==="visit"?S.office:"",cm:"",date:today(),events:[],reqs:[{text:"",on:true}],sent:false,manual:true});render();
  setTimeout(()=>{const t=document.querySelector(".found textarea");t&&t.focus()},100)};
 function calUrl(e,o,cm){const d=e.date.replace(/-/g,""),tm=s=>{const m=String(s||"").match(/^(\d{1,2}):(\d{2})/);return m?m[1].padStart(2,"0")+m[2]+"00":""};
@@ -1115,7 +1222,7 @@ function fcardsHtml(f,fi){const o=DB.offices.find(x=>x.id===f.office),cm=DB.cms.
  return `<div class="form found" style="border-color:var(--accent);margin:8px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>記録を保存しました。${its.length?"会話から "+its.length+"件 見つかりました":""}</b></div>
  <div class="meta">${esc(o?o.name:"")}${cm?" ・ "+esc(cm.name):""} ・ ${esc(f.date)} の記録から ・ AIのおすすめに色が付いています</div>
  ${(f.cases||[]).length?fcHtml(f,fi):""}
- ${(f.hosp||[]).length?fhHtml(f,fi):""}
+ ${(f.hosp||[]).length?fhHtml(f,fi):""}${f.hospAuto?`<div style="margin-top:8px"><b>🏥 入院・退院の知らせ</b><div class="meta">✅ ${f.hospAuto}件を「確認待ち」で入退院表に入れました。利用者が合っているかは、入退院表（事務所）で確認します。</div></div>`:""}
  ${its.map((x,i)=>x.st?`<div class="logi"><span class="meta">${lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}</div>`:`<div class="fcard">
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="date" value="${esc(x.date||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].date=this.value" aria-label="日付"><span class="meta">${x.date?"":"日付なしでも入れられます"}</span></div>
   <textarea rows="2" oninput="FOUND[${fi}].items[${i}].t=this.value">${esc(x.t)}</textarea>
@@ -1174,7 +1281,10 @@ window.fdSend=async(fi,b)=>{const f=FOUND[fi];if(!f)return;let list=f.reqs.filte
 /* ===== 事務の画面（依頼の受付・状態・返事、営業への連絡）とやりとり ===== */
 const JIMU="jimu";
 const isJimu=()=>!!USER&&(USER.role==="jimu"||USER.role==="事務");
-const JIMU_URL=/[?&#]jimu\b/.test(location.href);
+const JIMU_VK="kyotaku-jimu-view",JIMU_URL=/[?&#]jimu\b/.test(location.href)||(()=>{try{return localStorage.getItem(JIMU_VK)==="1"}catch(e){return false}})();
+/* 管理者の「営業｜事務所」切り替え（この端末に覚えて開き直す） */
+window.viewSwitch=()=>{const jm=jimuMode();try{jm?localStorage.removeItem(JIMU_VK):localStorage.setItem(JIMU_VK,"1")}catch(e){}
+ if(jm&&/[?&]jimu\b/.test(location.search))location.href=location.pathname;else location.reload()};
 /* 事務の人（または ?jimu で開いた画面）は、ボード・台帳・入退院・依頼を下のタブに出す */
 const jimuMode=()=>isJimu()||(JIMU_URL&&seeJimu());
 const JT_L={board:"営業別ボード",ledger:"レンタル台帳",hosp:"入退院",cl:"利用者",req:"依頼・連絡BOX"};
@@ -1205,7 +1315,10 @@ function updBadges(){const set=(id,n)=>{const t=$("#"+id);if(!t)return;let b=t.q
  set("t-log",0);set("t-sched",isJimu()?0:todoCount());
  const jn=seeJimu()?unreadFor("jimu").length+(DB.reqs||[]).filter(r=>!r.state||r.state==="未対応").length:0;set(jimuMode()?"t-jreq":"t-jimu",jn);if(jimuMode())set("t-jimu",0);
  try{if(jimuMode())set("t-jhosp",(DB.hosp||[]).filter(h=>hmLeft(h).length).length)}catch(e){}
- try{const un=isJimu()||jimuMode()?unreadFor("jimu").length:unreadFor("sales").length;const cu=chatUnread();if((window._ppUn!=null&&un>window._ppUn)||(window._ppCu!=null&&cu>window._ppCu))woof(2);window._ppUn=un;window._ppCu=cu}catch(e){}}
+ try{const un=isJimu()||jimuMode()?unreadFor("jimu").length:unreadFor("sales").length;const cu=chatUnread();if((window._ppUn!=null&&un>window._ppUn)||(window._ppCu!=null&&cu>window._ppCu)){woof(2);if(window._ppCu!=null&&cu>window._ppCu)ppChatNote()}window._ppUn=un;window._ppCu=cu}catch(e){}}
+function ppChatNote(){try{const me=myId(),m=(DB.msgs||[]).filter(x=>x.from!==me).sort((a,b)=>String(b.at).localeCompare(String(a.at)))[0];
+ ppMsg("wow",`<b>アスポッピー</b>　${esc(m?(m.fromName||uName(m.from)):"")}さんから連絡が来てます！<br><span style="text-decoration:underline">押すと連絡を開きます</span>`,6000);
+ const t=document.querySelector(".toast");if(t){t.style.cursor="pointer";t.onclick=()=>{t.remove();S.view="chat";S.room=m&&m.req&&(m.req.startsWith("room:")||m.req.startsWith("dm:"))?m.req:null;render();scrollTo(0,0)}}}catch(e){}}
 const peerOf=m=>m.to===JIMU?m.from:m.to;
 function directItem(root,side){const peer=peerOf(root),key="m:"+root.id;
  return `<div class="jreq st-doing"><div class="meta">${side==="jimu"?esc(uName(peer))+" さんとの連絡":"事務からの連絡"}</div>
@@ -1217,13 +1330,19 @@ function jReqItem(r){const o=DB.offices.find(x=>x.id===r.office)||{name:""},cm=D
  return `<div class="jreq ${cls}"><div class="meta">${fmtAt(r.at)} ・ ${esc(r.staff||uName(r.email))}${o.name?" ・ "+esc(o.name):""}${cm?" ・ CM "+esc(cm.name):""}</div>
  ${(c=>c?`<div class="chead">🗂 ${esc(caseHead(c))}</div>`:"")(caseOfReq(r))}<div style="font-size:17px;font-weight:700;margin:2px 0;white-space:pre-wrap">${esc(r.text)}</div>
  ${rec?`<details><summary class="meta" style="cursor:pointer">${rec.kind==="電話"?"電話":"面談"}の内容を見る（${esc(rec.date)}）</summary><div style="white-space:pre-wrap;font-size:16px">${esc(rec.text)}</div>${rec.next?`<div class="meta">次回：${esc(rec.next)}</div>`:""}</details>`:""}
+ ${stt==="済"&&jKept(r.id)?`<div class="jdone">✓ 済にしました <button class="btn sm" type="button" onclick="jState('${r.id}','未対応',this)">元に戻す</button></div>`:""}
+
  <div class="seg" style="margin:8px 0 2px">${["未対応","対応中","済"].map(x=>`<button type="button" class="${stt===x?"on":""}" onclick="jState('${r.id}','${x}',this)">${x}</button>`).join("")}</div>
- ${stt==="済"&&r.doneBy?`<div class="meta">済：${esc(r.doneBy)}${r.doneAt?"（"+fmtAt(r.doneAt)+"）":""}</div>`:""}
+ ${stt!=="未対応"&&r.doneBy?`<div class="jwho"><span class="jico">${esc(String(r.doneBy).slice(0,1))}</span>${stt}：<b>${esc(r.doneBy)}</b>${r.doneAt?"（"+fmtAt(r.doneAt)+"）":""}</div>`:""}
  <div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>
  ${replyBox(r.id,r.email||"",r.office||"","営業さんに返事（例：明日FAXします）")}</div>`}
-window.jState=async(id,x,b)=>{if(b)b.disabled=true;const now=new Date().toISOString();
- try{await persist([{table:"reqs",row:{id,state:x,doneAt:x==="済"?now:"",doneBy:x==="済"?(USER?USER.name:"事務（デモ）"):""}}]);buzz(40);render()}
- catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
+const JKEEP={};const jKept=id=>JKEEP[id]&&Date.now()-JKEEP[id]<15000;
+window.jState=async(id,x,b)=>{const sg=b&&b.parentNode,old=sg?[...sg.children].map(y=>y.className):[];
+ if(sg){[...sg.children].forEach(y=>{y.classList.toggle("on",y===b);y.disabled=true});sg.insertAdjacentHTML("afterend",'<span class="meta jsv">保存中…</span>')}
+ const now=new Date().toISOString();
+ try{await persist([{table:"reqs",row:{id,state:x,doneAt:x!=="未対応"?now:"",doneBy:x!=="未対応"?(USER?USER.name:"事務（デモ）"):""}}]);buzz(40);
+  if(x==="済"){JKEEP[id]=Date.now();setTimeout(render,15500)}else delete JKEEP[id];render()}
+ catch(e){if(sg){[...sg.children].forEach((y,i)=>{y.className=old[i];y.disabled=false});const t=sg.parentNode.querySelector(".jsv");if(t)t.remove()}toast("保存できませんでした："+errText(e))}};
 /* ===== 事務所アプリ：レンタル台帳・営業別ボード・入院・依頼と連絡 ===== */
 const RT_RULE={rp:[2,4],ct:[7,14],db:[14,30],demo:[8,14]};
 const isD=x=>/^\d{4}-\d{2}-\d{2}$/.test(String(x||""));
@@ -1459,12 +1578,13 @@ function hmInfo(h){const u=h.client?clientOf(h.client):null,o=DB.offices.find(x=
  return {u,o,off:o?o.name:(h.officeName||""),cm:cm?cm.name:"",staff:o?staffNames(o).replace(/^未設定$/,""):""}}
 const HM_COLS=[["name","利用者",h=>hmName(h)],["state","状態",h=>h.pickKind?"3":h.outDate?"2":"1"],["in","入院日",h=>h.inDate||""],["out","退院日",h=>h.outDate||h.outPlan||""],["dur","入院期間",h=>String(hmDays(h.inDate,h.outDate)??-1).padStart(5,"0")],["left","残っている処理",h=>String(hmLeft(h).length).padStart(2,"0")],["off","居宅",h=>hmInfo(h).off],["cm","担当CM",h=>hmInfo(h).cm],["staff","担当営業",h=>hmInfo(h).staff]];
 window.hmSort=k=>{if(S.hmSk===k)S.hmSd=-(S.hmSd||1);else{S.hmSk=k;S.hmSd=1}render()};
-function jimuHosp(){let hs=hmRows();if(S.hmSk){const c=HM_COLS.find(x=>x[0]===S.hmSk),d=S.hmSd||1;if(c)hs=hs.slice().sort((a,b)=>{const x=c[2](a),y=c[2](b);return (!x&&y?1:x&&!y?-1:String(x).localeCompare(String(y),"ja"))*(x&&y?d:1)})}const f=hmF(),allN=(DB.hosp||[]).filter(h=>h.state!=="削除").length;
+function jimuHosp(){let hs=hmRows().filter(h=>h.state!=="確認待ち");if(S.hmSk){const c=HM_COLS.find(x=>x[0]===S.hmSk),d=S.hmSd||1;if(c)hs=hs.slice().sort((a,b)=>{const x=c[2](a),y=c[2](b);return (!x&&y?1:x&&!y?-1:String(x).localeCompare(String(y),"ja"))*(x&&y?d:1)})}const f=hmF(),allN=(DB.hosp||[]).filter(h=>h.state!=="削除").length;
  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
   <button class="btn primary" type="button" onclick="S.hmOpen='new';render()">＋ 入院・入所の連絡を登録</button>
   <div class="seg">${[["open","入院・入所中"],["left","処理が残っている"],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="hmSetF('${k}')">${l}</button>`).join("")}</div>
   <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="利用者・理由・居宅・CM・担当で探す" value="${esc(S.hmq||"")}" onchange="S.hmq=this.value;render()"><span class="meta">${hs.length}件${f!=="all"?`（全部で${allN}件。退院・引上げを入れた行は「すべて」に出ます）`:""}</span></div>
  ${S.hmOpen?fullBox(hmForm(),"S.hmOpen=null;render()"):""}
+ ${hospPendBox()}
  <div class="form" style="margin-bottom:10px"><b>📄 入退院管理表をスキャンして読み取る（画像・PDF、何枚でも）</b>
   <div class="meta">紙の入退院管理表や連絡票をスキャンしたファイルを選ぶと、AIが1行ずつ読み取ります。確認・修正してから登録します。</div>
   <div><label class="btn" for="hsx" style="display:inline-flex">ファイルを選ぶ</label><input type="file" id="hsx" multiple accept="image/*,application/pdf" onchange="hsScan(this)" style="position:absolute;opacity:0;width:1px;height:1px"> <span class="meta" id="hsSt">${esc(S.hsSt||"")}</span></div>
@@ -1528,15 +1648,15 @@ window.hsSave=async b=>{const list=(S.hsItems||[]).filter(x=>x.on);if(!list.leng
   if(!ex){row.source="書類読取";row.by=myId();row.byName=USER?USER.name:"デモ";row.createdAt=now}ops.push({table:"hosp",row})});
  b.disabled=true;try{for(let i=0;i<ops.length;i+=100)await persist(ops.slice(i,i+100));S.hsItems=(S.hsItems||[]).filter(x=>!x.on);S.hsSt=list.length+"件を登録しました。";buzz(60);render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
 /* 依頼・連絡BOX：営業さんからの「依頼」と「連絡」を1本の列に。対応したら「済」 */
-function viewJimuReq(){markRead("jimu");const f=S.jf||"open",st=S.jst||"",d=dism();
+function viewJimuReq(){markRead("jimu");const f=S.jf||"open",st=S.jst||"",d=dism(),hpn=hospPend().length;
  const sales=(DB.users||[]).filter(u=>u.role!=="jimu"&&u.role!=="事務");
  const its=[];
- (DB.reqs||[]).forEach(r=>{const l=lastOf(r.id),done=r.state==="済",c=caseOfReq(r);its.push({at:(l&&l.at>(r.at||"")?l.at:r.at)||"",done,who:r.email||"",html:(c?`<button type="button" class="btn sm" style="margin-bottom:-6px" onclick="caseOpen('${c.id}')">🗂 案件カードを開く（${esc(cStage(c))}）</button>`:"")+jReqItem(r)})});
+ (DB.reqs||[]).forEach(r=>{const l=lastOf(r.id),done=r.state==="済"&&!jKept(r.id),c=caseOfReq(r);its.push({at:(l&&l.at>(r.at||"")?l.at:r.at)||"",done,who:r.email||"",html:(c?`<button type="button" class="btn sm" style="margin-bottom:-6px" onclick="caseOpen('${c.id}')">🗂 案件カードを開く（${esc(cStage(c))}）</button>`:"")+jReqItem(r)})});
  (DB.msgs||[]).filter(m=>m.req==="").forEach(m=>{const l=lastOf("m:"+m.id)||m,peer=peerOf(m),done=d.has("jd:"+l.id);
   its.push({at:l.at||"",done,who:peer,html:`<div>${directItem(m,"jimu")}<div style="margin:-4px 0 8px"><button class="btn sm" type="button" onclick="dismiss('jd:${l.id}')">${done?"✓ 済":"済にする"}</button></div></div>`})});
  const cnt=k=>its.filter(x=>k==="done"?x.done:!x.done).length;
  const xs=its.filter(x=>(f==="all"||(f==="done"?x.done:!x.done))&&(!st||x.who===st)).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
- return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><div class="seg">${[["open","まだ "+cnt("open")],["done","済 "+cnt("done")],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="S.jf='${k}';render()">${l}</button>`).join("")}</div>
+ return `${hpn?`<div class="notice" style="margin-bottom:8px">🏥 確認待ちの入院・退院が <b>${hpn}件</b> あります。<button class="btn sm" type="button" onclick="S.jt='hosp';render()">入退院表で確認する</button></div>`:""}<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><div class="seg">${[["open","まだ "+cnt("open")],["done","済 "+cnt("done")],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="S.jf='${k}';render()">${l}</button>`).join("")}</div>
  <select class="sim" onchange="S.jst=this.value;render()"><option value="">営業：全員</option>${sales.map(u=>`<option value="${esc(u.email)}" ${st===u.email?"selected":""}>${esc(u.name)}</option>`).join("")}</select></div>
  ${S.caseNew&&S.caseNew.office===""?caseNewForm(""):`<button class="btn sm" type="button" style="margin-bottom:8px" onclick="S.caseNew={office:''};render()">＋ 案件カードを作る（電話を受けたときなど）</button>`}
  <details class="form" style="margin-bottom:10px"><summary style="cursor:pointer"><b>＋ 営業さんに連絡する</b></summary>
@@ -1545,7 +1665,7 @@ function viewJimuReq(){markRead("jimu");const f=S.jf||"open",st=S.jst||"",d=dism
   <div><button class="btn primary" type="button" onclick="msgSend('new','','',this)">送る</button></div></details>
  <div class="log">${xs.map(x=>x.html).join("")||'<div class="empty">'+(f==="open"?"まだ対応していないものはありません":"該当するものはありません")+'</div>'}</div>`}
 /* ===== 入院情報（CMさんからの知らせ・事務からの登録。利用者ごとに入院中・入院期間を持つ） ===== */
-const hospOpen=h=>h.state!=="削除"&&h.state!=="退院"&&h.state!=="引上げ"&&!h.outDate&&!h.pickKind;
+const hospOpen=h=>h.state!=="削除"&&h.state!=="確認待ち"&&h.state!=="退院"&&h.state!=="引上げ"&&!h.outDate&&!h.pickKind;
 const hospOf=uid=>(DB.hosp||[]).filter(h=>h.client===uid&&hospOpen(h)).sort((a,b)=>String(b.inDate).localeCompare(String(a.inDate)))[0]||null;
 const md=x=>x?String(x).slice(5).replace("-","/").replace(/^0/,""):"";
 const dayN=x=>{if(!x)return 0;const d=Math.floor((new Date(today()+"T00:00:00")-new Date(x+"T00:00:00"))/864e5)+1;return isNaN(d)?0:d};
@@ -1932,7 +2052,7 @@ async function syncNow(manual){if(MODE!=="live"||!USER||SYNC_BUSY||!SYNC_TS||S.b
  if(!manual&&(document.hidden||editingNow()))return;
  SYNC_BUSY=true;const sb=$("#syncBtn");if(sb)sb.textContent="…";let n=0;
  try{const d=await api("since",{ts:SYNC_TS});SYNC_TS=new Date(new Date(d.now).getTime()-90000).toISOString();
-  Object.keys(d).forEach(t=>{if(!Array.isArray(d[t])||!Array.isArray(DB[t])||t==="users")return;
+  Object.keys(d).forEach(t=>{if(!Array.isArray(d[t])||t==="users")return;if(!Array.isArray(DB[t]))DB[t]=[];
    d[t].forEach(r=>{n++;
     if((t==="records"&&r.kind==="削除")||(t==="sched"&&r.state==="削除")){DB[t]=DB[t].filter(x=>x.id!==r.id);return}
     const v=["offices","cms","records"].includes(t)?fromServer(t,r):r;
@@ -2147,16 +2267,22 @@ function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="
  return `<button class="oitem" onclick="S.office='${o.id}';S.view='visit';S.selCm=null;S.recOpen=false;render();scrollTo(0,0)">
  <div class="t"><b>${esc(o.name)}${o.kind&&o.kind!=="居宅支援"?`<span class="badge">${esc(o.kind)}</span>`:""}${ost(o)!=="稼働"?`<span class="badge st-alert">${esc(ost(o))}</span>`:""}${S.view==="list"&&S.lq&&!isMine(o)?`<span class="badge">担当外</span>`:""}${isClosed(o,today())?`<span class="badge st-alert">本日休み</span>`:""}${o.notices.length?`<span class="badge">連絡${o.notices.length}</span>`:""}${(n=>n?`<span class="badge">配布未${n}</span>`:"")(activeItems().filter(i=>itemFor(i,o)&&(distOf(i,o)||{}).state!=="配布済").length)}</b><span class="meta">${esc(o.addr)} ・ CM ${cms}名 ・ 担当 ${esc(staffNames(o))} ・ ${(l=>l?`<span style="${daysSince(l)>=GAP_DAYS?"color:var(--alert);font-weight:700":""}">最終訪問 ${daysSince(l)}日前</span>`:`<span style="color:var(--alert)">訪問記録なし</span>`)(lastVisit(o))}</span></div>
  ${d!=null?`<span class="dist num">${fmtD(d)}</span>`:""}</button>`}
+/* 事務所の画面・管理者のパソコンは「全部を見る」使い方（自分の担当だけ・近い順は使わない） */
+const wideV=()=>MODE==="live"&&!!USER&&(jimuMode()||(USER.role==="admin"&&PP_PC()));
+const mineEff=()=>S.mine&&!wideV();
+const salesList=()=>(DB.users||[]).filter(u=>u.role!=="jimu"&&u.role!=="事務");
 function listRows(){
  const q=(S.lq||"").trim();
  let rows=S.pos?nearest().concat(DB.offices.filter(o=>o.lat==null).map(o=>({o,d:null}))):DB.offices.map(o=>({o,d:null}));
  if(q){const tk=qTokens(q);rows=rows.filter(r=>matchQ(r.o,tk)&&(ost(r.o)!=="非表示"||S.showAll==="all"))}   /* 検索中は「自分の担当だけ」などの絞り込みを外して全部から探す */
- else{if(S.mine)rows=rows.filter(r=>isMine(r.o));
+ else{if(mineEff())rows=rows.filter(r=>isMine(r.o));
+ if(wideV()&&S.staffF)rows=rows.filter(r=>S.staffF==="none"?!staffOf(r.o).length:staffOf(r.o).includes(S.staffF));
  if(!S.showAll)rows=rows.filter(r=>ost(r.o)==="稼働");else rows=rows.filter(r=>!offGone(r.o)||S.showAll==="all");
  if(S.gap)rows=rows.filter(r=>{const l=lastVisit(r.o);return !l||daysSince(l)>=GAP_DAYS})}
  if(S.distf&&!q){const [st,id]=S.distf.split(":");const it=DB.items.find(i=>i.id===id);
   if(it)rows=rows.filter(r=>itemFor(it,r.o)&&((distOf(it,r.o)||{}).state==="配布済")===(st==="done"))}
- const so=S.sort||"near",ja=(a,b)=>String(a).localeCompare(String(b),"ja");
+ const so=wideV()&&(!S.sort||S.sort==="near")?"name":(S.sort||"near"),ja=(a,b)=>String(a).localeCompare(String(b),"ja");
+ if(so==="staff")rows.sort((a,b)=>{const x=staffNames(a.o),y=staffNames(b.o);return (x==="未設定")-(y==="未設定")||ja(x,y)||ja(a.o.kana||a.o.name,b.o.kana||b.o.name)});
  if(so==="addr")rows.sort((a,b)=>ja(String(a.o.addr).replace(/^.*?福山市/,""),String(b.o.addr).replace(/^.*?福山市/,"")));
  else if(so==="gap")rows.sort((a,b)=>{const x=lastVisit(a.o),y=lastVisit(b.o);return x===y?0:!x?-1:!y?1:x<y?-1:1});
  else if(so==="name")rows.sort((a,b)=>ja(a.o.kana||a.o.name,b.o.kana||b.o.name));
@@ -2164,7 +2290,7 @@ function listRows(){
 }
 function listHtml(){const rows=listRows(),show=rows.slice(0,150);
  return `<div class="meta" style="margin-bottom:6px">${rows.length}件${rows.length>150?"（近い順に150件まで表示。検索で絞り込めます）":""}</div>
- <div class="olist">${show.map(officeRow).join("")||`<div class="empty">${S.mine?"自分の担当の居宅がありません。「自分の担当だけ」のチェックを外すと全部表示します。":"該当する居宅がありません"}</div>`}</div>`}
+ <div class="olist">${show.map(officeRow).join("")||`<div class="empty">${mineEff()?"自分の担当の居宅がありません。「自分の担当だけ」のチェックを外すと全部表示します。":"該当する居宅がありません"}</div>`}</div>`}
 window.renderListOnly=()=>{const el=$("#listBox");if(!el)return;if(S.listMode==="map"){drawMap();return}el.innerHTML=listHtml()};
 /* ===== 実績配布（毎月24日〜翌月4日に表示） ===== */
 const JK_FROM=24,JK_TO=4;
@@ -2183,9 +2309,9 @@ window.jkSet=async(oid,done,b)=>{const o=DB.offices.find(x=>x.id===oid),m=jkMont
 window.setJkMethod=async(oid,v,sel)=>{if(sel)sel.disabled=true;
  try{await persist([{table:"offices",row:{id:oid,jisseki:v}}]);buzz(40);toast("実績の渡し方を「"+JK_LABEL[v]+"」にしました");render()}catch(e){if(sel)sel.disabled=false;toast("保存できませんでした："+errText(e))}};
 function jkPanel(){const m=jkMonth();if(!m)return "";
- const os=DB.offices.filter(o=>ost(o)==="稼働"&&(!S.mine||isMine(o)));
+ const os=DB.offices.filter(o=>ost(o)==="稼働"&&(!mineEff()||isMine(o)));
  const g=Object.keys(JK_LABEL).map(k=>{const all=os.filter(o=>jkm(o)===k);return {k,all,todo:all.filter(o=>jkTodo(o,m))}});
- const head=`<div class="section-t"><h2>${+m.slice(5)}月分の実績</h2><span class="meta">${JK_TO}日まで${S.mine?" ・ 自分の担当":""}</span></div>`;
+ const head=`<div class="section-t"><h2>${+m.slice(5)}月分の実績</h2><span class="meta">${JK_TO}日まで${mineEff()?" ・ 自分の担当":""}</span></div>`;
  return head+`<div class="jk" style="margin-bottom:12px">${g.map(x=>`<div class="form"><b>${JK_LABEL[x.k]}</b><span class="meta">済 <b class="num">${x.all.length-x.todo.length}</b> / ${x.all.length}件${x.todo.length?" ・ 残り "+x.todo.length+"件":" ・ 完了"}</span>
   ${x.todo.slice(0,40).map(o=>`<button class="btn sm" type="button" style="text-align:left" onclick="S.office='${o.id}';S.view='visit';S.recOpen=false;render();scrollTo(0,0)">${esc(o.name)}</button>`).join("")}${x.todo.length>40?`<span class="meta">ほか${x.todo.length-40}件</span>`:""}</div>`).join("")}</div>`}
 /* ===== 地図 ===== */
@@ -2236,16 +2362,17 @@ window.saveStaff=async(e,id)=>{e.preventDefault();const v=[$("#st1").value,$("#s
  try{await persist([{table:"offices",row:{id,staff:[...new Set(v)].join(",")}}]);S.staffEdit=false;toast("担当を保存しました");render()}catch(err){toast("保存できませんでした："+errText(err))}};
 function canAdmin(){return MODE==="demo"||(USER&&USER.role==="admin")}
 function viewList(){
- const so=[["near","近い順"],["addr","住所順（町名ごと）"],["gap","訪問が空いている順"],["name","名前順"]];
- const sum=[S.mine?"自分の担当だけ":"全員の担当",S.gap?"訪問"+GAP_DAYS+"日以上空き":"",S.distf?"配布物で絞り込み":"",(so.find(x=>x[0]===(S.sort||"near"))||so[0])[1]].filter(Boolean).join("・");
+ const wv=wideV(),so=(wv?[]:[["near","近い順"]]).concat([["addr","住所順（町名ごと）"],["gap","訪問が空いている順"],["name","名前順"]],wv?[["staff","担当営業順"]]:[]);
+ const cur=wv&&(!S.sort||S.sort==="near")?"name":(S.sort||"near"),stn=S.staffF?(S.staffF==="none"?"担当：未設定":"担当："+uName(S.staffF)):"";
+ const sum=[wv?(stn||"全員の担当"):mineEff()?"自分の担当だけ":"全員の担当",S.gap?"訪問"+GAP_DAYS+"日以上空き":"",S.distf?"配布物で絞り込み":"",(so.find(x=>x[0]===cur)||so[0])[1]].filter(Boolean).join("・");
  return `<div class="section-t"><h2>居宅一覧</h2><span class="meta">全${DB.offices.length}件</span></div>
  <input class="search" id="lq" placeholder="名前の一部で検索（ひらがな可・担当外も出ます）" value="${esc(S.lq||"")}" oninput="S.lq=this.value;const w=$('#jkWrap');if(w)w.hidden=!!S.lq;renderListOnly()">
- <details ${S.fopen?"open":""} ontoggle="S.fopen=this.open" style="margin:-4px 0 6px;font-size:14px"><summary class="meta" style="cursor:pointer;padding:4px 0">絞り込み・並び順：${esc(sum)}</summary>
+ <details ${S.fopen||wv?"open":""} ontoggle="S.fopen=this.open" style="margin:-4px 0 6px;font-size:14px"><summary class="meta" style="cursor:pointer;padding:4px 0">絞り込み・並び順：${esc(sum)}</summary>
   <div style="display:flex;gap:6px 16px;flex-wrap:wrap;align-items:center;margin:6px 0 8px">
-  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="mine" ${S.mine?"checked":""} onchange="S.mine=this.checked;saveUI();render()"> 自分の担当だけ</label>
+  ${wv?`<div class="seg" style="flex-wrap:wrap">${[["","全員"]].concat(salesList().map(u=>[u.email,u.name]),[["none","未設定"]]).map(([k,l])=>`<button type="button" class="${(S.staffF||"")===k?"on":""}" onclick="S.staffF='${esc(k)}';saveUI();render()">${esc(l)}</button>`).join("")}</div>`:`<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="mine" ${S.mine?"checked":""} onchange="S.mine=this.checked;saveUI();render()"> 自分の担当だけ</label>`}
   <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${S.gap?"checked":""} onchange="S.gap=this.checked;saveUI();render()"> 訪問が${GAP_DAYS}日以上空いている</label>
   ${activeItems().length?`<select class="sim" onchange="S.distf=this.value;render()"><option value="">配布物：すべて</option>${activeItems().map(i=>`<option value="todo:${i.id}" ${S.distf==="todo:"+i.id?"selected":""}>${esc(i.name)} 未配布</option><option value="done:${i.id}" ${S.distf==="done:"+i.id?"selected":""}>${esc(i.name)} 配布済</option>`).join("")}</select>`:""}
-  <label style="display:flex;gap:8px;align-items:center">並び順 <select class="sim" onchange="S.sort=this.value;saveUI();render()">${so.map(([v,l])=>`<option value="${v}" ${(S.sort||"near")===v?"selected":""}>${l}</option>`).join("")}</select></label>
+  <label style="display:flex;gap:8px;align-items:center">並び順 <select class="sim" onchange="S.sort=this.value;saveUI();render()">${so.map(([v,l])=>`<option value="${v}" ${cur===v?"selected":""}>${l}</option>`).join("")}</select></label>
   </div></details>
  <div style="margin:0 0 10px" class="seg"><button type="button" class="${S.listMode!=="map"?"on":""}" onclick="S.listMode='list';saveUI();render()">一覧</button><button type="button" class="${S.listMode==="map"?"on":""}" onclick="S.listMode='map';saveUI();render()">地図</button></div>
  <div id="jkWrap" ${S.lq?"hidden":""}>${jkPanel()}</div>
@@ -2454,12 +2581,20 @@ window.importViaGas=async b=>{const st=$("#imp-st");
 
 const ckind=c=>c.kind==="service"?"service":"kyotaku";
 function cardText(c){const cl=c.client&&DB.clients.find(u=>u.id===c.client);return [c.name,c.org,c.title,c.memo,c.stype,c.placeNote,cl?cl.name:""].join(" ")}
-function cardList(){const q=S.q.trim(),t=S.cardTab||"kyotaku";return DB.cards.filter(c=>ckind(c)===t&&(!q||cardText(c).includes(q)))}
+function cardList(){const q=S.q.trim(),t=S.cardTab||"kyotaku",so=S.cardSort||"new",ja=(a,b)=>String(a||"").localeCompare(String(b||""),"ja");
+ const l=DB.cards.filter(c=>ckind(c)===t&&(!q||cardText(c).includes(q)));
+ if(so==="kana")return l.slice().sort((a,b)=>ja(a.kana||a.name,b.kana||b.name));
+ if(so==="org")return l.slice().sort((a,b)=>ja(a.org,b.org)||ja(a.kana||a.name,b.kana||b.name));
+ if(so==="stype")return l.slice().sort((a,b)=>(!a.stype&&b.stype?1:a.stype&&!b.stype?-1:ja(a.stype,b.stype))||ja(a.org,b.org)||ja(a.kana||a.name,b.kana||b.name));
+ return l}   /* 新しい順＝読み取った順（DB.cards は新しいものが先頭） */
+const CARD_SO=[["new","新しい順"],["kana","50音順"],["org","事業所順"],["stype","サービスの種類順"]];
+window.cardSortSet=k=>{S.cardSort=k;saveUI();render()};
 function viewCards(){
  const t=S.cardTab||"kyotaku",n=k=>DB.cards.filter(c=>ckind(c)===k).length;
  return `<div class="section-t"><h2>名刺</h2><span class="meta">${DB.cards.length}枚</span></div>
  <div class="seg" style="margin-bottom:10px"><button type="button" class="${t==="kyotaku"?"on":""}" onclick="S.cardTab='kyotaku';render()">居宅（${n("kyotaku")}）</button><button type="button" class="${t==="service"?"on":""}" onclick="S.cardTab='service';render()">サービス事業所（${n("service")}）</button></div>
  <input class="search" id="q" placeholder="${t==="service"?"名前・事業所・種類・利用者様の名前で検索":"名前・事業所で検索"}" value="${esc(S.q)}" oninput="S.q=this.value;renderCardsOnly()">
+ <div class="seg" style="margin:-2px 0 10px;flex-wrap:wrap">${CARD_SO.filter(x=>x[0]!=="stype"||t==="service").map(([k,l])=>`<button type="button" class="${(S.cardSort||"new")===k?"on":""}" onclick="cardSortSet('${k}')">${l}</button>`).join("")}</div>
  <div id="cardList">${cardGrid(cardList())}</div>
  <div class="section-t"><h2>名刺を読み取る</h2></div>
  <div class="form">
@@ -2657,6 +2792,8 @@ ${tr.slice(0,20000)}`);
 
 function viewSettings(){const imp=DB.importedAt;
  return `<div class="section-t"><h2>設定</h2></div>
+ <div class="form"><b>💡 改善の声</b><div class="meta">使いにくい所・こうしてほしい所・おかしな動きを送ってください。画面の写真も付けられます。</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="fbOpen()">💡 改善の声を送る</button>${canAdmin()?`<button class="btn" type="button" onclick="S.view='fb';render();scrollTo(0,0)">一覧を見る（未対応 ${(DB.fb||[]).filter(x=>(x.state||"未対応")==="未対応").length}件）</button>`:""}</div></div>
  <div class="form"><b>表示</b>
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" ${S.showAll?"checked":""} onchange="S.showAll=this.checked?(S.showAll==='all'?'all':true):false;saveUI();render()"> 利用者なしの居宅も表示する</label>
   ${canAdmin()?`<label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" ${S.showAll==="all"?"checked":""} onchange="S.showAll=this.checked?'all':false;saveUI();render()"> 非表示の居宅も表示する（管理者）</label>`:""}
@@ -2766,7 +2903,8 @@ function render(){
  renderGps();
  const gated=MODE==="setup"||(MODE==="live"&&(!USER||S.loading));
  document.querySelector(".tabs").hidden=gated;sim.hidden=gated||MODE==="live";
- $("#brandSub").textContent=MODE==="demo"?"アスポート 営業用 ・ デモ（ダミーデータ）":USER?"アスポート 営業用 ・ "+USER.name:"アスポート 営業用";
+ {const jm=MODE==="live"&&jimuMode(),lb=jm?"アスポート 事務所":"アスポート 営業用";$("#brandSub").textContent=MODE==="demo"?lb+" ・ デモ（ダミーデータ）":USER?lb+" ・ "+USER.name:lb;const bm=$("#bMode");if(bm)bm.hidden=!jm;
+  const mb=$("#modeBtn");if(mb){mb.hidden=!(MODE==="live"&&USER&&USER.role==="admin"&&!S.loading);mb.textContent=jm?"🚗 営業の画面へ":"🏢 事務所の画面へ"}}
  if(MODE==="setup"){$("#app").innerHTML=viewSetup();return}
  if(gated){$("#app").innerHTML=viewLogin();renderGisButton();return}
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));jimuTabsUpd();
@@ -2777,7 +2915,7 @@ function render(){
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));jimuTabsUpd();
  if(S.view==="case"&&!(DB.cases||[]).some(c=>c.id===S.caseId))S.view="log";
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===(S.view==="case"?"log":S.view)));jimuTabsUpd();
- const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog,sched:viewSched,settings:viewSettings,jimu:viewJimu,case:viewCase,chat:viewChat}[S.view]();
+ const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog,sched:viewSched,settings:viewSettings,fb:viewFb,jimu:viewJimu,case:viewCase,chat:viewChat}[S.view]();
  if(MAP&&!(S.view==="list"&&S.listMode==="map")){try{MAP.remove()}catch(e){}MAP=null}
  $("#app").innerHTML=(S.view==="visit"||S.view==="log"?pendBox():"")+v+(MODE==="demo"?`<p class="demo">デモ：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`:`<p class="demo">データは会社のスプレッドシートに保存されます。すぐ開けるよう前回の内容と保存前の録音をこの端末に覚えています（ログアウトで消えます）。</p>`);
 }
@@ -2798,7 +2936,7 @@ window.addEventListener("popstate",e=>{const st=e.state||{};
  if(!st.v)return;
  NAV_DEPTH=Math.max(0,NAV_DEPTH-1);NAV_POP=true;S.view=st.v;S.office=st.o||null;S.caseId=st.c||null;S.recOpen=false;S.cmEdit=null;S.bulk=false;
  if(S.view==="visit"&&S.office)S.autoOpened=S.office;render();scrollTo(0,0)});
-document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{S.view=t.dataset.v;if(t.dataset.v==="jimu"){S.jt=t.dataset.jt||"board";S.rtOpen=null;S.hmOpen=null}S.cmEdit=null;render();scrollTo(0,0)});
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{S.view=t.dataset.v;if(S.view==="chat")S.room=null;if(t.dataset.v==="jimu"){S.jt=t.dataset.jt||"board";S.rtOpen=null;S.hmOpen=null}S.cmEdit=null;render();scrollTo(0,0)});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classList?.contains("cm"))e.target.click()});
 
 /* アスポッピーのひとこと（パソコン・iPadの上部）：時間のあいさつ＋いま気にしてほしい件数 */
@@ -2806,7 +2944,7 @@ function ppSay(){const h=new Date().getHours(),night=h>=20||h<5;
  const hi=h<5?"夜おそくまでおつかれさまです":h<10?"おはようございます！":h<17?"おつかれさまです！":h<20?"今日もおつかれさまでした":"夜おそくまでおつかれさまです";
  const L=[];try{if(seeJimu()&&(S.view==="jimu"||jimuMode())){const hl=(DB.hosp||[]).filter(x=>hmLeft(x).length).length,rh=(DB.rentals||[]).filter(r=>r.state!=="削除"&&rtHot(r)).length,rq=(DB.reqs||[]).filter(r=>!r.state||r.state==="未対応").length+unreadFor("jimu").length;
    if(rq)L.push(`未対応の依頼・連絡が <b>${rq}件</b>`);if(hl)L.push(`入退院の処理残りが <b>${hl}件</b>`);if(rh)L.push(`台帳の要注意が <b>${rh}件</b>`)}
-  else{const t=today(),sc=schedMine().filter(x=>x.state!=="済"&&x.date===t).length,un=unreadFor("sales").length;if(sc)L.push(`今日の予定が <b>${sc}件</b>`);if(un)L.push(`事務からの連絡が <b>${un}件</b>`)}}catch(e){}
+  else{const t=today(),sc=schedMine().filter(x=>x.state!=="済"&&x.date===t).length,un=unreadFor("sales").length;if(sc)L.push(`今日の予定が <b>${sc}件</b>`);if(un)L.push(`事務からの連絡が <b>${un}件</b>`)}const cu=chatUnread();if(cu)L.unshift(`💬 連絡が <b>${cu}件</b> 来てます`)}catch(e){}
  const face=night&&!L.length?"deep":L.length?"wow":"normal";
  return {face,html:`<b>アスポッピー</b>　${hi}${L.length?"<br>"+L.join("、")+"あります":""}`}}
 function ppHeadUpd(){const el=$("#ppHead");if(!el)return;if(MODE==="setup"||(MODE==="live"&&(!USER||S.loading))){el.innerHTML="";el.dataset.k="";return}
@@ -2827,7 +2965,7 @@ function yip(){if(!ppSndOn())return;try{const c=acx();for(let i=0;i<3;i++){const
   g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.5,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+0.1);o.connect(g).connect(c.destination);o.start(t);o.stop(t+0.11)}}catch(e){}}
 let PPT=[];
 const ppMsg=(face,html,ms)=>{document.querySelectorAll(".toast").forEach(x=>x.remove());const d=document.createElement("div");d.className="toast";const q=document.createElement("span");q.className="pp";q.style.backgroundImage="var(--pp-"+face+")";const x=document.createElement("span");x.innerHTML=html;d.append(q,x);document.body.appendChild(d);setTimeout(()=>d.remove(),ms||3000)};
-window.ppTap=()=>{const el=$("#ppHead");if(!el)return;const now=Date.now();PPT=PPT.filter(x=>now-x<2000).concat(now);
+window.ppTap=()=>{if(window._ppLP){window._ppLP=0;return}const el=$("#ppHead");if(!el)return;if(chatUnread()&&!PP_PC()){woof(1);S.view="chat";S.room=null;render();scrollTo(0,0);return}const now=Date.now();PPT=PPT.filter(x=>now-x<2000).concat(now);
  if(PPT.length>=5){PPT=[];howl();el.classList.remove("tap");void el.offsetWidth;el.classList.add("tap");const p=el.querySelector(".pp");if(p){p.style.backgroundImage="var(--pp-deep)";setTimeout(()=>{el.dataset.k="";ppHeadUpd()},2500)}return}
  if(Math.random()<1/30){yip();const p=el.querySelector(".pp");if(p){p.style.backgroundImage="var(--pp-smile)";setTimeout(()=>{el.dataset.k="";ppHeadUpd()},1600)}return}
  woof(1);el.classList.remove("tap");void el.offsetWidth;el.classList.add("tap");const p=el.querySelector(".pp");if(p){p.style.backgroundImage="var(--pp-smile)";setTimeout(()=>{el.dataset.k="";ppHeadUpd()},1600)}
