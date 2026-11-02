@@ -276,7 +276,7 @@ body.aibusy .pphead .pp{animation:ppThink 1.1s ease-in-out infinite}
 @media (prefers-color-scheme:dark){body.aibusy .locbar{background:#4a3b00}.aibar{color:#ffe08a}}
 /* 見出しの「事務所」、管理者の切り替え */
 .bmode{color:var(--accent)}.modebtn{font-size:13px;padding:5px 10px;white-space:nowrap}
-@media (max-width:767px){.modebtn,.bmode{display:none!important}}
+@media (max-width:767px){.bmode{display:none!important}.modebtn{font-size:12px;padding:4px 8px}.modebtn .ml{display:none}.tlg{display:none}body.jmm #t-list,body.jmm #t-log{display:none!important}}
 .hpend{border-color:var(--warn,#d68910)}
 
 /* 連絡は下のタブの右端に色付きで */
@@ -306,10 +306,10 @@ body.aibusy .pphead .pp{animation:ppThink 1.1s ease-in-out infinite}
 <nav class="tabs" aria-label="画面切替">
   <div class="tabs-in">
     <button class="tab" data-v="jimu" data-jt="board" id="t-jimu" hidden style="order:-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="7" height="16" rx="1.5"/><rect x="14" y="4" width="7" height="10" rx="1.5"/></svg><span class="tl">事務</span></button>
-    <button class="tab" data-v="jimu" data-jt="ledger" id="t-jledger" hidden style="order:-3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h11l3 3v15H5z"/><path d="M9 9h7M9 13h7M9 17h4"/></svg>レンタル台帳</button>
+    <button class="tab" data-v="jimu" data-jt="ledger" id="t-jledger" hidden style="order:-3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h11l3 3v15H5z"/><path d="M9 9h7M9 13h7M9 17h4"/></svg><span><span class="tlg">レンタル</span>台帳</span></button>
     <button class="tab" data-v="jimu" data-jt="hosp" id="t-jhosp" hidden style="order:-2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V8l8-4 8 4v12z"/><path d="M12 9v6M9 12h6"/></svg>入退院</button>
     <button class="tab" data-v="jimu" data-jt="cl" id="t-jcl" hidden style="order:-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 8v6M14 11h6"/></svg>利用者</button>
-    <button class="tab" data-v="jimu" data-jt="req" id="t-jreq" hidden style="order:-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>依頼・連絡BOX</button>
+    <button class="tab" data-v="jimu" data-jt="req" id="t-jreq" hidden style="order:-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg><span>依頼<span class="tlg">・連絡</span>BOX</span></button>
     <button class="tab" data-v="visit" id="t-visit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>訪問中</button>
     <button class="tab" data-v="list" id="t-list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>居宅一覧</button>
     <button class="tab" data-v="cards" id="t-cards" style="order:3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14 10h4M14 13h3"/></svg>名刺</button>
@@ -596,7 +596,7 @@ function viewVisit(){
  <div class="split">
   <div>
    <div class="section-t"><h2>担当利用者の近況</h2><span class="meta">${S.selCm&&DB.cms.find(c=>c.id===S.selCm)?esc(DB.cms.find(c=>c.id===S.selCm).name)+" さん担当 ・ <a href='#' onclick='S.selCm=null;render();return false'>全員を表示</a>":"この居宅の全CM"}</span></div>
-   ${offHospBox(o)}
+   ${offHospBox(o)}${offDemoBox(o)}
    <div class="clients">${clients.map(u=>{const [l,c]=stLabel[u.status]||stLabel.ok;const cm=DB.cms.find(x=>x.id===u.cm)||{name:""};
      const h=hospOf(u.id);
      return `<div class="client ${h?"inhosp":""}"><div><span class="nm">${esc(u.name)}</span> <span class="meta">${esc(u.lv)}${cm.name?" ・ CM "+esc(cm.name.split(" ")[0]):""}</span></div>
@@ -622,14 +622,62 @@ function offHospBox(o){const sc=S.selCm?DB.cms.find(c=>c.id===S.selCm):null;
  const lg=L.filter(x=>x.d!=null&&x.d>=30).length;
  return `<div class="form" style="margin-bottom:10px;border-color:#8e44ad"><b style="color:#8e44ad">🏥 ${sc?esc(sc.name)+" さん担当で":"この居宅で"}入院・入所中 ${L.length}人</b>${lg?` <span class="meta">（うち1か月超 ${lg}人）</span>`:""}
  <div class="log" style="margin-top:6px">${L.map(({h,d})=>{const i=hmInfo(h);return `<div class="logi"><b>${esc(hmName(h))}</b> <span class="meta">${esc(h.kind||"入院")}${h.inDate?" ・ "+esc(md(h.inDate))+"〜":""}${d!=null?" ・ <b>"+d+"日目</b>":""}${h.outPlan?" ・ 退院予定 "+esc(md(h.outPlan)):""}${i.cm&&!sc?" ・ CM "+esc(i.cm):""}</span>${mk(d)}${h.reason?`<div class="meta">${esc(h.reason)}</div>`:""}</div>`}).join("")}</div></div>`}
+
+/* ===== 営業支援：デモ中・開始直後と「話のネタ」 ===== */
+const NEW_DAYS=14;
+function cmRentals(c){const o=DB.offices.find(x=>x.id===c.office),on=o?o.name:"";
+ return (DB.rentals||[]).filter(r=>!rtStop(r)&&mineRec(r)&&pnorm(r.cmName)&&pnorm(r.cmName)===pnorm(c.name)&&(r.office===c.office||(on&&String(r.officeName||"").trim()===on)))}
+function offRentals(o){return (DB.rentals||[]).filter(r=>!rtStop(r)&&mineRec(r)&&(r.office===o.id||String(r.officeName||"").trim()===o.name))}
+const rtDemoNow=r=>isD(r.deliv)&&!confDone(r)&&!rtJh(r);
+const rtNewNow=r=>{const b=isD(r.start)?r.start:isD(r.confDate)?r.confDate:"";const d=b?daysFrom(b):null;return d!=null&&d>=0&&d<=NEW_DAYS};
+function demoRows(rs){const dm=rs.filter(rtDemoNow).map(r=>({r,k:"demo",d:(daysFrom(r.deliv)||0)+1})).sort((a,b)=>b.d-a.d),nw=rs.filter(r=>!rtDemoNow(r)&&rtNewNow(r)).map(r=>({r,k:"new"}));return dm.concat(nw)}
+function offDemoBox(o){const sc=S.selCm?DB.cms.find(c=>c.id===S.selCm):null,L=demoRows(sc?cmRentals(sc):offRentals(o));if(!L.length)return "";
+ return `<div class="form" style="margin-bottom:10px;border-color:var(--accent)"><b>🧪 ${sc?esc(sc.name)+" さん担当の":""}デモ中・開始直後 ${L.length}件</b>
+ <div class="log" style="margin-top:6px">${L.map(({r,k,d})=>{const p=rtProg(r);return `<div class="logi"><b>${esc(r.cname||"")}</b> <span class="meta">${esc(r.item||"")}${k==="demo"?" ・ デモ <b>"+d+"日目</b>":" ・ 開始 "+esc(md(r.start||r.confDate))}${!sc&&r.cmName?" ・ CM "+esc(r.cmName):""}${p.next&&RF_STEPS[p.next]&&k==="new"?" ・ 次："+esc(RF_STEPS[p.next].l):""}</span>${k==="demo"?(d>7?`<span class="status st-warn" style="margin-left:4px">⏳ 確認まだ</span>`:""):`<span class="status st-ok" style="margin-left:4px">🆕 開始直後</span>`}</div>`}).join("")}</div></div>`}
+function cmHosp(c){return (DB.hosp||[]).filter(h=>{if(h.state==="削除"||h.state==="確認待ち")return false;const i=hmInfo(h);if(!(i.o&&i.o.id===c.office))return false;return i.u&&i.u.cm?i.u.cm===c.id:pnorm(i.cm)===pnorm(c.name)})}
+function cmTips(c){const T=[],add=(pri,t,tag)=>T.push({pri,t,tag}),nm=x=>String(x||"").replace(/\s*様$/,"")+"様";
+ const recs=DB.records.filter(r=>r.cm===c.id&&r.kind!=="ネタ"&&r.kind!=="削除").sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+ const last=recs[0];if(last&&String(last.next||"").trim())add(1,"前回の約束：「"+String(last.next).trim()+"」の件、どうなりましたか","約束");
+ const rs=cmRentals(c);
+ rs.forEach(r=>{if(rtDemoNow(r))return;const a=rtAlerts(r);if(a.ct&&!["ok","na"].includes(a.ct.k)&&confDone(r))add(2,nm(r.cname)+"の"+(/確認/.test(a.ct.t)&&!/契約書/.test(a.ct.t)?"確認書":"契約書")+"、ご協力をお願いできますか","書類")});
+ rs.filter(rtDemoNow).forEach(r=>{const d=(daysFrom(r.deliv)||0)+1;add(3,d>7?nm(r.cname)+"の"+(r.item||"用具")+"（デモ"+d+"日目）、借りるかどうか、ご本人のお考えはどうですか？":nm(r.cname)+"の"+(r.item||"用具")+"のデモ、使い心地どうでしたか？","デモ")});
+ cmHosp(c).forEach(h=>{const n=nm(hmName(h));if(hospOpen(h)){const d=hmDays(h.inDate,"");add(3,d!=null&&d>=30?n+"、入院が長くなっていますね。退院後のベッドや手すりの準備、必要になりそうですか？":n+"のその後のご様子は？退院のめどはありますか？","入院")}
+  else if(isD(h.outDate)&&daysFrom(h.outDate)<=14)add(3,n+"、退院されて困っていることはありませんか？住宅改修もご相談ください","退院")});
+ rs.filter(r=>!rtDemoNow(r)&&rtNewNow(r)).forEach(r=>add(4,nm(r.cname)+"、"+(r.item||"用具")+"を使い始めてどうですか？調整がいるところはありますか？","開始直後"));
+ const ct=DB.contracts.filter(x=>x.cm===c.id).map(x=>x.date).sort();
+ if(ct.length&&ct[ct.length-1]>=ago(30))add(4,"先日はご紹介ありがとうございました","お礼");
+ const m=new Date().getMonth()+1;
+ if(m>=1&&m<=3)add(5,"購入の年10万円の枠は4月で戻ります。今年度中に買っておいた方がいい方はいませんか？","制度");
+ if(m>=10||m<=2)add(5,"寒くなると浴室のヒートショックや、夜中のトイレでの転倒が増えます。手すりやポータブルトイレが要りそうな方はいませんか？","季節");
+ else if(m>=6&&m<=9)add(5,"暑くなると脱水やエアマットの蒸れが心配です。体位交換や除湿のご相談はありませんか？","季節");
+ else add(5,"季節の変わり目で体調を崩される方が多い時期です。動きが変わった方はいませんか？","季節");
+ add(5,"杖・歩行器・スロープは「借りるか買うか」選べます。長く使う方は購入の方が負担が軽いこともあります","制度");
+ if(!ct.length||ct[ct.length-1]<ago(90))add(5,"最近の新商品をご紹介させてください（デモもすぐ出せます）","新商品");
+ add(6,"今、困っているケースはありますか？","定番");
+ const seen=new Set(DB.records.filter(r=>r.cm===c.id&&r.kind==="ネタ"&&r.date>=ago(30)).map(r=>String(r.text||"").replace(/^【話した】/,"")));
+ return T.filter(x=>!seen.has(x.t)).sort((a,b)=>a.pri-b.pri)}
+function cmNotes(c){const out=[],recs=DB.records.filter(r=>r.cm===c.id&&r.kind!=="ネタ"&&r.kind!=="削除"&&r.kind!=="SMS"),last=recs.map(r=>r.date).sort().pop();
+ if(last&&last<ago(30))out.push("⏰ "+(daysFrom(last))+"日会っていません（前回 "+md(last)+"）");
+ const ct=DB.contracts.filter(x=>x.cm===c.id),a=ct.filter(x=>x.date>=ago(90)).length,b=ct.filter(x=>x.date<ago(90)&&x.date>=ago(180)).length;
+ if(b>=2&&a<b/2)out.push("📉 紹介が減っています（直近3か月 "+a+"件 ／ その前 "+b+"件）");
+ return out}
+function tipBox(c){const T=cmTips(c),N=cmNotes(c),sh=T.slice(0,5);if(!sh.length&&!N.length)return "";
+ return `<div class="form" style="margin:8px 0;border-color:#f0a500;background:#fffbea" onclick="event.stopPropagation()"><b>💬 話のネタ</b>${c.likes?` <span class="meta">（話題：${esc(c.likes)}）</span>`:""}
+ ${N.map(n=>`<div class="meta" style="color:var(--alert);font-weight:700">${esc(n)}</div>`).join("")}
+ <div class="log" style="margin-top:4px">${sh.map((x,i)=>`<div class="logi" style="display:flex;gap:6px;align-items:flex-start"><span class="chip" style="flex:0 0 auto">${esc(x.tag)}</span><span style="flex:1">${esc(x.t)}</span><button class="btn sm" type="button" style="flex:0 0 auto" onclick="event.stopPropagation();tipDone('${c.id}',${i},this)">話した</button></div>`).join("")}</div>
+ ${T.length>5?`<div class="meta">ほかに ${T.length-5}件（話したものを消すと次が出ます）</div>`:""}</div>`}
+window.tipDone=async(cid,i,b)=>{const c=DB.cms.find(x=>x.id===cid);if(!c)return;const x=cmTips(c)[i];if(!x)return;if(b)b.disabled=true;
+ try{await persist([{table:"records",row:{id:newId("r"),office:c.office,cm:c.id,date:today(),text:"【話した】"+x.t,next:"",trans:"",staff:USER?USER.name:"",kind:"ネタ",party:"ケアマネ",client:""}}]);buzz(30);render()}
+ catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
 function cmCard(c){
- const card=cardOf(c.id);const last=DB.records.filter(r=>r.cm===c.id).sort((a,b)=>b.date.localeCompare(a.date))[0];
+ const card=cardOf(c.id);const last=DB.records.filter(r=>r.cm===c.id&&r.kind!=="ネタ").sort((a,b)=>b.date.localeCompare(a.date))[0];
  const n=DB.clients.filter(u=>u.cm===c.id).length;
  return `<div class="cm ${S.selCm===c.id?"sel":""}" role="button" tabindex="0" onclick="S.selCm=S.selCm==='${c.id}'?null:'${c.id}';render()">
   <div class="cm-top"><div class="avatar">${card?`<img src="${card.photo}" alt="">`:esc(c.name[0])}</div>
    <div style="min-width:0;flex:1"><div class="kana">${esc(c.kana)}</div><h3>${esc(c.name)}</h3><div class="meta">${esc(c.role||"CM")}${c.years?" ・ 経験"+esc(c.years):""}</div></div>
    <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${(tel=>`<button class="btn sm" type="button" onclick="event.stopPropagation();smsOpen('${c.id}')">📱 SMS</button>${tel?`<a class="btn sm" href="tel:${esc(tel)}" onclick="event.stopPropagation()">📞</a>`:""}`)(cmMobile(c))}<button class="btn sm" type="button" onclick="event.stopPropagation();S.cmEdit='${c.id}';render();scrollTo(0,$('#cmForm').offsetTop-80)">編集</button></div></div>
   ${c.traits.length?`<div class="chips">${c.traits.map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>`:""}
+  ${tipBox(c)}
   <dl class="kv"><dt>担当件数</dt><dd class="num">${c.count!=null&&c.count!==""?c.count+"件":"—"}（当社 ${n}件）</dd>
    ${c.note?`<dt>傾向</dt><dd>${esc(c.note)}</dd>`:""}${c.likes?`<dt>話題</dt><dd>${esc(c.likes)}</dd>`:""}</dl>
   ${(y=>y.length?`<div class="meta">紹介（新規契約）：直近12か月 <b class="num">${y.filter(x=>x.date>=ago(365)).length}</b>件 ・ 累計 <span class="num">${y.length}</span>件 ・ 最終 <span class="num">${y.map(x=>x.date).sort().pop()}</span></div>`:"")(DB.contracts.filter(x=>x.cm===c.id))}
@@ -1379,11 +1427,12 @@ function rtAlerts0(r){const out={},d=daysFrom(r.deliv),stop=r.jflag==="中止"||
  out.rp=stop||jh||NAV(r.rp_print)?{k:"na",t:r.rp_print||"―"}:r.rp_sub==="済"||(/FAX|ＦＡＸ|メール|CM渡済|提供表/.test(r.rp_send||"")&&!/予定/.test(r.rp_send||""))?{k:"ok",t:(r.rp_sub==="済"?"提出済":r.rp_send)+(r.rp_date?" "+md(r.rp_date):"")}:{k:lvl(d,RT_RULE.rp)||"w",t:"未提出"+(d!=null?"（"+d+"日）":"")};
  {const need=jh?[["ct_doc","契約書"]]:kei?[["ct_doc","契約書"],["ct_check","確認ｼｰﾄ"]]:[["ct_doc","契約書"],["ct_check","確認ｼｰﾄ"],["ct_imp","重要事項"],["ct_priv","個人情報"]],left=need.filter(([k])=>!rtDone(r[k])).map(x=>x[1]),tag=jh?"実費・":kei?"既契約・":"";
  out.ct=stop||NAV(r.ct_print)?{k:"na",t:stop?"―":r.ct_print||"―"}:r.ct_done==="完了"||!left.length?{k:"ok",t:tag+"完了"}:{k:lvl(d,RT_RULE.ct)||"w",t:tag+(left.length===need.length&&r.ct_done?r.ct_done:"未："+left.join("・"))+(d!=null?"（"+d+"日）":"")}}
- const way=String(r.db_way||"").trim(),need=DBNEED.includes(way)||(!way&&(r.kubun==="新規"||jh));
+ const way=payWay(r),need=way==="要手続"||(!way&&(r.kubun==="新規"||jh));
  out.db=stop||kei||!need?{k:kei&&!stop?"na":way?"ok":"na",t:kei&&!stop?"既契約":way||"―"}:r.db_ok==="済"?{k:"ok",t:way+" 受理済"}:{k:lvl(d,RT_RULE.db)||"w",t:(way||"未定")+" "+(r.db_send==="済"?"発送済":r.db_col==="済"?"回収済":r.db_hand==="済"?"お渡し済":"未手続")+(d!=null?"（"+d+"日）":"")};
  const h=rtHospital(r);
  if(stop||jh||!isD(r.deliv))out.demo={k:"na",t:stop?"解約":""};
  else if(isD(r.start))out.demo={k:"ok",t:"開始 "+md(r.start)};
+ else if(isD(r.confDate))out.demo={k:"ok",t:"借りる "+md(r.confDate)+"（開始日 未記入）"};
  else if(h)out.demo={k:"h",t:"入院中"+(h.inDate?" "+md(h.inDate)+"〜":"")};
  else if(d>60)out.demo={k:"w",t:"開始日 未記入"};
  else out.demo={k:lvl(d,RT_RULE.demo)||"w",t:"デモ "+((d||0)+1)+"日目"};
@@ -1450,19 +1499,26 @@ function rtInput(f,val){const [k,l,t]=f,id="rt-"+k;if(k==="db_way"&&String(val||
 const RF_L={"新規":"新規","追加":"既契約者の追加","実費":"実費"};
 const rtFlow=r=>rtJh(r)?"実費":rtKei(r)?"追加":"新規";
 const rtStop=r=>r.jflag==="中止"||r.jflag==="デモ解約"||r.jflag==="購入へ";
+const confDone=r=>isD(r.confDate)||isD(r.start);
+/* 購入も選べる品目：杖（松葉杖は除く）・スロープ・歩行器（歩行車は除く） */
+const buyOk=r=>{const s=String(r&&r.item||"");return (/杖|ステッキ/.test(s)&&!/松葉杖/.test(s))||/スロープ/.test(s)||(/歩行器/.test(s)&&!/歩行車/.test(s))};
 const MAIL_TAG=/【明細メール済([^】]*)】/;
+const MEISAI_L=["楽々明細取得","未確認","領収書不要"];
+/* 楽々明細：選んだ値 → 前の「明細メール済」タグ → 生保・集金は不要 */
+const meisaiOf=r=>{const v=String(r&&r.meisai||"").trim();if(v)return v;if(MAIL_TAG.test(String(r&&r.biko||"")))return "楽々明細取得";if(/生保|集金/.test(String(r&&r.db_way||"")))return "領収書不要";return ""};
+const payDone=r=>{const w=payWay(r);return r.db_ok==="済"||(!!w&&w!=="要手続")};
 const PAY_OK=/口座有|集金|生保|^―$|^-$/;
 const ckDate=v=>{const m=String(v||"").match(/(\d{4}-\d{2}-\d{2})/);return m?md(m[1]):""};
 const RF_STEPS={
- demo:{l:"デモ",done:r=>isD(r.deliv),sub:r=>isD(r.deliv)?"納品 "+md(r.deliv)+(isD(r.start)?"":"（"+((daysFrom(r.deliv)||0)+1)+"日目）"):"納品日が未入力"},
+ demo:{l:"デモ",done:r=>isD(r.deliv),sub:r=>isD(r.deliv)?"納品 "+md(r.deliv)+(confDone(r)?"":"（"+((daysFrom(r.deliv)||0)+1)+"日目）"):"納品日が未入力"},
  send:{l:"居宅へデモ内容を送付",done:r=>r.rp_sub==="済"||(/FAX|ＦＡＸ|メール|CM渡済|提供表/.test(r.rp_send||"")&&!/予定/.test(r.rp_send||"")),sub:r=>[r.rp_send,r.rp_date?md(r.rp_date):""].filter(Boolean).join(" ")},
- conf:{l:"借りるか確認（約1週間）",done:r=>isD(r.start),sub:r=>isD(r.start)?"借りる・開始 "+md(r.start):""},
+ conf:{l:"借りるか確認（約1週間）",done:r=>confDone(r),sub:r=>confDone(r)?["借りる",isD(r.confDate)?"確認 "+md(r.confDate):"",isD(r.start)?"開始 "+md(r.start):"開始日 未記入"].filter(Boolean).join(" ・ "):""},
  ct_doc:{l:"契約書",done:r=>rtDone(r.ct_doc),sub:r=>ckDate(r.ct_doc)},
  ct_check:{l:"確認書",done:r=>rtDone(r.ct_check),sub:r=>ckDate(r.ct_check)},
  ct_imp:{l:"重要事項",done:r=>rtDone(r.ct_imp),sub:r=>ckDate(r.ct_imp)},
  ct_priv:{l:"個人情報同意書",done:r=>rtDone(r.ct_priv),sub:r=>ckDate(r.ct_priv)},
- pay:{l:"支払い手続き（引落・集金など）",done:r=>r.db_ok==="済"||PAY_OK.test(String(r.db_way||"").trim()),sub:r=>[r.db_way,r.db_ok==="済"?"受理済":r.db_send==="済"?"発送済":r.db_col==="済"?"回収済":r.db_hand==="済"?"お渡し済":""].filter(Boolean).join(" ")},
- mail:{l:"楽々明細のメール取得",done:r=>MAIL_TAG.test(r.biko||""),sub:r=>{const m=String(r.biko||"").match(MAIL_TAG);return m?m[1].trim():""}}};
+ pay:{l:"支払い手続き（引落・集金など）",done:r=>payDone(r),sub:r=>[r.db_way,r.db_ok==="済"?"受理済":r.db_send==="済"?"発送済":r.db_col==="済"?"回収済":r.db_hand==="済"?"お渡し済":""].filter(Boolean).join(" ")},
+ mail:{l:"楽々明細",done:r=>!!meisaiOf(r),sub:r=>{const v=meisaiOf(r);return v&&!String(r.meisai||"").trim()&&/生保|集金/.test(String(r.db_way||""))&&!MAIL_TAG.test(String(r.biko||""))?"領収書不要（"+payWay(r)+"のため）":v}}};
 const RF_FLOW={"新規":["demo","send","conf","ct_doc","ct_check","ct_imp","ct_priv","pay","mail"],"追加":["demo","send","conf","ct_doc","ct_check"],"実費":["demo","conf","ct_doc","pay"]};
 function rtProg(r){if(rtStop(r))return {stop:true,done:true,n:0,all:0,next:null};const ks=RF_FLOW[rtFlow(r)],left=ks.filter(k=>!RF_STEPS[k].done(r));return {n:ks.length-left.length,all:ks.length,next:left[0]||null,done:!left.length}}
 const rtProgHtml=r=>{const p=rtProg(r);return p.stop?`<span class="ac na">デモで終了</span>`:p.done?`<span class="ac ok">完了</span>`:`<span class="meta">${p.n}/${p.all}</span> 次：<b>${esc(RF_STEPS[p.next].l.replace(/（.*$/,""))}</b>`};
@@ -1471,21 +1527,24 @@ const payWay=r=>String(r&&r.db_way||"").trim()==="リコー"?"リトレス":Stri
 /* 借りるか確認で「購入する」：台帳は「購入へ」で閉じ、購入の案件カード（紹介→見積→申請→納品→完了）を作る */
 window.rtBuy=async(id,b)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;if(!confirm("レンタルではなく購入にしますか？（台帳はここで閉じて、購入の案件カードを作ります）"))return;if(b)b.disabled=true;
  const o=DB.offices.find(x=>x.name===r.officeName),row=newCaseRow({clientName:String(r.cname||"").trim(),office:o?o.id:"",type:"購入",title:(String(r.item||"").trim()||"購入").slice(0,20)});row.next="台帳:"+r.id;
- try{await persist([{table:"rentals",row:{id,jflag:"購入へ"}},{table:"cases",row},clog(row.id,"作成","レンタル台帳から購入に切り替え"+(r.item?"："+r.item:""))]);buzz(60);toast("購入の案件カードを作りました");render()}
+ try{await persist([{table:"rentals",row:{id,jflag:"購入へ",confDate:r.confDate||today()}},{table:"cases",row},clog(row.id,"作成","レンタル台帳から購入に切り替え"+(r.item?"："+r.item:""))]);buzz(60);toast("購入の案件カードを作りました");render()}
  catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
 async function rtPut(id,row){row.id=id;{const r0=(DB.rentals||[]).find(x=>x.id===id);if(r0&&String(r0.db_way||"").trim()==="リコー"&&row.db_way===undefined)row.db_way="リトレス"}try{await persist([{table:"rentals",row}]);buzz(30);render()}catch(e){toast("保存できませんでした："+errText(e))}}
 window.rfTap=(id,k)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;const st=RF_STEPS[k],on=st.done(r),t=today(),row={};
  if(k==="send"){row.rp_sub=on?"":"済";if(!on&&!r.rp_date)row.rp_date=t}
- else if(k==="conf"){row.start=on?"":t}
+ else if(k==="conf"){if(on){if(!confirm("「借りる」を取り消しますか？（確認日・開始日を消します）"))return;row.confDate="";row.start=""}else row.confDate=t}
  else if(k.startsWith("ct_"))row[k]=on?"":"済 "+t;
- else if(k==="pay"){if(on&&PAY_OK.test(String(r.db_way||"").trim())&&r.db_ok!=="済"){toast("方法を選び直すと未完了になります");return}row.db_ok=on?"":"済";if(!on&&!r.db_date)row.db_date=t}
- else if(k==="mail"){const b=String(r.biko||"").replace(MAIL_TAG,"").trim();row.biko=on?b:("【明細メール済 "+md(t)+"】"+(b?" "+b:""))}
+ else if(k==="pay"){const w=payWay(r);if(w&&w!=="要手続"){toast(on?"方法を空にすると未完了に戻ります":"方法を選ぶと済になります");return}row.db_ok=on?"":"済";if(!on&&!r.db_date)row.db_date=t}
+ else if(k==="mail"){toast("右の欄から「楽々明細取得・未確認・領収書不要」を選んでください");return}
  else if(k==="demo"){toast("納品日は下の「詳しく」で入れてください");return}
  rtPut(id,row)};
 window.rfFlow=(id,f)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;const row={kubun:f==="実費"?"実費":f==="追加"?"追加":"新規"};if(f!=="実費"&&r.jflag==="実費")row.jflag="";if(f==="実費"&&!r.jflag)row.jflag="実費";rtPut(id,row)};
 function rfStepRow(r,k,i){const st=RF_STEPS[k],on=st.done(r),sub=st.sub(r);let extra="";
  if(k==="send")extra=`<select class="sim" onchange="rtPut('${r.id}',{rp_send:this.value})">${["","ＦＡＸ","メール","CM渡済","営業持出","提供表"].concat(r.rp_send&&!["ＦＡＸ","メール","CM渡済","営業持出","提供表"].includes(r.rp_send)?[r.rp_send]:[]).map(o=>`<option value="${o}" ${o===(r.rp_send||"")?"selected":""}>${o||"送り方"}</option>`).join("")}</select>`;
- if(k==="conf")extra=`${on?`<input type="date" class="sim" value="${esc(r.start)}" onchange="rtPut('${r.id}',{start:this.value})">`:""}<button class="btn sm" type="button" onclick="if(confirm('借りないことになりましたか？（デモで終了にします）'))rtPut('${r.id}',{jflag:'デモ解約'})">借りない</button><button class="btn sm" type="button" onclick="rtBuy('${r.id}',this)">購入する</button>`;
+ if(k==="conf"){const d0=`<label class="meta" style="display:inline-flex;gap:4px;align-items:center">確認日<input type="date" class="sim" value="${esc(r.confDate||"")}" onchange="rtPut('${r.id}',{confDate:this.value})"></label><label class="meta" style="display:inline-flex;gap:4px;align-items:center">開始日<input type="date" class="sim" value="${esc(r.start||"")}" onchange="rtPut('${r.id}',{start:this.value})"></label>`;
+  extra=(on?d0:`<button class="btn sm primary" type="button" onclick="rtPut('${r.id}',{confDate:today()})">✅ 借りる</button><button class="btn sm" type="button" onclick="if(confirm('借りないことになりましたか？（デモで終了にします）'))rtPut('${r.id}',{jflag:'デモ解約',confDate:today()})">借りない</button>${buyOk(r)?`<button class="btn sm" type="button" onclick="rtBuy('${r.id}',this)">🛒 購入する</button>`:""}`)
+   +`<input class="sim" style="flex:1 1 180px;min-width:140px" placeholder="備考（確認のときのこと）" value="${esc(r.confNote||"")}" onchange="rtPut('${r.id}',{confNote:this.value.trim()})">`}
+ if(k==="mail")extra=`<select class="sim" onchange="rtPut('${r.id}',{meisai:this.value})">${["",...MEISAI_L].map(o=>`<option value="${o}" ${o===String(r.meisai||"").trim()?"selected":""}>${o||(meisaiOf(r)?meisaiOf(r)+"（自動）":"選ぶ")}</option>`).join("")}</select>`;
  if(k==="pay")extra=`<select class="sim" onchange="rtPut('${r.id}',{db_way:this.value})">${(L=>L.concat(payWay(r)&&!L.includes(payWay(r))?[payWay(r)]:[]))(["","口座有","NICOS","ゆうちょ","集金","生保","リトレス","要手続","―"]).map(o=>`<option value="${o}" ${o===payWay(r)?"selected":""}>${o||"方法を選ぶ"}</option>`).join("")}</select>`;
  return `<div class="rfs ${on?"on":""}"><button type="button" class="rfb" onclick="rfTap('${r.id}','${k}')"><span class="rfc">${on?"✓":i+1}</span><span><b>${esc(st.l)}</b>${sub?`<span class="meta"> ${esc(sub)}</span>`:""}</span></button>${extra?`<div class="rfx">${extra}</div>`:""}</div>`}
 function rtSteps(r){const f=rtFlow(r),p=rtProg(r);
@@ -1494,7 +1553,7 @@ function rtSteps(r){const f=rtFlow(r),p=rtProg(r);
  return `<div class="form"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between"><div class="seg">${Object.keys(RF_L).map(k=>`<button type="button" class="${f===k?"on":""}" onclick="rfFlow('${r.id}','${k}')">${RF_L[k]}</button>`).join("")}</div>
   <div>${p.done?`<span class="ac ok" style="font-size:16px">✓ 完了</span>`:`<span class="meta">${p.n} / ${p.all} 済</span>`}</div></div>
   <div class="rfl">${RF_FLOW[f].map((k,i)=>rfStepRow(r,k,i)).join("")}</div>
-  <div class="meta">押すと ✓ になり、日付が入ります。もう一度押すと取り消せます。</div></div>`}
+  <div class="meta">押すと ✓ になり、日付が入ります。もう一度押すと取り消せます。支払いは方法を選ぶと、楽々明細はどれかを選ぶと済になります。</div></div>`}
 function rtDetail(){const isNew=S.rtOpen==="new",r=isNew?{id:"",deliv:today(),input:"",staff:""}:(DB.rentals||[]).find(x=>x.id===S.rtOpen);
  if(!r)return `<div class="empty">見つかりません <button class="btn sm" onclick="S.rtOpen=null;render()">戻る</button></div>`;
  const a=isNew?null:rtAlerts(r),u=r.client?clientOf(r.client):null,h=u?hospOf(u.id):null;
@@ -2950,14 +3009,14 @@ function render(){
  const gated=MODE==="setup"||(MODE==="live"&&(!USER||S.loading));
  document.querySelector(".tabs").hidden=gated;sim.hidden=gated||MODE==="live";
  {const jm=MODE==="live"&&jimuMode(),lb=jm?"アスポート 事務所":"アスポート 営業用";$("#brandSub").textContent=MODE==="demo"?lb+" ・ デモ（ダミーデータ）":USER?lb+" ・ "+USER.name:lb;const bm=$("#bMode");if(bm)bm.hidden=!jm;
-  const mb=$("#modeBtn");if(mb){mb.hidden=!(MODE==="live"&&USER&&USER.role==="admin"&&!S.loading);mb.textContent=jm?"🚗 営業の画面へ":"🏢 事務所の画面へ"}}
+  const mb=$("#modeBtn");if(mb){mb.hidden=!(MODE==="live"&&USER&&USER.role==="admin"&&!S.loading);mb.innerHTML=jm?"🚗 営業<span class=\"ml\">の画面へ</span>":"🏢 事務<span class=\"ml\">所の画面へ</span>"}document.body.classList.toggle("jmm",!!jm)}
  if(MODE==="setup"){$("#app").innerHTML=viewSetup();return}
  if(gated){$("#app").innerHTML=viewLogin();renderGisButton();return}
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));jimuTabsUpd();
  if((isJimu()||(JIMU_URL&&seeJimu()&&!S.jimuInit))&&["visit","cards","sched"].includes(S.view)){S.view="jimu";S.jimuInit=true}
  document.body.classList.toggle("wide",S.view==="jimu");
  if(S.view==="jimu"&&!seeJimu())S.view="visit";
- {const tj=$("#t-jimu");if(tj)tj.hidden=!seeJimu();["t-jledger","t-jhosp","t-jcl","t-jreq"].forEach(id=>{const t=$("#"+id);if(t)t.hidden=!(seeJimu()&&jimuMode())});["t-visit","t-cards","t-sched"].forEach(id=>{const t=$("#"+id);if(t)t.hidden=isJimu()})}
+ {const tj=$("#t-jimu");if(tj)tj.hidden=!seeJimu();["t-jledger","t-jhosp","t-jcl","t-jreq"].forEach(id=>{const t=$("#"+id);if(t)t.hidden=!(seeJimu()&&jimuMode())});["t-visit","t-cards","t-sched"].forEach(id=>{const t=$("#"+id);if(t)t.hidden=isJimu()||(MODE==="live"&&jimuMode())});if(tj&&MODE==="live"&&!jimuMode())tj.hidden=true}
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));jimuTabsUpd();
  if(S.view==="case"&&!(DB.cases||[]).some(c=>c.id===S.caseId))S.view="log";
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===(S.view==="case"?"log":S.view)));jimuTabsUpd();
