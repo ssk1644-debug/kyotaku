@@ -596,7 +596,7 @@ function viewVisit(){
  <div class="split">
   <div>
    <div class="section-t"><h2>担当利用者の近況</h2><span class="meta">${S.selCm&&DB.cms.find(c=>c.id===S.selCm)?esc(DB.cms.find(c=>c.id===S.selCm).name)+" さん担当 ・ <a href='#' onclick='S.selCm=null;render();return false'>全員を表示</a>":"この居宅の全CM"}</span></div>
-   ${(L=>L.length?`<div class="hospl" style="margin-bottom:8px">🏥 この居宅で入院・入所中 ${L.length}人：${L.map(h=>`${esc(hmName(h))}${h.inDate?"（"+md(h.inDate)+"〜）":""}`).join("、")}</div>`:"")((DB.hosp||[]).filter(h=>h.state!=="削除"&&hospOpen(h)&&hmInfo(h).o&&hmInfo(h).o.id===o.id))}
+   ${offHospBox(o)}
    <div class="clients">${clients.map(u=>{const [l,c]=stLabel[u.status]||stLabel.ok;const cm=DB.cms.find(x=>x.id===u.cm)||{name:""};
      const h=hospOf(u.id);
      return `<div class="client ${h?"inhosp":""}"><div><span class="nm">${esc(u.name)}</span> <span class="meta">${esc(u.lv)}${cm.name?" ・ CM "+esc(cm.name.split(" ")[0]):""}</span></div>
@@ -613,6 +613,15 @@ function viewVisit(){
   ${canAdmin()?`<label>状態 <select class="sim" onchange="setOfficeStatus('${o.id}',this.value,this)">${["稼働","利用者なし","閉鎖","非表示"].map(v=>`<option ${v===ost(o)?"selected":""}>${v}</option>`).join("")}</select></label>`:""}
  </details>`;
 }
+/* 居宅情報：この居宅の入院・入所中の利用者（CMを選んでいればそのCMの担当だけ）。長い順、30日超・60日超に印 */
+function offHospBox(o){const sc=S.selCm?DB.cms.find(c=>c.id===S.selCm):null;
+ let L=(DB.hosp||[]).filter(h=>hospOpen(h)&&hmInfo(h).o&&hmInfo(h).o.id===o.id);
+ if(sc)L=L.filter(h=>{const i=hmInfo(h);return i.u&&i.u.cm?i.u.cm===sc.id:pnorm(i.cm)===pnorm(sc.name)});
+ if(!L.length)return "";L=L.map(h=>({h,d:hmDays(h.inDate,"")})).sort((a,b)=>(b.d??-1)-(a.d??-1));
+ const mk=d=>d==null?"":d>=60?`<span class="status st-alert" style="margin-left:4px">⚠ 長期 2か月超</span>`:d>=30?`<span class="status st-warn" style="margin-left:4px">⏳ 1か月超</span>`:"";
+ const lg=L.filter(x=>x.d!=null&&x.d>=30).length;
+ return `<div class="form" style="margin-bottom:10px;border-color:#8e44ad"><b style="color:#8e44ad">🏥 ${sc?esc(sc.name)+" さん担当で":"この居宅で"}入院・入所中 ${L.length}人</b>${lg?` <span class="meta">（うち1か月超 ${lg}人）</span>`:""}
+ <div class="log" style="margin-top:6px">${L.map(({h,d})=>{const i=hmInfo(h);return `<div class="logi"><b>${esc(hmName(h))}</b> <span class="meta">${esc(h.kind||"入院")}${h.inDate?" ・ "+esc(md(h.inDate))+"〜":""}${d!=null?" ・ <b>"+d+"日目</b>":""}${h.outPlan?" ・ 退院予定 "+esc(md(h.outPlan)):""}${i.cm&&!sc?" ・ CM "+esc(i.cm):""}</span>${mk(d)}${h.reason?`<div class="meta">${esc(h.reason)}</div>`:""}</div>`}).join("")}</div></div>`}
 function cmCard(c){
  const card=cardOf(c.id);const last=DB.records.filter(r=>r.cm===c.id).sort((a,b)=>b.date.localeCompare(a.date))[0];
  const n=DB.clients.filter(u=>u.cm===c.id).length;
