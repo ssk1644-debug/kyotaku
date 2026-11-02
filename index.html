@@ -1177,23 +1177,19 @@ function addFound(d,rec,office,cm,date){d=d||{};
   return {cname:String(x.client||""),client:u?u.id:"",kind:x.kind==="退院"?"退院":"入院",date:dt(x.date)||(x.kind==="退院"?"":date||""),outPlan:dt(x.outPlan),note:String(x.note||"").trim(),on:true}});
  const items=ev.map(e=>({t:e.title,date:e.date,time:e.start,place:e.place,def:"sched",st:""})).concat(rq.map(x=>({t:x.text,date:"",def:"jimu",st:""})));
  const nx=String(d.next||"").trim();if(nx&&!items.some(x=>x.t===nx))items.push({t:nx,date:"",def:/事務|FAX|ＦＡＸ|書類を送|手配/.test(nx)?"jimu":"sched",st:""});
- const fe={id:newId("f"),rec,office,cm,date,events:[],reqs:[],cases:cs,hosp:[],hospAuto:hs.length,items,sent:false};
- if(items.length||hs.length||cs.length)FOUND.push(fe);if(hs.length)hospAuto(hs,office,cm,date,rec,fe)}
+ const ha=hs.length?hospAuto(hs,office,cm,date,rec):0;
+ if(items.length||ha||cs.length)FOUND.push({id:newId("f"),rec,office,cm,date,events:[],reqs:[],cases:cs,hosp:[],hospAuto:ha,items,sent:false})}
 /* 入院・退院の話は「確認待ち」で入退院表へ自動で入れる。利用者は名前だけなので候補を探し、1人にしぼれたときだけ仮に入れる */
 function hospCands(cname,office,cm){const w=pnorm(String(cname||"").replace(/様$/,""));if(!w)return [];
  return DB.clients.map(u=>{const p=pnorm(nmBare(u.name).replace(/ 様$/,"")),pf=pnorm(nmOnly(u.name).replace(/ 様$/,""));if(!(p&&(p.includes(w)||w.includes(p)||(pf&&w.includes(pf)))))return null;
   return {u,s:1+(cm&&u.cm===cm?4:0)+(office&&clOffice(u)===office?2:0)+(p===w||pf===w?1:0)}}).filter(Boolean).sort((a,b)=>b.s-a.s)}
 function hospBest(cname,office,cm){const cs=hospCands(cname,office,cm);return cs.length&&(!cs[1]||cs[0].s>cs[1].s)?cs[0].u:null}
-function hospAuto(hs,office,cm,date,rec,fe){const now=new Date().toISOString(),c=DB.cms.find(x=>x.id===cm),ops=[];
+function hospAuto(hs,office,cm,date,rec){const now=new Date().toISOString(),c=DB.cms.find(x=>x.id===cm),ops=[];
  hs.forEach(x=>{const u=hospBest(x.cname,office,cm),out=x.kind==="退院";
   ops.push({table:"hosp",row:{id:newId("h"),client:u?u.id:"",clientName:x.cname,office:u?clOffice(u):(office||""),kind:"入院",contactAt:date||today(),contactFrom:c?c.name:"",
    inDate:out?"":(x.date||date||today()),outPlan:x.outPlan||"",outDate:out?(x.date||date||today()):"",note:x.note||"",reason:out?"（退院の知らせ）":"",source:"AI（会話の記録）"+(rec?" "+rec:""),state:"確認待ち",by:myId(),byName:USER?USER.name:"デモ",createdAt:now}})});
- fe=fe||{};fe.hospOps=ops;if(ops.length)hospAutoSave(fe);
+ if(ops.length)persist(ops).then(()=>{try{render()}catch(e){}}).catch(e=>toast("入院の知らせを入れられませんでした："+errText(e)));
  return ops.length}
-/* 自動登録の保存：終わってから「入れました」を出す。失敗したら赤で出して、もう一度入れられるように */
-function hospAutoSave(fe){fe.hospSt="busy";fe.hospErr="";const rr=()=>{try{render()}catch(e){}};rr();
- persist(fe.hospOps).then(()=>{fe.hospSt="ok";rr()}).catch(e=>{fe.hospSt="err";fe.hospErr=errText(e);toast("入院の知らせを入退院表に入れられませんでした："+fe.hospErr);rr()})}
-window.haRetry=id=>{const fe=FOUND.find(x=>x.id===id);if(fe&&fe.hospOps&&fe.hospSt!=="busy")hospAutoSave(fe)};
 const hospPend=()=>(DB.hosp||[]).filter(h=>h.state==="確認待ち");
 function hospPendBox(){const ps=hospPend();if(!ps.length)return "";
  return `<div class="form hpend" style="margin-bottom:10px"><b>⚠ 確認待ちの入院・退院 ${ps.length}件</b><div class="meta">AIがケアマネとの会話から見つけて入れました。利用者は名前だけで探しているので、合っているか確かめてください。確かめるまで「入院中」の数には入りません。</div>
@@ -1226,7 +1222,7 @@ function fcardsHtml(f,fi){const o=DB.offices.find(x=>x.id===f.office),cm=DB.cms.
  return `<div class="form found" style="border-color:var(--accent);margin:8px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>記録を保存しました。${its.length?"会話から "+its.length+"件 見つかりました":""}</b></div>
  <div class="meta">${esc(o?o.name:"")}${cm?" ・ "+esc(cm.name):""} ・ ${esc(f.date)} の記録から ・ AIのおすすめに色が付いています</div>
  ${(f.cases||[]).length?fcHtml(f,fi):""}
- ${(f.hosp||[]).length?fhHtml(f,fi):""}${f.hospAuto?`<div style="margin-top:8px"><b>🏥 入院・退院の知らせ</b>${f.hospSt==="err"?`<div class="meta" style="color:var(--alert);font-weight:700">⚠ ${f.hospAuto}件を入退院表に入れられませんでした（${esc(f.hospErr||"")}）</div><button class="btn sm" type="button" onclick="haRetry('${f.id}')">もう一度入れる</button>`:f.hospSt==="busy"?`<div class="meta">⏳ ${f.hospAuto}件を入退院表に入れています…</div>`:`<div class="meta">✅ ${f.hospAuto}件を「確認待ち」で入退院表に入れました。利用者が合っているかは、入退院表（事務所）で確認します。</div>`}</div>`:""}
+ ${(f.hosp||[]).length?fhHtml(f,fi):""}${f.hospAuto?`<div style="margin-top:8px"><b>🏥 入院・退院の知らせ</b><div class="meta">✅ ${f.hospAuto}件を「確認待ち」で入退院表に入れました。利用者が合っているかは、入退院表（事務所）で確認します。</div></div>`:""}
  ${its.map((x,i)=>x.st?`<div class="logi"><span class="meta">${lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}</div>`:`<div class="fcard">
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="date" value="${esc(x.date||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].date=this.value" aria-label="日付"><span class="meta">${x.date?"":"日付なしでも入れられます"}</span></div>
   <textarea rows="2" oninput="FOUND[${fi}].items[${i}].t=this.value">${esc(x.t)}</textarea>
@@ -1365,7 +1361,7 @@ function rtAlerts(r){const o=rtAlerts0(r);if(isD(r.deliv)&&r.deliv<RT_FROM)Objec
 const rtDone=v=>/済|✓|○|完了/.test(String(v||""));
 const rtKei=r=>["追加","交換","切り替え","ﾒﾝﾃ交換","メンテ交換"].includes(String(r.kubun||"").trim())||/既契約/.test([r.note2,r.memo,r.biko].join(" "));
 const rtJh=r=>r.jflag==="実費"||r.kubun==="実費"||/実費/.test(String(r.own||""));
-function rtAlerts0(r){const out={},d=daysFrom(r.deliv),stop=r.jflag==="中止"||r.jflag==="デモ解約",jh=rtJh(r),kei=rtKei(r);
+function rtAlerts0(r){const out={},d=daysFrom(r.deliv),stop=r.jflag==="中止"||r.jflag==="デモ解約"||r.jflag==="購入へ",jh=rtJh(r),kei=rtKei(r);
  out.in=stop?{k:"na",t:"―"}:String(r.input||"").trim()==="有"||String(r.input||"").trim()==="―"?{k:"ok",t:r.input}:!String(r.input||"").trim()?{k:"r",t:"未入力"}:{k:"w",t:r.input};
  out.rp=stop||jh||NAV(r.rp_print)?{k:"na",t:r.rp_print||"―"}:r.rp_sub==="済"||(/FAX|ＦＡＸ|メール|CM渡済|提供表/.test(r.rp_send||"")&&!/予定/.test(r.rp_send||""))?{k:"ok",t:(r.rp_sub==="済"?"提出済":r.rp_send)+(r.rp_date?" "+md(r.rp_date):"")}:{k:lvl(d,RT_RULE.rp)||"w",t:"未提出"+(d!=null?"（"+d+"日）":"")};
  {const need=jh?[["ct_doc","契約書"]]:kei?[["ct_doc","契約書"],["ct_check","確認ｼｰﾄ"]]:[["ct_doc","契約書"],["ct_check","確認ｼｰﾄ"],["ct_imp","重要事項"],["ct_priv","個人情報"]],left=need.filter(([k])=>!rtDone(r[k])).map(x=>x[1]),tag=jh?"実費・":kei?"既契約・":"";
@@ -1426,9 +1422,9 @@ function rtLedger(){const rs=rtList(),st=rtStaffs();
 const RT_FIELDS=[["deliv","納品日","date"],["input","ケアレンツ入力","sel:有,―,ロング,入院中,申請中,新規申請中,無し"],["start","レンタル開始","date"],["jflag","実費・中止","sel:,実費,中止,デモ解約,済,保留"],["cname","利用者","text"],["item","品目","sel:ベット,ベット付属,車椅子,車付属,歩行器,手すり,杖,スロープ,床ずれ予防,体位変換,徘徊,リフト,吸引器"],["officeName","居宅","office"],["cmName","担当CM","text"],["staff","担当営業","staff"],["own","自社レン","sel:自社,他社,混合, 自社（実費）"],["kubun","区分","sel:新規,追加,交換,実費,切り替え,ﾒﾝﾃ交換,再新規,―"]];
 const RT_TG=[["報告書",[["rp_print","印刷"],["rp_sub","提出"]],[["rp_send","持出・FAX","sel:,ＦＡＸ,FAX予定分,ﾃﾞﾓ中FAX,予定分,提供表,メール,CM渡済,営業持出"],["rp_date","提出日","date"]]],
  ["契約書",[["ct_print","印刷"],["ct_doc","契約書"],["ct_check","確認ｼｰﾄ"],["ct_imp","重要事項"],["ct_priv","個人情報"]],[["ct_done","済み","sel:,完了,途中,契約のみ,至急,保留"]]],
- ["引落",[["db_hand","お渡し"],["db_col","回収"],["db_send","発送"],["db_ok","受理"]],[["db_way","方法","sel:,口座有,NICOS,ゆうちょ,集金,生保,リコー,要手続,―"],["db_date","発送日","date"]]],
+ ["引落",[["db_hand","お渡し"],["db_col","回収"],["db_send","発送"],["db_ok","受理"]],[["db_way","方法","sel:,口座有,NICOS,ゆうちょ,集金,生保,リトレス,要手続,―"],["db_date","発送日","date"]]],
  ["その他",[["plan","提供表反映"]],[["note2","注意事項","sel:,計画書済,承諾済,作成済"],["memo","左のメモ","text"],["biko","備考","text"]]]];
-function rtInput(f,val){const [k,l,t]=f,id="rt-"+k;
+function rtInput(f,val){const [k,l,t]=f,id="rt-"+k;if(k==="db_way"&&String(val||"").trim()==="リコー")val="リトレス";
  if(t==="date")return `<label>${l}<input id="${id}" type="${isD(val)||!val?"date":"text"}" value="${esc(val||"")}"></label>`;
  if(t&&t.startsWith("sel:")){const ops=t.slice(4).split(",");if(val&&!ops.includes(val))ops.push(val);return `<label>${l}<select id="${id}">${ops.map(o=>`<option value="${esc(o)}" ${o===(val||"")?"selected":""}>${esc(o||"（なし）")}</option>`).join("")}</select></label>`}
  if(t==="office")return `<label>${l}<input id="${id}" list="rtOff" value="${esc(val||"")}"></label><datalist id="rtOff">${DB.offices.filter(o=>!offGone(o)).map(o=>`<option value="${esc(o.name)}">`).join("")}</datalist>`;
@@ -1440,7 +1436,7 @@ function rtInput(f,val){const [k,l,t]=f,id="rt-"+k;
    実費：デモ→借りるか確認→契約書→支払い手続き（既契約者なら方法を「―」） */
 const RF_L={"新規":"新規","追加":"既契約者の追加","実費":"実費"};
 const rtFlow=r=>rtJh(r)?"実費":rtKei(r)?"追加":"新規";
-const rtStop=r=>r.jflag==="中止"||r.jflag==="デモ解約";
+const rtStop=r=>r.jflag==="中止"||r.jflag==="デモ解約"||r.jflag==="購入へ";
 const MAIL_TAG=/【明細メール済([^】]*)】/;
 const PAY_OK=/口座有|集金|生保|^―$|^-$/;
 const ckDate=v=>{const m=String(v||"").match(/(\d{4}-\d{2}-\d{2})/);return m?md(m[1]):""};
@@ -1457,7 +1453,14 @@ const RF_STEPS={
 const RF_FLOW={"新規":["demo","send","conf","ct_doc","ct_check","ct_imp","ct_priv","pay","mail"],"追加":["demo","send","conf","ct_doc","ct_check"],"実費":["demo","conf","ct_doc","pay"]};
 function rtProg(r){if(rtStop(r))return {stop:true,done:true,n:0,all:0,next:null};const ks=RF_FLOW[rtFlow(r)],left=ks.filter(k=>!RF_STEPS[k].done(r));return {n:ks.length-left.length,all:ks.length,next:left[0]||null,done:!left.length}}
 const rtProgHtml=r=>{const p=rtProg(r);return p.stop?`<span class="ac na">デモで終了</span>`:p.done?`<span class="ac ok">完了</span>`:`<span class="meta">${p.n}/${p.all}</span> 次：<b>${esc(RF_STEPS[p.next].l.replace(/（.*$/,""))}</b>`};
-async function rtPut(id,row){row.id=id;try{await persist([{table:"rentals",row}]);buzz(30);render()}catch(e){toast("保存できませんでした："+errText(e))}}
+/* 引落の方法「リコー」は「リトレス」に変わった（古いデータも表示はリトレス、触ったときに置き換え） */
+const payWay=r=>String(r&&r.db_way||"").trim()==="リコー"?"リトレス":String(r&&r.db_way||"").trim();
+/* 借りるか確認で「購入する」：台帳は「購入へ」で閉じ、購入の案件カード（紹介→見積→申請→納品→完了）を作る */
+window.rtBuy=async(id,b)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;if(!confirm("レンタルではなく購入にしますか？（台帳はここで閉じて、購入の案件カードを作ります）"))return;if(b)b.disabled=true;
+ const o=DB.offices.find(x=>x.name===r.officeName),row=newCaseRow({clientName:String(r.cname||"").trim(),office:o?o.id:"",type:"購入",title:(String(r.item||"").trim()||"購入").slice(0,20)});row.next="台帳:"+r.id;
+ try{await persist([{table:"rentals",row:{id,jflag:"購入へ"}},{table:"cases",row},clog(row.id,"作成","レンタル台帳から購入に切り替え"+(r.item?"："+r.item:""))]);buzz(60);toast("購入の案件カードを作りました");render()}
+ catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
+async function rtPut(id,row){row.id=id;{const r0=(DB.rentals||[]).find(x=>x.id===id);if(r0&&String(r0.db_way||"").trim()==="リコー"&&row.db_way===undefined)row.db_way="リトレス"}try{await persist([{table:"rentals",row}]);buzz(30);render()}catch(e){toast("保存できませんでした："+errText(e))}}
 window.rfTap=(id,k)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;const st=RF_STEPS[k],on=st.done(r),t=today(),row={};
  if(k==="send"){row.rp_sub=on?"":"済";if(!on&&!r.rp_date)row.rp_date=t}
  else if(k==="conf"){row.start=on?"":t}
@@ -1469,10 +1472,11 @@ window.rfTap=(id,k)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;c
 window.rfFlow=(id,f)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;const row={kubun:f==="実費"?"実費":f==="追加"?"追加":"新規"};if(f!=="実費"&&r.jflag==="実費")row.jflag="";if(f==="実費"&&!r.jflag)row.jflag="実費";rtPut(id,row)};
 function rfStepRow(r,k,i){const st=RF_STEPS[k],on=st.done(r),sub=st.sub(r);let extra="";
  if(k==="send")extra=`<select class="sim" onchange="rtPut('${r.id}',{rp_send:this.value})">${["","ＦＡＸ","メール","CM渡済","営業持出","提供表"].concat(r.rp_send&&!["ＦＡＸ","メール","CM渡済","営業持出","提供表"].includes(r.rp_send)?[r.rp_send]:[]).map(o=>`<option value="${o}" ${o===(r.rp_send||"")?"selected":""}>${o||"送り方"}</option>`).join("")}</select>`;
- if(k==="conf")extra=`${on?`<input type="date" class="sim" value="${esc(r.start)}" onchange="rtPut('${r.id}',{start:this.value})">`:""}<button class="btn sm" type="button" onclick="if(confirm('借りないことになりましたか？（デモで終了にします）'))rtPut('${r.id}',{jflag:'デモ解約'})">借りない</button>`;
- if(k==="pay")extra=`<select class="sim" onchange="rtPut('${r.id}',{db_way:this.value})">${(L=>L.concat(String(r.db_way||"").trim()&&!L.includes(String(r.db_way).trim())?[String(r.db_way).trim()]:[]))(["","口座有","NICOS","ゆうちょ","集金","生保","リコー","要手続","―"]).map(o=>`<option value="${o}" ${o===String(r.db_way||"").trim()?"selected":""}>${o||"方法を選ぶ"}</option>`).join("")}</select>`;
+ if(k==="conf")extra=`${on?`<input type="date" class="sim" value="${esc(r.start)}" onchange="rtPut('${r.id}',{start:this.value})">`:""}<button class="btn sm" type="button" onclick="if(confirm('借りないことになりましたか？（デモで終了にします）'))rtPut('${r.id}',{jflag:'デモ解約'})">借りない</button><button class="btn sm" type="button" onclick="rtBuy('${r.id}',this)">購入する</button>`;
+ if(k==="pay")extra=`<select class="sim" onchange="rtPut('${r.id}',{db_way:this.value})">${(L=>L.concat(payWay(r)&&!L.includes(payWay(r))?[payWay(r)]:[]))(["","口座有","NICOS","ゆうちょ","集金","生保","リトレス","要手続","―"]).map(o=>`<option value="${o}" ${o===payWay(r)?"selected":""}>${o||"方法を選ぶ"}</option>`).join("")}</select>`;
  return `<div class="rfs ${on?"on":""}"><button type="button" class="rfb" onclick="rfTap('${r.id}','${k}')"><span class="rfc">${on?"✓":i+1}</span><span><b>${esc(st.l)}</b>${sub?`<span class="meta"> ${esc(sub)}</span>`:""}</span></button>${extra?`<div class="rfx">${extra}</div>`:""}</div>`}
 function rtSteps(r){const f=rtFlow(r),p=rtProg(r);
+ if(r.jflag==="購入へ")return `<div class="form"><b>🛒 購入に切り替え</b><div class="meta">レンタルではなく購入になった件です。続きは購入の案件カードで進めます。</div>${(c=>c?`<button class="btn sm" type="button" onclick="caseOpen('${c.id}')">🗂 購入の案件カードを開く</button> `:"")((DB.cases||[]).find(c=>c.type==="購入"&&String(c.next||"").includes("台帳:"+r.id)))}<button class="btn sm" type="button" onclick="rtPut('${r.id}',{jflag:''})">取り消す（レンタルの流れに戻す）</button></div>`;
  if(rtStop(r))return `<div class="form"><b>デモで終了（${esc(r.jflag)}）</b><div class="meta">借りないことになった件です。</div><button class="btn sm" type="button" onclick="rtPut('${r.id}',{jflag:''})">取り消す（流れに戻す）</button></div>`;
  return `<div class="form"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between"><div class="seg">${Object.keys(RF_L).map(k=>`<button type="button" class="${f===k?"on":""}" onclick="rfFlow('${r.id}','${k}')">${RF_L[k]}</button>`).join("")}</div>
   <div>${p.done?`<span class="ac ok" style="font-size:16px">✓ 完了</span>`:`<span class="meta">${p.n} / ${p.all} 済</span>`}</div></div>
@@ -1589,6 +1593,11 @@ function jimuHosp(){let hs=hmRows().filter(h=>h.state!=="確認待ち");if(S.hmS
   <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="利用者・理由・居宅・CM・担当で探す" value="${esc(S.hmq||"")}" onchange="S.hmq=this.value;render()"><span class="meta">${hs.length}件${f!=="all"?`（全部で${allN}件。退院・引上げを入れた行は「すべて」に出ます）`:""}</span></div>
  ${S.hmOpen?fullBox(hmForm(),"S.hmOpen=null;render()"):""}
  ${hospPendBox()}
+ <div class="form" style="margin-bottom:10px"><b>📥 ケアレンツの休止データ（Excel）を取り込む</b>
+  <div class="meta">ケアレンツの「レンタル休止」を書き出したExcelを選ぶと、入退院表に一括で入ります。顧客コードと休止開始日で見分けるので、毎月取り込んでも重複しません（終了日が入った件は退院に更新）。</div>
+  <div><label class="btn primary" for="krx" style="display:inline-flex">Excelを選ぶ</label><input type="file" id="krx" accept=".xlsx,.xls,.csv" onchange="krHospRead(this)" style="position:absolute;opacity:0;width:1px;height:1px"> <span class="meta" id="krSt">${esc(S.krSt||"")}</span></div>
+  ${S.krPlan?`<div style="margin-top:6px">${S.krPlan.add}件を新しく、${S.krPlan.upd}件を更新します（休止中 ${S.krPlan.open}件）。<button class="btn primary sm" type="button" onclick="krHospGo(this)">この内容で取り込む</button> <button class="btn sm" type="button" onclick="S.krPlan=null;S.krSt='';render()">やめる</button></div>`:""}</div>
+ ${(S.hsItems||[]).length?`<div class="notice" style="margin-bottom:10px">⚠ スキャンで読み取った <b>${(S.hsItems||[]).length}件</b> がまだ登録されていません。下の表を確認して「登録」を押すまでは保存されず、ページを閉じると消えます。</div>`:""}
  <div class="form" style="margin-bottom:10px"><b>📄 入退院管理表をスキャンして読み取る（画像・PDF、何枚でも）</b>
   <div class="meta">紙の入退院管理表や連絡票をスキャンしたファイルを選ぶと、AIが1行ずつ読み取ります。確認・修正してから登録します。</div>
   <div><label class="btn" for="hsx" style="display:inline-flex">ファイルを選ぶ</label><input type="file" id="hsx" multiple accept="image/*,application/pdf" onchange="hsScan(this)" style="position:absolute;opacity:0;width:1px;height:1px"> <span class="meta" id="hsSt">${esc(S.hsSt||"")}</span></div>
@@ -1643,6 +1652,26 @@ window.hsScan=async inp=>{const fs=[...inp.files];inp.value="";if(!fs.length)ret
     o.unsure=x.unsure===true||String(x.unsure)==="true";const u=matchClient(o.name,"");o.client=u?u.id:"";o.on=!!o.name&&!!(o.inDate||o.contactAt||o.outDate);S.hsItems.push(o)})}
   catch(e){S.hsItems.push({file:f.name,name:"（エラー："+errText(e)+"）",client:"",kind:"入院",on:false,unsure:true})}}
  S.hsSt=`${fs.length}ファイルを読み取りました（${S.hsItems.length}行）。確認して登録してください。`;render()};
+/* ケアレンツ「レンタル休止」Excel → 入退院表（id は 顧客コード＋休止開始日 で固定。何度取り込んでも同じ行を更新） */
+const krKind=t=>/ショート/.test(t)?"ショート":/入所|老健|施設/.test(t)?"入所":"入院";
+const krD=v=>{const x=xd(v);const m=String(x).match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);return m?m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0"):""};
+window.krHospRead=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;S.krPlan=null;S.krSt="読み込み中…";render();
+ try{await loadXlsx();const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});const ws=wb.Sheets[wb.SheetNames.find(n=>/休止/.test(n))||wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{defval:"",raw:true});if(!rows.length||!("顧客コード" in rows[0])||!("休止開始日1" in rows[0]))throw new Error("ケアレンツの「レンタル休止」のExcelではないようです（顧客コード・休止開始日の列がありません）");
+  const g=(r,k)=>String(r[k]==null?"":r[k]).replace(/\u3000/g," ").trim(),ops=[];let add=0,upd=0,open=0;
+  rows.forEach(r=>{const code=g(r,"顧客コード");if(!code)return;const nm=g(r,"顧客名"),kc=g(r,"居宅コード"),o=DB.offices.find(x=>kc&&(String(x.code)===kc||String(x.krCode)===kc))||DB.offices.find(x=>x.name&&x.name===g(r,"居宅名")),cmN=g(r,"ケアマネジャー名");
+   for(let k=1;k<=5;k++){const st=krD(r["休止開始日"+k]);if(!st)continue;const en=krD(r["休止終了日"+k]),why=g(r,"休止理由"+k),id="kr"+code+"-"+st.replace(/-/g,""),ex=(DB.hosp||[]).find(h=>h.id===id);
+    if(ex&&(ex.state==="削除"||ex.pickKind))continue;const cm=o?DB.cms.find(c=>c.office===o.id&&pnorm(c.name)===pnorm(cmN)):null,u=hospBest(nm,o?o.id:"",cm?cm.id:"");
+    const row={id,clientName:nm,officeName:g(r,"居宅名"),kind:krKind(why),inDate:st,outDate:en,reason:why,contactFrom:cmN,state:en?"退院":"入院中",source:"ケアレンツ休止 "+String(xd(r["処理年月"])).slice(0,7),note:"顧客コード "+code+(g(r,"顧客担当者名")?" ・ 担当 "+g(r,"顧客担当者名"):"")};
+    if(o)row.office=o.id;if(u&&!(ex&&ex.client))row.client=u.id;if(!(ex&&ex.inData))row.inData="✓";if(en&&!(ex&&ex.outData))row.outData="✓";if(!ex){row.by=myId();row.byName=USER?USER.name:"デモ";row.createdAt=new Date().toISOString();add++}else upd++;if(!en)open++;
+    ops.push({table:"hosp",row})}});
+  if(!ops.length)throw new Error("取り込める行がありませんでした");S.krPlan={ops,add,upd,open};S.krSt=f.name+" を読みました（"+ops.length+"件）";render()}
+ catch(e){S.krSt="読み込めませんでした："+(e&&e.message||errText(e));render()}};
+window.krHospGo=async b=>{const pl=S.krPlan;if(!pl)return;b.disabled=true;
+ try{for(let i=0;i<pl.ops.length;i+=100){S.krSt="取り込み中… "+Math.min(i+100,pl.ops.length)+" / "+pl.ops.length;const st=$("#krSt");if(st)st.textContent=S.krSt;await persist(pl.ops.slice(i,i+100))}
+  S.krSt="✓ "+pl.ops.length+"件を取り込みました（新規 "+pl.add+"・更新 "+pl.upd+"）";S.krPlan=null;S.hmf="all";buzz(60);render()}
+ catch(e){b.disabled=false;S.krSt="取り込めませんでした："+errText(e);render()}};
+window.addEventListener("beforeunload",e=>{if((S.hsItems||[]).length||S.krPlan){e.preventDefault();e.returnValue="まだ登録していない入退院があります"}});
 window.hsSave=async b=>{const list=(S.hsItems||[]).filter(x=>x.on);if(!list.length){toast("チェックしたものがありません");return}
  const ops=[],now=new Date().toISOString();
  list.forEach(x=>{const u=x.client?clientOf(x.client):null,o=DB.offices.find(y=>y.name===x.officeName);
