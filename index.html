@@ -507,6 +507,7 @@ function onPos(lat,lng,src){
  if(src==="sim"){render();return}
  if(typing()||SC.stage!=="idle"||RC.on)return;
  if(S.view==="list"&&S.listMode==="map"&&!opened)return;
+ if(S.view==="umap"&&!opened)return;
  let moved=true;if(S.view==="list"&&!opened&&!first){const lp=S.lastListPos;moved=!lp||dist(lp.lat,lp.lng,lat,lng)>50}
  if(S.view==="list"&&moved)S.lastListPos={lat,lng};
  if(opened||first||(S.view==="list"&&moved)||(S.view==="visit"&&(!S.office||before!==hereId())))render();
@@ -696,9 +697,15 @@ const lmCal=j=>j.k==="2"||j.k==="3",lmDoc=j=>j.k==="3"||j.k==="4",lmNoCal=j=>/[�
 let LMC={n:-1,m:{}};
 function lmClient(code){if(LMC.n!==DB.clients.length){LMC={n:DB.clients.length,m:{}};DB.clients.forEach(u=>{const k=codeN(u.code);if(k)LMC.m[k]=u})}return LMC.m[codeN(code)]||null}
 function lmRows(){const m={};(DB.caselog||[]).forEach(l=>{if(l.kind!=="地図"||l.state==="削除")return;let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}j.id=l.id;j.code=String(l.case||"").slice(2);m[j.code]=j});return Object.values(m)}
-const lmStaff=j=>{const u=lmClient(j.code);return stUni(j.st||(u&&u.staff)||"")||"（担当なし）"};
+const LM_FIX=[["佐々木","#8b5a2b","@pp"],["荒木","#27ae60","🐱"],["福田","#f1c40f","🧑‍🦱"],["三井","#8e44ad","♦"],["沖藤","#d81b60",""],["郷坪","#4fc3f7","🦦"],["小坂","#f8bbd0","🌸"]];
+const lmStaffIco=n=>{const f=LM_FIX.find(x=>x[0]===n);return f?f[2]:""};
+const lmIcoHtml=(ic,sz)=>ic==="@pp"?`<span style="width:${sz}px;height:${sz}px;border-radius:50%;background:#fff var(--pp-smile) center/contain no-repeat;display:block"></span>`:(ic||"");
+const lmSN=x=>String(x||"").replace(/[\s　]/g,"").replace(/滝/g,"瀧").replace(/阪/g,"坂").replace(/^ササキ|^ｻｻｷ/,"佐々木").replace(/^沖東/,"沖藤").replace(/^長瀧/,"郷坪");
+function lmStaffName(raw){const n=lmSN(raw);if(!n)return "";const ks=LM_FIX.map(x=>x[0]).concat((DB.users||[]).map(u=>lmSN(stUni(u.name))));const k=ks.find(x=>x&&n.startsWith(x));return k||stUni(raw)}
+const lmStaff=j=>{const u=lmClient(j.code);return lmStaffName(j.st||(u&&u.staff)||"")||"（担当なし）"};
+const lmStaffCol=n=>{const f=LM_FIX.find(x=>x[0]===n);if(f)return f[1];const L=lmStaffs().filter(x=>!LM_FIX.some(y=>y[0]===x));return LM_COL[Math.max(0,L.indexOf(n))%LM_COL.length]};
 function lmStaffs(){return [...new Set(lmRows().map(lmStaff))].sort()}
-const lmColor=j=>{if(lmCal(j)||lmNoCal(j))return "#222";const L=lmStaffs();return LM_COL[Math.max(0,L.indexOf(lmStaff(j)))%LM_COL.length]};
+const lmColor=j=>(lmCal(j)||lmNoCal(j))?"#222":lmStaffCol(lmStaff(j));
 const lmName=j=>{const u=lmClient(j.code);return u?String(u.name||"").replace(/\s*様$/,""):String(j.nm||"（名前なし）")};
 const inspDue=j=>j.ins&&daysFrom(j.ins)>=INSP_DAYS;
 function lmAlerts(j){const A=[],hz=(()=>{const u=lmClient(j.code);return u&&hospOf?hospOf(u.id):null})();
@@ -770,22 +777,40 @@ function viewUmap(){const all=lmRows(),L=lmFiltered(),sts=lmStaffs(),y=(all.find
  <div class="seg">${[["todo","カレンダーまだ"],["doc","書類・用事・点検"],["done","済"],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="S.lmF='${k}';render()">${l} ${n(k)}</button>`).join("")}</div>
  <select class="sim" onchange="S.lmSt=this.value;render()"><option value="">担当：全員</option>${sts.map(x=>`<option ${S.lmSt===x?"selected":""}>${esc(x)}</option>`).join("")}</select>
  <div class="seg">${[["near","近い順"],["staff","担当順"],["town","町名順"]].map(([k,l])=>`<button type="button" class="${so===k?"on":""}" onclick="S.lmSo='${k}';render()">${l}</button>`).join("")}</div>
- <input class="search" style="flex:1;min-width:150px;margin:0" placeholder="名前・読み・町名・内容で探す" value="${esc(S.lmQ||"")}" oninput="S.lmQ=this.value;clearTimeout(window.__lq);window.__lq=setTimeout(render,400)"></div>
- <div class="meta" style="margin-bottom:4px">${sts.map((x,i)=>`<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px"><span style="width:11px;height:11px;border-radius:50%;background:${LM_COL[i%LM_COL.length]};display:inline-block"></span>${esc(x)}</span>`).join("")}<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:11px;height:11px;border-radius:50%;background:#222;display:inline-block"></span>カレンダー済</span> ・ ⚠＝書類・用事 ・ ${LM_NEAR}m以内に入ると知らせます</div>
+ <button class="btn sm" type="button" onclick="lmNoteT()">${S.lmHideNote?"📝 備考を表示":"🙈 備考を隠す"}</button>
+ <input class="search" style="flex:1;min-width:150px;margin:0" placeholder="名前・読み・町名・内容で探す" value="${esc(S.lmQ||"")}" oninput="S.lmQ=this.value;clearTimeout(window.__lq);window.__lq=setTimeout(lmListUpd,300)"></div>
+ <div class="meta" style="margin-bottom:4px">${sts.map(x=>`<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px"><span style="width:11px;height:11px;border-radius:50%;background:${lmStaffCol(x)};border:1px solid #999;display:inline-grid;place-items:center;font-size:9px;width:15px;height:15px">${lmIcoHtml(lmStaffIco(x),11)}</span>${esc(x)}</span>`).join("")}<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:11px;height:11px;border-radius:50%;background:#222;display:inline-block"></span>カレンダー済</span> ・ ⚠＝書類・用事 ・ ${LM_NEAR}m以内に入ると知らせます</div>
  <div id="umap" style="height:52vh;min-height:320px;border-radius:12px;border:1px solid var(--line)"><div class="progress" style="padding:20px">地図を読み込み中…</div></div>
- <div class="log" style="margin-top:8px">${L.slice(0,S.lmAll?3000:150).map(j=>{const u=lmClient(j.code),A=lmAlerts(j),d=lmDist(j);return `<div class="logi" style="border-left-color:${lmColor(j)}"><b>${esc(lmName(j))} 様</b> <span class="meta">${esc(lmStaff(j))}${u&&u.town?" ・ "+esc(u.town):""}${d!=null?" ・ "+lmDistT(d):""}${j.v?" ・ 訪問"+esc(j.v)+"回":""}</span> ${lmStateTag(j)}
-  ${A.length?`<div class="meta" style="color:var(--ink)">${A.map(esc).join("　")}</div>`:""}
-  <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${lmCal(j)?`<button class="btn sm" type="button" style="padding:2px 8px" onclick="lmUndo('${j.code}',this)">カレンダーをまだに戻す</button>`:`<button class="btn sm primary" type="button" style="padding:2px 8px" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`}${lmDoc(j)?`<button class="btn sm" type="button" style="padding:2px 8px" onclick="lmDocDone('${j.code}',this)">📄 書類・用事 済</button>`:""}<button class="btn sm" type="button" style="padding:2px 8px" onclick="lmInsp('${j.code}',this)">🔧 点検した</button><button class="btn sm" type="button" style="padding:2px 8px" onclick="lmMemo('${j.code}')">✏ 内容</button>${j.lat!=null?`<a class="btn sm" style="padding:2px 8px" href="https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}" target="_blank" rel="noopener">🧭 道案内</a>`:""}${u&&seeJimu()?`<button class="btn sm" type="button" style="padding:2px 8px" onclick="S.view='jimu';S.jt='cl';S.clOpen='${u.id}';render()">👤 利用者</button>`:""}</div></div>`}).join("")||'<div class="meta">該当なし</div>'}</div>
- ${L.length>150&&!S.lmAll?`<button class="btn sm" type="button" onclick="S.lmAll=true;render()">残り ${L.length-150}人も出す</button>`:""}`:`<div class="empty">まだ取り込まれていません。${seeJimu()?"上の「マイマップを取り込む」から入れてください。":"事務所で取り込むと出ます。"}</div>`}`}
+ <div id="lmList">${lmListHtml()}</div>`:`<div class="empty">まだ取り込まれていません。${seeJimu()?"上の「マイマップを取り込む」から入れてください。":"事務所で取り込むと出ます。"}</div>`}`}
+function lmListHtml(){const q=String(S.lmQ||"").trim();if(!q&&!S.lmShowAll)return `<div class="meta" style="margin-top:8px">名前・読み・町名などで探すと、ここに一覧が出ます。<button class="btn sm" type="button" style="padding:2px 8px" onclick="S.lmShowAll=true;lmListUpd()">一覧を全部出す</button></div>`;
+ const L=lmFiltered();return ` <div class="log" style="margin-top:8px">${L.slice(0,S.lmAll?3000:150).map(j=>{const u=lmClient(j.code),A=lmAlerts(j),d=lmDist(j);return `<div class="logi" style="border-left-color:${lmColor(j)}"><b style="cursor:pointer;text-decoration:underline dotted" onclick="lmDetOpen('${j.code}')">${esc(lmName(j))} 様</b> <span class="meta">${esc(lmStaff(j))}${u&&u.town?" ・ "+esc(u.town):""}${d!=null?" ・ "+lmDistT(d):""}${j.v?" ・ 訪問"+esc(j.v)+"回":""}</span> ${lmStateTag(j)}
+  ${A.length&&!S.lmHideNote?`<div class="meta" style="color:var(--ink)">${A.map(esc).join("　")}</div>`:""}
+  <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${lmCal(j)?`<button class="btn sm" type="button" style="padding:2px 8px" onclick="lmUndo('${j.code}',this)">カレンダーをまだに戻す</button>`:`<button class="btn sm primary" type="button" style="padding:2px 8px" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`}${lmDoc(j)?`<button class="btn sm" type="button" style="padding:2px 8px" onclick="lmDocDone('${j.code}',this)">📄 書類・用事 済</button>`:""}<button class="btn sm" type="button" style="padding:2px 8px" onclick="lmInsp('${j.code}',this)">🔧 点検した</button><button class="btn sm" type="button" style="padding:2px 8px" onclick="lmMemo('${j.code}')">✏ 内容</button>${j.lat!=null?`<a class="btn sm" style="padding:2px 8px" href="https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}" target="_blank" rel="noopener">🧭 道案内</a>`:""}<button class="btn sm" type="button" style="padding:2px 8px" onclick="lmDetOpen('${j.code}')">👤 詳細・電話</button></div></div>`}).join("")||'<div class="meta">該当なし</div>'}</div>
+ ${L.length>150&&!S.lmAll?`<button class="btn sm" type="button" onclick="S.lmAll=true;render()">残り ${L.length-150}人も出す</button>`:""}`}
+window.lmListUpd=()=>{const el=$("#lmList");if(el)el.innerHTML=lmListHtml();if(UMAP)drawUmap()};
+window.lmNoteT=()=>{S.lmHideNote=!S.lmHideNote;try{localStorage.setItem("kyotaku-lm-hidenote",S.lmHideNote?"1":"")}catch(e){}render()};
+try{S.lmHideNote=localStorage.getItem("kyotaku-lm-hidenote")==="1"}catch(e){}
+function lmDetHtml(){if(!S.lmDet)return "";const j=lmRows().find(x=>x.code===S.lmDet);if(!j){S.lmDet=null;return ""}const u=lmClient(j.code)||{},A=lmAlerts(j);
+ const tel=t=>String(t||"").trim()&&String(t).trim()!=="0"?`<a class="btn sm" style="padding:4px 10px" href="tel:${esc(String(t).replace(/[^\d+]/g,""))}">📞 ${esc(t)}</a>`:"";
+ const row=(k,v)=>v?`<dt>${k}</dt><dd style="white-space:pre-wrap">${v}</dd>`:"";const o=u.office?DB.offices.find(x=>x.id===u.office):null;
+ return `<div class="full" role="dialog" aria-modal="true" style="z-index:70"><div class="full-in"><div class="full-bar"><button class="btn" type="button" onclick="S.lmDet=null;render()">← 地図に戻る</button></div>
+ <div class="form"><h2 style="font-size:22px;margin:0">${esc(lmName(j))} 様</h2><div class="meta">${esc(u.kana||"")}${u.lv?" ・ "+esc(u.lv):""} ・ 担当 ${esc(lmStaff(j))} ${lmStateTag(j)}</div>
+ <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">${tel(u.tel)}${tel(u.tel2)}${j.lat!=null?`<a class="btn sm" style="padding:4px 10px" href="https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}" target="_blank" rel="noopener">🧭 道案内</a>`:""}</div>
+ <dl class="kv">${row("住所",esc([u.zip?"〒"+u.zip:"",u.addr].filter(Boolean).join(" ")))}${row("滞在先",esc(u.stay||""))}${row("居宅",esc(o?o.name:(u.officeName||"")))}${row("ケアマネ",esc(u.cmName||""))}${row("用具",esc(u.items||""))}${row("区分",esc(KB_L[j.k||""]||j.k||""))}${row("内容",esc(j.c||""))}${row("注意",esc(j.n||""))}${row("点検",j.ins?esc(md(j.ins))+"（"+daysFrom(j.ins)+"日前）":"")}${row("カレンダー",j.calAt?esc(md(j.calAt))+" "+esc(j.calBy||""):"")}${row("備考",esc(u.note||""))}${row("支払い",esc([u.payWay,u.payOrg].filter(Boolean).join(" ")))}</dl>
+ ${A.length?`<div class="notice" style="margin-top:8px">${A.map(esc).join("<br>")}</div>`:""}
+ <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${lmCal(j)?`<button class="btn" type="button" onclick="lmUndo('${j.code}',this)">カレンダーをまだに戻す</button>`:`<button class="btn primary" type="button" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`}${lmDoc(j)?`<button class="btn" type="button" onclick="lmDocDone('${j.code}',this)">📄 書類・用事 済</button>`:""}<button class="btn" type="button" onclick="lmInsp('${j.code}',this)">🔧 点検した</button><button class="btn" type="button" onclick="lmMemo('${j.code}')">✏ 内容</button></div>
+ ${!u.id?'<div class="meta" style="margin-top:6px">※ 利用者の表（ケアレンツ）にまだ無い人です。電話・住所は利用者を取り込むと出ます。</div>':""}</div></div></div>`}
+window.lmDetOpen=code=>{S.lmDet=code;S.lmPop=null;render()};
 let UMAP=null;
 async function drawUmap(){const el=$("#umap");if(!el)return;try{await loadLeaflet()}catch(e){el.textContent=e.message;return}if(!$("#umap"))return;
  const c=UMAP?UMAP.getCenter():null,z=UMAP?UMAP.getZoom():null;if(UMAP){try{UMAP.remove()}catch(e){}UMAP=null}el.innerHTML="";
  UMAP=L.map(el,{preferCanvas:true});L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(UMAP);
  const L2=lmFiltered().filter(j=>j.lat!=null),pts=[];
  L2.forEach(j=>{const ll=[+j.lat,+j.lng];pts.push(ll);const A=lmAlerts(j),doc=lmDoc(j);
-  const mk=L.circleMarker(ll,{radius:doc?9:7,color:doc?"#8e44ad":"#fff",weight:doc?3:2,fillColor:lmColor(j),fillOpacity:.95}).addTo(UMAP);
-  if(j.c||doc)mk.bindTooltip(esc((doc?"⚠ ":"")+String(j.c||"書類・用事").slice(0,14)),{permanent:true,direction:"right",offset:[8,0],className:"lmtip"});
-  mk.bindPopup(`<b>${esc(lmName(j))} 様</b><br><span style="font-size:12px">${esc(lmStaff(j))} ・ ${esc(KB_L[j.k||""]||"")}</span>${A.length?"<br>"+A.map(esc).join("<br>"):""}<br>${lmCal(j)?`<button type="button" class="btn sm" style="margin-top:6px" onclick="lmUndo('${j.code}',this)">まだに戻す</button>`:`<button type="button" class="btn sm primary" style="margin-top:6px" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`} <button type="button" class="btn sm" style="margin-top:6px" onclick="lmInsp('${j.code}',this)">🔧 点検した</button>`)});
+  const ic=lmStaffIco(lmStaff(j)),col=lmColor(j),done=lmCal(j)||lmNoCal(j);
+  const mk=L.marker(ll,{icon:L.divIcon({className:"",iconSize:[28,28],iconAnchor:[14,14],popupAnchor:[0,-13],html:`<div style="width:28px;height:28px;border-radius:50%;background:${col};border:${doc?"3px solid #8e44ad":"2px solid #fff"};box-shadow:0 1px 3px rgba(0,0,0,.45);display:grid;place-items:center;font-size:15px;line-height:1;color:#fff;">${lmIcoHtml(ic,20)}</div>`})}).addTo(UMAP);
+  if((j.c||doc)&&!S.lmHideNote)mk.bindTooltip(esc((doc?"⚠ ":"")+String(j.c||"書類・用事").slice(0,14)),{permanent:true,direction:"right",offset:[12,0],className:"lmtip"});
+  mk.bindPopup(`<b>${esc(lmName(j))} 様</b><br><span style="font-size:12px">${esc(lmStaff(j))} ・ ${esc(KB_L[j.k||""]||"")}</span>${A.length?"<br>"+A.map(esc).join("<br>"):""}<br>${lmCal(j)?`<button type="button" class="btn sm" style="margin-top:6px" onclick="lmUndo('${j.code}',this)">まだに戻す</button>`:`<button type="button" class="btn sm primary" style="margin-top:6px" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`} <button type="button" class="btn sm" style="margin-top:6px" onclick="lmInsp('${j.code}',this)">🔧 点検した</button> <button type="button" class="btn sm" style="margin-top:6px" onclick="lmDetOpen('${j.code}')">👤 詳細・電話</button>`)});
  if(S.pos){L.circleMarker([S.pos.lat,S.pos.lng],{radius:8,color:"#fff",weight:3,fillColor:"#1e90ff",fillOpacity:1}).addTo(UMAP).bindTooltip("現在地")}
  if(c&&z)UMAP.setView(c,z);else if(S.pos)UMAP.setView([S.pos.lat,S.pos.lng],15);else if(pts.length)UMAP.fitBounds(pts,{padding:[20,20]});else UMAP.setView([34.486,133.362],12)}
 /* 近くに来たら知らせる（アプリを開いている間。同じ人は1日1回） */
@@ -798,7 +823,7 @@ function lmPopHtml(){if(!S.lmPop)return "";const j=lmRows().find(x=>x.code===S.l
  <div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:17px">📍 近くです：${esc(lmName(j))} 様</b><button class="btn sm" type="button" onclick="S.lmPop=null;render()">✕</button></div>
  <div class="meta">${esc(lmStaff(j))}${d!=null?" ・ "+lmDistT(d):""}</div>
  <div style="font-size:16px;margin:6px 0;line-height:1.6">${A.map(esc).join("<br>")}</div>
- <div style="display:flex;gap:6px;flex-wrap:wrap">${lmCal(j)||lmNoCal(j)?"":`<button class="btn primary" type="button" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`}<button class="btn" type="button" onclick="lmInsp('${j.code}',this);S.lmPop=null">🔧 点検した</button><button class="btn" type="button" onclick="S.lmPop=null;S.view='umap';render()">🗺 マップ</button></div></div>`}
+ <div style="display:flex;gap:6px;flex-wrap:wrap">${lmCal(j)||lmNoCal(j)?"":`<button class="btn primary" type="button" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`}<button class="btn" type="button" onclick="lmInsp('${j.code}',this);S.lmPop=null">🔧 点検した</button><button class="btn" type="button" onclick="lmDetOpen('${j.code}')">👤 詳細・電話</button></div></div>`}
 
 /* ===== 営業支援：デモ中・開始直後と「話のネタ」 ===== */
 const NEW_DAYS=14;
@@ -1847,7 +1872,7 @@ function clForm(){const isNew=S.clOpen==="new",u=isNew?{name:"",lv:"",items:""}:
 const telHref=t=>String(t||"").replace(/[^0-9+]/g,"");
 const mapHref=a=>"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(String(a||"").trim().split(/[\s　]+/)[0]);
 function clContact(u){const t=u.tel||u.tel2;if(!t&&!u.addr)return "";return `<div class="meta" style="grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap">${t?`<a class="btn sm" href="tel:${esc(telHref(t))}">📞 ${esc(t)}</a>`:""}${u.addr?`<a class="btn sm" href="${esc(mapHref(u.addr))}" target="_blank" rel="noopener">🗺 地図</a>`:""}</div>`}
-function clDetail(u){const L=[["顧客コード",u.code],["状態",u.useState?(u.useState+(u.billMonth?"（"+u.billMonth+" の請求）":"")):""],["住所",u.addr],["電話",u.tel],["連絡先",u.tel2],["滞在先",u.stay],["担当CM",u.cmName],["担当営業",u.staff],["引落",[u.payWay,u.payOrg].filter(Boolean).join(" ・ ")],["備考",(canAdmin()||isJimu())?u.note:""]].filter(x=>String(x[1]||"").trim());
+function clDetail(u){const L=[["顧客コード",u.code],["状態",u.useState?(u.useState+(u.billMonth?"（"+u.billMonth+" の請求）":"")):""],["住所",u.addr],["電話",u.tel],["連絡先",u.tel2],["滞在先",u.stay],["担当CM",u.cmName],["担当営業",u.staff],["引落",[u.payWay,u.payOrg].filter(Boolean).join(" ・ ")],["備考",u.note]].filter(x=>String(x[1]||"").trim());
  const reqB=`<div style="margin-top:8px"><button class="btn primary" type="button" onclick="caseFromClient('${u.id}')">📞 依頼を受けた（タスクカードを作る）</button></div>`;
  if(!L.length)return u.id?reqB:"";return `${u.id?reqB:""}<div class="form" style="margin-top:10px"><b>ケアレンツの情報</b><dl class="kv">${L.map(([k,v])=>`<dt>${k}</dt><dd style="white-space:pre-wrap">${k==="電話"||k==="連絡先"?`<a href="tel:${esc(telHref(v))}">${esc(v)}</a>`:k==="住所"?`${esc(v)} <a href="${esc(mapHref(v))}" target="_blank" rel="noopener">地図</a>`:esc(v)}</dd>`).join("")}</dl></div>`}
 const kcG=(r,k)=>String(r[k]==null?"":r[k]).replace(/　/g," ").replace(/\s+/g," ").trim();
@@ -3547,7 +3572,7 @@ function render(){
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===(S.view==="case"?"log":S.view)));jimuTabsUpd();
  const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog,sched:viewSched,settings:viewSettings,fb:viewFb,neta:viewNeta,umap:viewUmap,jimu:viewJimu,case:viewCase,chat:viewChat}[S.view]();
  if(MAP&&!(S.view==="list"&&S.listMode==="map")){try{MAP.remove()}catch(e){}MAP=null}
- $("#app").innerHTML=pushNag()+lmPopHtml()+(S.view==="visit"||S.view==="log"?pendBox():"")+v+(MODE==="demo"?`<p class="demo">デモ：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`:`<p class="demo">データは会社のスプレッドシートに保存されます。すぐ開けるよう前回の内容と保存前の録音をこの端末に覚えています（ログアウトで消えます）。</p>`);
+ $("#app").innerHTML=pushNag()+lmPopHtml()+lmDetHtml()+(S.view==="visit"||S.view==="log"?pendBox():"")+v+(MODE==="demo"?`<p class="demo">デモ：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`:`<p class="demo">データは会社のスプレッドシートに保存されます。すぐ開けるよう前回の内容と保存前の録音をこの端末に覚えています（ログアウトで消えます）。</p>`);
 }
 const _render=render;render=function(){_render();if(S.view==="list"&&S.listMode==="map"&&$("#map"))drawMap();if(S.view==="umap"&&$("#umap"))drawUmap();else if(UMAP){try{UMAP.remove()}catch(e){}UMAP=null}};
 /* スマホの「戻る」でアプリ内のひとつ前の画面に戻る（最初の画面では2回押すと終了） */
