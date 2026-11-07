@@ -726,11 +726,17 @@ const lmDistT=d=>d==null?"":d<1000?Math.round(d)+"m":(d/1000).toFixed(1)+"km";
 const LM_VAR={"髙":"高","﨑":"崎","嵜":"崎","碕":"崎","邊":"辺","邉":"辺","齋":"斉","齊":"斉","斎":"斉","澤":"沢","濱":"浜","嶋":"島","嶌":"島","廣":"広","德":"徳","槇":"槙","冨":"富","峯":"峰","櫻":"桜","國":"国","眞":"真","惠":"恵","龍":"竜","瀧":"滝","藏":"蔵","實":"実","壽":"寿","淺":"浅","增":"増","黑":"黒","榮":"栄","圓":"円","關":"関","條":"条","兒":"児","萬":"万","莊":"荘","昻":"昂","曻":"昇","晉":"晋","戶":"戸","靜":"静","淸":"清","彌":"弥","𠮷":"吉","槗":"橋","髟":"髟","邨":"村","塚":"塚","﨣":"","ヶ":"ケ","ヵ":"カ","ゑ":"え","ゐ":"い"};
 const lmK=s=>snorm([...String(s||"").normalize("NFKC")].map(c=>LM_VAR[c]!=null?LM_VAR[c]:c).join("").replace(/様$/,""));
 function lmHay(j){const u=lmClient(j.code)||{};return [lmName(j),j.nm,u.kana,u.town,u.addr,u.tel,u.tel2,j.code,j.c,j.n,u.note,lmStaff(j)].map(lmK).join("|")}
-function lmBase(){let L=lmRows();const st=S.lmSt||"",f=S.lmF||"todo";
+const lmMe=()=>{if(!USER)return "";const n=lmStaffName(USER.name);return lmStaffs().includes(n)?n:""};
+const lmStE=()=>S.lmSt==="@me"?lmMe():(S.lmSt||"");
+window.lmStSet=v=>{S.lmSt=v;S.lmAll=false;try{localStorage.setItem("kyotaku-lm-st",v)}catch(e){}render()};
+try{const v=localStorage.getItem("kyotaku-lm-st");S.lmSt=v==null?"@me":v}catch(e){S.lmSt="@me"}
+try{S.lmQAll=localStorage.getItem("kyotaku-lm-qall")!=="0"}catch(e){S.lmQAll=true}
+window.lmQAllT=()=>{S.lmQAll=!S.lmQAll;try{localStorage.setItem("kyotaku-lm-qall",S.lmQAll?"1":"0")}catch(e){}if(S.lmQ){S.lmFit=true}render()};
+function lmBase(){let L=lmRows();const st=lmStE(),f=S.lmF||"todo";
  if(st)L=L.filter(j=>lmStaff(j)===st);
  if(f==="todo")L=L.filter(j=>!lmCal(j)&&!lmNoCal(j));else if(f==="doc")L=L.filter(j=>lmDoc(j)||inspDue(j));else if(f==="done")L=L.filter(j=>lmCal(j));return L.slice()}
 function lmFiltered(){const q=String(S.lmQ||"").trim();let L;
- if(q){const ks=q.split(/[\s　]+/).map(lmK).filter(Boolean);L=lmRows().filter(j=>{const h=lmHay(j);return ks.every(k=>h.includes(k))})}else L=lmBase();
+ if(q){const ks=q.split(/[\s　]+/).map(lmK).filter(Boolean),st=lmStE();L=(S.lmQAll||!st?lmRows():lmRows().filter(j=>lmStaff(j)===st)).filter(j=>{const h=lmHay(j);return ks.every(k=>h.includes(k))})}else L=lmBase();
  const so=S.lmSo||(S.pos?"near":"staff");
  if(so==="near"&&S.pos)L.sort((a,b)=>(lmDist(a)??1e9)-(lmDist(b)??1e9));
  else if(so==="town")L.sort((a,b)=>String((lmClient(a.code)||{}).town||"").localeCompare(String((lmClient(b.code)||{}).town||""),"ja"));
@@ -777,26 +783,29 @@ window.lmImport=async b=>{const pg=$("#lm-geo");if(pg&&pg.checked&&S.lmPlan){con
 const lmIsWide=()=>innerWidth>=1000;
 function viewUmap(){const all=lmRows();const so=S.lmSo||(S.pos?"near":"staff"),f=S.lmF||"todo",mode=S.lmMode||"map",wide=lmIsWide(),sts=lmStaffs();
  if(!all.length)return `${seeJimu()?lmImportBox():""}<div class="empty">まだ取り込まれていません。${seeJimu()?"上の「マイマップを取り込む」から入れてください。":"事務所で取り込むと出ます。"}</div>`;
- const allS=S.lmSt?all.filter(j=>lmStaff(j)===S.lmSt):all;
+ const stE=lmStE(),me=lmMe(),allS=stE?all.filter(j=>lmStaff(j)===stE):all;
+ const chip=(v,lab,ic,on)=>`<button type="button" class="${on?"on":""}" style="padding:4px 9px;display:inline-flex;align-items:center;gap:4px" onclick="lmStSet('${v}')">${ic?`<span style="width:20px;height:20px;border-radius:50%;background:${lmStaffCol(ic)};display:inline-grid;place-items:center;font-size:12px;flex:none">${lmIcoHtml(lmStaffIco(ic),15)}</span>`:""}${esc(lab)}</button>`;
+ const stRow=`<div class="seg" style="flex:none">${me?chip("@me","自分",me,S.lmSt==="@me"||S.lmSt===me):""}${chip("","全員","",!stE)}${sts.filter(x=>x!==me).map(x=>chip(x,x,x,S.lmSt===x)).join("")}</div>`;
  const n=k=>k==="todo"?allS.filter(j=>!lmCal(j)&&!lmNoCal(j)).length:k==="doc"?allS.filter(j=>lmDoc(j)||inspDue(j)).length:k==="done"?allS.filter(lmCal).length:allS.length;
  const soL={near:"近い順",staff:"担当順",town:"町名順"}[so]||"";
  const mapHtml=`<div style="position:relative"><div id="umap" style="height:60vh;min-height:300px;border-radius:12px;border:1px solid var(--line)"><div class="progress" style="padding:20px">地図を読み込み中…</div></div>${wide?"":`<div id="lmSheet">${lmSheetHtml()}</div>`}</div>`;
  return `${seeJimu()&&(S.lmImp||S.lmPlan)?lmImportBox():""}
  <form onsubmit="lmDoSearch();return false" style="display:flex;gap:6px;align-items:center;margin:4px 0">
   <div style="position:relative;flex:1;min-width:0"><input id="lmq" class="search" type="search" enterkeyhint="search" autocomplete="off" style="margin:0;width:100%;padding-right:30px" placeholder="名前・読み・町名・電話で探す" value="${esc(S.lmQ||"")}">${S.lmQ?`<button type="button" aria-label="消す" onclick="lmClearQ()" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);border:0;background:none;font-size:20px;color:var(--muted);padding:0 6px">×</button>`:""}</div>
+  <button class="btn sm" type="button" title="検索する範囲" style="padding:6px 8px;white-space:nowrap;flex:none" onclick="lmQAllT()">${S.lmQAll||!stE?"全員から":"担当から"}</button>
   <button class="btn primary" type="submit" aria-label="検索" style="padding:8px 12px;white-space:nowrap">🔍${innerWidth>=520?" 検索":""}</button>
-  ${wide?"":`<div class="seg" style="flex:none">${[["map","🗺 地図"],["list","📋 一覧"]].map(([k,l])=>`<button type="button" class="${mode===k?"on":""}" style="padding:7px 9px;white-space:nowrap" onclick="lmModeSet('${k}')">${l}</button>`).join("")}</div>`}
  </form>
+ <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;overflow-x:auto;white-space:nowrap">${stRow}</div>
  <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;overflow-x:auto;white-space:nowrap">
-  <div class="seg" style="flex:none">${[["todo","まだ"],["doc","書類"],["done","済"],["all","全"]].map(([k,l])=>`<button type="button" class="${f===k&&!S.lmQ?"on":""}" style="padding:5px 9px" onclick="S.lmF='${k}';S.lmQ='';S.lmSheet=false;render()">${l} ${n(k)}</button>`).join("")}</div>
-  <button class="btn sm" type="button" style="padding:5px 10px;flex:none" onclick="S.lmOpt=!S.lmOpt;render()">⚙ ${esc(S.lmSt||"全員")}・${soL}${S.lmHideNote?"・備考なし":""}</button>
+  ${wide?"":`<div class="seg" style="flex:none">${[["map","🗺地図"],["list","📋一覧"]].map(([k,l])=>`<button type="button" class="${mode===k?"on":""}" style="padding:5px 8px;white-space:nowrap" onclick="lmModeSet('${k}')">${l}</button>`).join("")}</div>`}
+  <div class="seg" style="flex:none">${[["todo","まだ"],["doc","書類"],["done","済"],["all","全"]].map(([k,l])=>`<button type="button" class="${f===k&&!S.lmQ?"on":""}" style="padding:5px 7px" onclick="S.lmF='${k}';S.lmQ='';S.lmSheet=false;render()">${l} ${n(k)}</button>`).join("")}</div>
+  <button class="btn sm" type="button" style="padding:5px 10px;flex:none" onclick="S.lmOpt=!S.lmOpt;render()">⚙ ${soL}${S.lmHideNote?"・備考なし":""}</button>
  </div>
  ${S.lmOpt?`<div class="form" style="padding:8px;margin:0 0 6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-  <select class="sim" onchange="S.lmSt=this.value;render()"><option value="">担当：全員</option>${sts.map(x=>`<option ${S.lmSt===x?"selected":""}>${esc(x)}</option>`).join("")}</select>
   <div class="seg">${[["near","近い順"],["staff","担当順"],["town","町名順"]].map(([k,l])=>`<button type="button" class="${so===k?"on":""}" onclick="S.lmSo='${k}';render()">${l}</button>`).join("")}</div>
   <button class="btn sm" type="button" onclick="lmNoteT()">${S.lmHideNote?"📝 備考を表示":"🙈 備考を隠す"}</button>
   ${seeJimu()?`<button class="btn sm" type="button" onclick="S.lmImp=!S.lmImp;S.lmOpt=false;render()">📥 マイマップ取り込み${S.lmImp?"を隠す":""}</button>`:""}<button class="btn sm" type="button" onclick="S.lmOpt=false;render()">閉じる</button></div>`:""}
- ${S.lmQ?`<div class="meta" style="margin-bottom:4px">「${esc(S.lmQ)}」を全員（${all.length}人）から検索 → <b>${lmFiltered().length}件</b>（担当・区分の絞り込みは外しています）</div>`:""}
+ ${S.lmQ?`<div class="meta" style="margin-bottom:4px">「${esc(S.lmQ)}」を${S.lmQAll||!stE?"全員（"+all.length+"人）":esc(stE)+"さんの担当"}から検索 → <b>${lmFiltered().length}件</b>（区分の絞り込みは外しています）</div>`:""}
  ${S.lmFix?`<div class="notice" style="margin:4px 0;border:2px solid #e0a800">📍 <b>${esc(lmName(lmRows().find(x=>x.code===S.lmFix)||{}))} 様</b>の正しい場所を地図で押してください。<button class="btn sm" type="button" onclick="S.lmFix=null;render()">やめる</button></div>`:""}
  ${wide?`<div style="display:grid;grid-template-columns:420px 1fr;gap:10px;align-items:start"><div id="lmList" class="lmside" style="overflow:auto;height:60vh">${lmListHtml()}</div>${mapHtml}</div>`:mode==="list"&&!S.lmFix?`<div id="lmList">${lmListHtml()}</div>`:mapHtml}`}
 function lmMini(j,act){const u=lmClient(j.code)||{},d=lmDist(j),st=lmStaff(j),A=lmAlerts(j);
