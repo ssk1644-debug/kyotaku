@@ -707,9 +707,11 @@ const lmClean=j=>{const nj=Object.assign({},j);if(nj.atStay){nj.lat=nj.lat0;nj.l
 let LM_SG={};let LM_SC=null;
 const lmSC=()=>{if(!LM_SC){try{LM_SC=JSON.parse(localStorage.getItem("kyotaku-stay-geo")||"{}")}catch(e){LM_SC={}}}return LM_SC};
 /* 滞在先の位置は端末ごとに覚える（スプレッドシートには書かない＝同時に書いてぶつからない） */
-async function lmStayGeo(){if(MODE==="setup"||(MODE==="live"&&!USER))return;const C=lmSC(),todo=[];lmRows().forEach(j=>{const u=lmClient(j.code);if(!u||!lmStayAddr(u.stay)||j.fix)return;const a=String(u.stay).trim();if(C[a]||LM_SG[a]||j.sAddr===a)return;todo.push(a)});
+let LM_SGRUN=false;
+async function lmStayGeo(){if(MODE==="setup"||(MODE==="live"&&!USER)||LM_SGRUN)return;LM_SGRUN=true;try{await lmStayGeo0()}finally{LM_SGRUN=false}}
+async function lmStayGeo0(){const C=lmSC(),todo=[];lmRows().forEach(j=>{const u=lmClient(j.code);if(!u||!lmStayAddr(u.stay)||j.fix)return;const a=String(u.stay).trim();if(C[a]||LM_SG[a]||j.sAddr===a)return;todo.push(a)});
  const L=[...new Set(todo)].slice(0,25);if(!L.length)return;let n=0;for(const a of L){LM_SG[a]=1;try{const g=await gsiGeo(a);if(g){C[a]=[g.lat,g.lng];n++}}catch(e){}}
- if(n){try{localStorage.setItem("kyotaku-stay-geo",JSON.stringify(C))}catch(e){}if(S.view==="umap"&&!typing())render()}}
+ if(n){try{localStorage.setItem("kyotaku-stay-geo",JSON.stringify(C))}catch(e){}if(S.view==="umap"&&!typing()&&!S.lmDet&&!S.lmPop)render()}}
 const LM_FIX=[["佐々木","#8b5a2b","@pp"],["荒木","#27ae60","🐱"],["福田","#f1c40f","@fk"],["三井","#8e44ad","🍺"],["沖藤","#d81b60","🍞"],["郷坪","#4fc3f7","🦦"],["小坂","#f8bbd0","@sc"]];
 const lmStaffIco=n=>{const f=LM_FIX.find(x=>x[0]===n);return f?f[2]:""};
 const LM_IMG={"@sc":"data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2231%22%20fill%3D%22%23fff%22/%3E%3Cpath%20d%3D%22M13%2016c2-4%208-5%2011-1l-2%2012c-4%201-8-2-9-5z%22%20fill%3D%22%2355595d%22/%3E%3Cpath%20d%3D%22M51%2016c-2-4-8-5-11-1l2%2012c4%201%208-2%209-5z%22%20fill%3D%22%2355595d%22/%3E%3Cpath%20d%3D%22M18%2026c0-9%206-14%2014-14s14%205%2014%2014v8c0%206-6%209-14%209s-14-3-14-9z%22%20fill%3D%22%238a8f94%22/%3E%3Cpath%20d%3D%22M20%2027c3-4%207-4%2010-2M44%2027c-3-4-7-4-10-2%22%20fill%3D%22none%22%20stroke%3D%22%23e9eaeb%22%20stroke-width%3D%224%22%20stroke-linecap%3D%22round%22/%3E%3Ccircle%20cx%3D%2226%22%20cy%3D%2231%22%20r%3D%222%22%20fill%3D%22%231d1d1d%22/%3E%3Ccircle%20cx%3D%2238%22%20cy%3D%2231%22%20r%3D%222%22%20fill%3D%22%231d1d1d%22/%3E%3Cpath%20d%3D%22M20%2036c0%2010%206%2017%2012%2017s12-7%2012-17c-3%203-7%204-12%204s-9-1-12-4z%22%20fill%3D%22%23e9eaeb%22/%3E%3Cpath%20d%3D%22M24%2044c1%203%202%205%203%206M40%2044c-1%203-2%205-3%206M32%2044v8%22%20stroke%3D%22%23c9cbcd%22%20stroke-width%3D%221.2%22%20stroke-linecap%3D%22round%22/%3E%3Cellipse%20cx%3D%2232%22%20cy%3D%2237%22%20rx%3D%224%22%20ry%3D%223%22%20fill%3D%22%231d1d1d%22/%3E%3C/svg%3E","@fk":"data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2231%22%20fill%3D%22%23fff%22/%3E%3Cpath%20d%3D%22M14%2056c-3-4-1-8-2-12-2-4%200-8%201-12%200-12%208-21%2019-21s19%209%2019%2021c1%204%203%208%201%2012-1%204%201%208-2%2012-3%202-6%201-8-1l-1-16H25l-1%2016c-2%202-5%203-8%201z%22%20fill%3D%22%234a2f17%22/%3E%3Cpath%20d%3D%22M14%2036c-2%202-2%205%200%207M13%2046c-2%202-1%205%201%207M50%2036c2%202%202%205%200%207M51%2046c2%202%201%205-1%207%22%20fill%3D%22none%22%20stroke%3D%22%232e1c0c%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22/%3E%3Cellipse%20cx%3D%2232%22%20cy%3D%2235%22%20rx%3D%2212%22%20ry%3D%2214%22%20fill%3D%22%23f6d2b3%22/%3E%3Cpath%20d%3D%22M19%2032c1-9%206-14%2013-14s12%205%2013%2014c-2-3-4-4-6-4-1-2-4-3-7-3s-6%201-7%203c-2%200-4%201-6%204z%22%20fill%3D%22%234a2f17%22/%3E%3Cpath%20d%3D%22M21%2022c2-2%204-1%205%201%201-2%204-3%206-1%202-2%205-1%206%201%201-2%204-2%205%200%22%20fill%3D%22none%22%20stroke%3D%22%232e1c0c%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M23%2031h6M35%2031h6%22%20stroke%3D%22%232e1c0c%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22/%3E%3Ccircle%20cx%3D%2227%22%20cy%3D%2235%22%20r%3D%221.8%22%20fill%3D%22%23222%22/%3E%3Ccircle%20cx%3D%2237%22%20cy%3D%2235%22%20r%3D%221.8%22%20fill%3D%22%23222%22/%3E%3Cpath%20d%3D%22M27%2042c3%202%207%202%2010%200%22%20fill%3D%22none%22%20stroke%3D%22%238b4a2b%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M24%2044c2%205%2014%205%2016%200%22%20fill%3D%22none%22%20stroke%3D%22%237a5a44%22%20stroke-width%3D%221.2%22%20stroke-dasharray%3D%221%202%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E"};
@@ -738,7 +740,7 @@ window.lmDel=async(code,b)=>{const j=lmRows().find(x=>x.code===code);if(!j)retur
 window.lmGive=(code,b)=>{const j=lmRows().find(x=>x.code===code);if(!j)return;S.lmPop=null;lmSet(code,{k:j.k==="4"?"3":"2",calAt:today(),calBy:USER?USER.name:"デモ"},b,"📅 カレンダー済にしました")};
 window.lmUndo=(code,b)=>{const j=lmRows().find(x=>x.code===code);if(!j)return;lmSet(code,{k:j.k==="3"?"4":"",calAt:"",calBy:""},b,"カレンダーをまだに戻しました")};
 window.lmInsp=(code,b)=>lmSet(code,{ins:today()},b,"🔧 点検した日を入れました");
-window.lmDocDone=(code,b)=>{const j=lmRows().find(x=>x.code===code);if(!j)return;lmSet(code,{k:j.k==="3"?"2":j.k==="4"?"":j.k},b,"書類・用事を済にしました")};
+window.lmDocDone=(code,b)=>{const j=lmRows().find(x=>x.code===code);if(!j)return;lmSet(code,{k:j.k==="3"?"2":j.k==="4"?"":j.k,docAt:today()},b,"書類・用事を済にしました")};
 window.lmMemo=code=>{const j=lmRows().find(x=>x.code===code);if(!j)return;const v=prompt("内容（ピンの横に出ます）",j.c||"");if(v===null)return;lmSet(code,{c:v.trim()},null,"保存しました")};
 function lmDist(j){return S.pos&&j.lat!=null?dist(S.pos.lat,S.pos.lng,+j.lat,+j.lng):null}
 const lmDistT=d=>d==null?"":d<1000?Math.round(d)+"m":(d/1000).toFixed(1)+"km";
@@ -829,12 +831,20 @@ function lmFiltered(){const q=String(S.lmQ||"").trim();let L;
  if(so==="near"&&S.pos)L.sort((a,b)=>(lmDist(a)??1e9)-(lmDist(b)??1e9));
  else if(so==="town")L.sort((a,b)=>String((lmClient(a.code)||{}).town||"").localeCompare(String((lmClient(b.code)||{}).town||""),"ja"));
  else L.sort((a,b)=>lmStaff(a).localeCompare(lmStaff(b),"ja")||lmName(a).localeCompare(lmName(b),"ja"));L.sort((a,b)=>lmPri(b)-lmPri(a));return L}
+const lmAppTouched=o=>!!(o.calAt||o.edAt||o.fix||o.stFix||o.b2||o.pk||lmEr(o).length||o.pri||o.gone||o.docAt);
+function lmImpOpt(p){const codes=new Set(p.rows.map(r=>r.code)),old=lmRows(),miss=old.filter(j=>!codes.has(j.code)),ex=old.filter(j=>codes.has(j.code)),tch=ex.filter(lmAppTouched),nw=p.rows.filter(r=>!old.some(j=>j.code===r.code)).length,keep=S.lmImpKeep;
+ return `<div class="form" style="margin-top:6px;padding:8px 10px"><div><b>取り込み方</b></div>
+ <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="lmik" style="width:auto" ${keep?"":"checked"} onchange="S.lmImpKeep=false;render()"> マイマップの内容で上書き（アプリで使い始める前）</label>
+ <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="lmik" style="width:auto" ${keep?"checked":""} onchange="S.lmImpKeep=true;render()"> アプリで入れた内容を残す（使い始めた後）</label>
+ <div class="meta">新しく増える ${nw}人 ・ 更新 ${ex.length}人${keep?`（うちアプリの内容を残す ${tch.length}人：カレンダー済・書類済・位置の手直し・備考・担当の手直し・用事・印・利用終了など）`:tch.length?`（うち ${tch.length}人はアプリで入れた内容が戻ります）`:""}</div>
+ ${miss.length?`<label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="lm-rm" style="width:auto"> マイマップにいない人 <b>${miss.length}人</b>を地図から外す</label><details><summary class="meta" style="cursor:pointer">外れる人を見る</summary><div class="meta" style="max-height:160px;overflow:auto">${miss.map(j=>esc(lmName(j))+"（"+esc(lmStaff(j))+"）").join("、")}</div></details>`:""}</div>`}
 function lmImportBox(){const p=S.lmPlan;return `<details class="form" ${p||!lmRows().length?"open":""}><summary style="cursor:pointer"><b>📥 マイマップを取り込む（KML）</b></summary>
  <div class="meta">マイマップ → 地図名の横の「︙」→「KMLにエクスポート」→「地図全体」を選び「.KML ファイルにエクスポート」にチェックしてダウンロード。読み込みはこの端末の中だけで行い、外へは送りません（電話・住所は取り込みません）。</div>
  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><label class="btn sm" for="lmx" style="display:inline-flex">📊 担当ごとのカレンダー表（Excel・CSV、複数可）</label><input type="file" id="lmx" multiple accept=".xlsx,.xls,.csv" onchange="lmXls(this)" style="position:absolute;left:-9999px"><label class="btn sm" for="lmk" style="display:inline-flex">🗺 マイマップのKML（位置）</label></div>
  <div class="meta">先に Excel・CSV（担当の最終版）、次に KML の順で入れてください。KMLは位置だけを足します（担当・区分は表のまま）。Excel・CSV（顧客コード・顧客名・区分番号・内容・担当者名・住所 の列）で担当と区分を入れ、位置はKML（マイマップのピン）から。KMLが無い人は、住所から国土地理院の住所検索で位置を出せます（AIには送りません。住所は保存しません）。</div><input type="file" id="lmk" accept=".kml,application/vnd.google-earth.kml+xml,text/xml" onchange="lmKml(this)" style="position:absolute;left:-9999px">
  ${p?`<div class="notice" style="margin-top:8px">${p.src==="xls"?"表":"ピン"} <b>${p.rows.length}</b> 件（位置あり ${p.rows.filter(r=>r.lat!=null).length}件）（利用者とつながった ${p.hit}件・つながらない ${p.rows.length-p.hit}件・顧客コードなし ${p.nocode}件）。レイヤー：${esc(p.folders.join("、"))}<br>カレンダー済 ${p.rows.filter(lmCal).length}件 ・ 書類あり ${p.rows.filter(lmDoc).length}件</div>
  ${p.src==="xls"&&p.rows.some(r=>r.lat==null&&r.addr)?`<label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="lm-geo" style="width:auto" checked> 位置が無い ${p.rows.filter(r=>r.lat==null&&r.addr).length}人は、住所から位置を出す（国土地理院。時間がかかります）</label>`:""}
+ ${p.src==="xls"?lmImpOpt(p):""}
  <div style="display:flex;gap:8px;margin-top:6px"><button class="btn primary" type="button" onclick="lmImport(this)">この内容で取り込む</button><button class="btn" type="button" onclick="S.lmPlan=null;render()">やめる</button></div><div class="meta" id="lm-st"></div>`:""}</details>`}
 window.lmKml=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;let txt="";try{txt=await f.text()}catch(e){toast("読めませんでした");return}
  if(/^PK/.test(txt)){toast("KMZ（圧縮）になっています。「.KML ファイルにエクスポート」にチェックして書き出し直してください");return}
@@ -865,8 +875,12 @@ window.lmImport=async b=>{const pg=$("#lm-geo");if(pg&&pg.checked&&S.lmPlan){con
   for(const r of L){i++;const st=$("#lm-st");if(st)st.textContent="住所から位置を出しています… "+i+"/"+L.length;try{const g=await gsiGeo(r.addr);if(g){r.lat=g.lat;r.lng=g.lng;ok++}}catch(e){}await new Promise(z=>setTimeout(z,120))}
   toast("位置が出たのは "+ok+"/"+L.length+"人です");b.disabled=false}
  S.lmPlan&&S.lmPlan.rows.forEach(r=>delete r.addr);const p=S.lmPlan;if(!p)return;b.disabled=true;const old={};lmRows().forEach(j=>old[j.code]=j);const by=myId(),bn=USER?USER.name:"デモ",at=new Date().toISOString();
- const ops=p.rows.map(r=>{const o=old[r.code]||{};let nj;if(p.src!=="xls"&&old[r.code]){nj=Object.assign({},o,o.fix?{}:{lat:r.lat,lng:r.lng});delete nj.id;delete nj.code}else{nj={k:r.k,v:r.v,c:r.c,n:r.n,lat:r.lat,lng:r.lng,st:r.st,y:r.y,ins:o.ins||""};if(!lmClient(r.code))nj.nm=r.nm}return {table:"caselog",row:{id:"lm"+codeN(r.code),case:"m:"+r.code,kind:"地図",text:JSON.stringify(nj),rec:"",by,byName:bn,at}}});
- try{for(let i=0;i<ops.length;i+=100){const st=$("#lm-st");if(st)st.textContent="保存中… "+i+"/"+ops.length;await persist(ops.slice(i,i+100))}S.lmPlan=null;buzz(60);toast(ops.length+"件を取り込みました");render()}
+ const keep=!!S.lmImpKeep,rmEl=$("#lm-rm"),rm=p.src==="xls"&&rmEl&&rmEl.checked;
+ const ops=p.rows.map(r=>{const o=old[r.code]||{};let nj;if(p.src!=="xls"&&old[r.code]){nj=Object.assign(lmClean(o),o.fix?{}:{lat:r.lat,lng:r.lng})}
+  else if(keep&&old[r.code]){nj=lmClean(o);const ed=!!o.edAt;nj.v=r.v;nj.y=r.y;if(!(o.calAt||o.edAt||o.docAt))nj.k=r.k;if(!ed){nj.c=r.c;nj.n=r.n}if(!o.fix&&r.lat!=null){nj.lat=r.lat;nj.lng=r.lng}if(!o.stFix)nj.st=r.st;if(!lmClient(r.code))nj.nm=r.nm}
+  else{nj={k:r.k,v:r.v,c:r.c,n:r.n,lat:r.lat,lng:r.lng,st:r.st,y:r.y,ins:o.ins||""};if(!lmClient(r.code))nj.nm=r.nm}return {table:"caselog",row:{id:"lm"+codeN(r.code),case:"m:"+r.code,kind:"地図",text:JSON.stringify(nj),rec:"",by,byName:bn,at}}});
+ if(rm){const codes=new Set(p.rows.map(r=>r.code));Object.values(old).filter(j=>!codes.has(j.code)).forEach(j=>ops.push({table:"caselog",row:{id:"lm"+codeN(j.code),case:"m:"+j.code,kind:"地図",text:JSON.stringify(lmClean(j)),state:"削除",rec:"",by,byName:bn,at}}))}
+ try{for(let i=0;i<ops.length;i+=100){const st=$("#lm-st");if(st)st.textContent="保存中… "+i+"/"+ops.length;await persist(ops.slice(i,i+100))}S.lmPlan=null;buzz(60);toast(p.rows.length+"件を取り込みました"+(rm?"（マイマップにいない人を外しました）":""));render()}
  catch(e){b.disabled=false;toast("取り込めませんでした："+errText(e))}};
 const lmIsWide=()=>innerWidth>=1000;
 function viewUmap(){const all=lmRows();const so=S.lmSo||(S.pos?"near":"staff"),f=S.lmF||"todo",mode=S.lmMode||"map",wide=lmIsWide(),sts=lmStaffs();
@@ -1826,6 +1840,20 @@ function rtAlerts0(r){const out={},d=daysFrom(r.deliv),stop=r.jflag==="中止"||
 const RT_KEYS=[["in","ケアレンツ"],["rp","報告書"],["ct","契約書"],["db","引落先"],["demo","デモ"]];
 const acHtml=a=>a&&a.t!==""?`<span class="ac ${a.k}">${esc(a.t)}</span>`:"";
 const rtWarn=a=>{const w=RT_KEYS.filter(([k])=>a[k]&&a[k].t!==""&&!["ok","na"].includes(a[k].k)).map(([k,l])=>`<span class="ac ${a[k].k}">${esc(l)}：${esc(a[k].t)}</span>`);return w.length?w.join(" "):`<span class="ac ok">問題なし</span>`};
+/* 進み具合に対して止まっている日数（要注意） */
+const RT_LATE=[["send","📠","デモ内容 未送信！",2,4],["demo","⏳","デモ期間 超過！",8,14],["ct","🖨","契約まだ！",3,5],["ctout","🚗","契約書 未回収",3,7],["pay","💳","引落用紙 未回収",14,30],["in","⌨","ケアレンツ未入力",1,3]];
+function rtLate(r){if(r.state==="削除"||rtStop(r)||(isD(r.deliv)&&typeof RT_FROM!=="undefined"&&RT_FROM&&r.deliv<RT_FROM))return [];const fl=RF_FLOW[rtFlow(r)]||[],out=[],dv=isD(r.deliv)?daysFrom(r.deliv):null,cf=isD(r.confDate)?daysFrom(r.confDate):null,cs=rtCtStage(r);
+ const add=(k,d)=>{const L=RT_LATE.find(x=>x[0]===k);if(d!=null&&d>=L[3])out.push({k,ic:L[1],t:L[2],d,red:d>=L[4]})};
+ if(fl.includes("send")&&!RF_STEPS.send.done(r))add("send",dv);
+ if(fl.includes("conf")&&!confDone(r))add("demo",dv);
+ if(cs===1||cs===2)add("ct",cf);
+ if(cs===3)add("ctout",rtCtDays(r));
+ if(fl.includes("pay")&&confDone(r)&&!RF_STEPS.pay.done(r))add("pay",isD(r.start)?daysFrom(r.start):cf);
+ if(String(r.input||"").trim()!=="有"&&!["ロング","入院中","申請中","新規申請中"].includes(String(r.input||"").trim()))add("in",dv);
+ return out.sort((a,b)=>(b.red-a.red)||(b.d-a.d))}
+const rtLateScore=r=>{const L=rtLate(r);return L.length?(L.some(x=>x.red)?100000:0)+Math.max(...L.map(x=>x.d)):-1};
+const rtLateHtml=r=>rtLate(r).map(x=>`<span class="status ${x.red?"st-alert":"st-warn"}" style="font-size:11px;margin:1px 2px;display:inline-block">${x.ic} ${esc(x.t)} ${x.d}${x.k==="demo"?"日目":"日"}</span>`).join("");
+function rtLateSum(){const all=(DB.rentals||[]).filter(r=>r.state!=="削除"),c={};all.forEach(r=>rtLate(r).forEach(x=>{c[x.k]=c[x.k]||{n:0,red:0};c[x.k].n++;if(x.red)c[x.k].red++}));return c}
 const rtHot=r=>{const a=rtAlerts(r);return RT_KEYS.some(([k])=>a[k].k==="r"||a[k].k==="o")};
 const staffEmail=n=>{n=String(n||"").trim();if(!n)return "";const u=(DB.users||[]).find(x=>x.name&&(x.name.includes(n)||n.includes(x.name)));return u?u.email:""};
 const stUni=n=>String(n||"").trim().split(/[ 　・]/)[0];
@@ -1835,7 +1863,7 @@ function viewJimu(){const t=S.jt||"board",jm=jimuMode();
  const unread=unreadFor("jimu").length+(DB.reqs||[]).filter(r=>!r.state||r.state==="未対応").length;
  const flt=t==="board"||t==="ledger"?`<label class="meta" style="display:flex;gap:6px;align-items:center">要注意にするのは納品日 <input type="date" class="sim" value="${RT_FROM}" onchange="rtFromSet(this.value)"> 以降</label>`:"";
  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 12px"><h2 style="margin-right:auto">${jm?JT_L[t]:"事務所"}</h2>${flt}${jm?"":`<div class="seg">${tabs.map(([k,l])=>`<button type="button" class="${t===k?"on":""}" onclick="S.jt='${k}';S.rtOpen=null;render()">${l}${k==="req"&&unread?" ("+unread+")":""}</button>`).join("")}</div>`}</div>
- ${t==="ledger"?rtLedger():t==="hosp"?jimuHosp():t==="cl"?clList():t==="req"?viewJimuReq():rtBoard()}${S.rtOpen?fullBox(rtDetail(),"S.rtOpen=null;render()"):""}${S.clOpen?fullBox(clForm(),"S.clOpen=null;render()"):""}`}
+ ${t!=="ledger"?rtLateBox():""}${t==="ledger"?rtLedger():t==="hosp"?jimuHosp():t==="cl"?clList():t==="req"?viewJimuReq():rtBoard()}${S.rtOpen?fullBox(rtDetail(),"S.rtOpen=null;render()"):""}${S.clOpen?fullBox(clForm(),"S.clOpen=null;render()"):""}`}
 function rtBoard(){const rs=(DB.rentals||[]).filter(r=>r.state!=="削除"),cases=(DB.cases||[]).filter(c=>cLive(c)&&!cDone(c));
  if(!rs.length&&!cases.length)return `<button class="btn primary" type="button" onclick="S.jt='cl';S.clOpen='new';render()">＋ 新規利用者</button><div class="empty">タスクカードも台帳もまだありません。</div>`;
  const st=[...new Set(rtStaffs().concat(cases.map(c=>c.staffName||"（担当なし）")))];
@@ -1853,9 +1881,9 @@ function rtBoard(){const rs=(DB.rentals||[]).filter(r=>r.state!=="削除"),cases
 function rtList(){const q=(S.rq2||"").trim(),st=S.rst||"",f=S.rf||"hot";let rs=(DB.rentals||[]).filter(r=>r.state!=="削除");
  if(st)rs=rs.filter(r=>(stUni(r.staff)||"（担当なし）")===st);
  const dk=r=>r.jflag==="デモ解約"&&((d=>d!=null&&d<=30)(daysFrom(isD(r.confDate)?r.confDate:r.deliv)));
- if(f==="ctg")rs=rs.filter(r=>{const k=rtCtStage(r);return k>0&&k<4});else if(f==="hot")rs=rs.filter(r=>rtHot(r)||dk(r));else if(f==="demo")rs=rs.filter(r=>{const a=rtAlerts(r)[f];return dk(r)||(a&&(a.k==="r"||a.k==="o"||a.k==="h"))});else if(f!=="all")rs=rs.filter(r=>{const a=rtAlerts(r)[f];return a&&(a.k==="r"||a.k==="o"||(f==="demo"&&a.k==="h")||(f==="in"&&a.k==="r"))});
+ if(f==="ctg")rs=rs.filter(r=>{const k=rtCtStage(r);return k>0&&k<4});else if(f==="hot")rs=rs.filter(r=>S.rwK?rtLate(r).some(x=>x.k===S.rwK):(rtLate(r).length||dk(r)));else if(f==="demo")rs=rs.filter(r=>{const a=rtAlerts(r)[f];return dk(r)||(a&&(a.k==="r"||a.k==="o"||a.k==="h"))});else if(f!=="all")rs=rs.filter(r=>{const a=rtAlerts(r)[f];return a&&(a.k==="r"||a.k==="o"||(f==="demo"&&a.k==="h")||(f==="in"&&a.k==="r"))});
  if(q){const tk=qTokens(q);rs=rs.filter(r=>{const cu=r.client?clientOf(r.client):null,h=snorm([r.cname,cu?cu.kana:"",r.item,r.officeName,r.cmName,r.memo,r.biko].join(" "));return tk.every(t=>h.includes(t))})}
- rs.sort((a,b)=>String(b.deliv).localeCompare(String(a.deliv))||String(b.id).localeCompare(String(a.id)));if(f==="ctg")rs.sort((a,b)=>rtCtStage(a)-rtCtStage(b));return rs}
+ rs.sort((a,b)=>String(b.deliv).localeCompare(String(a.deliv))||String(b.id).localeCompare(String(a.id)));if(f==="ctg")rs.sort((a,b)=>rtCtStage(a)-rtCtStage(b));if(f==="hot")rs.sort((a,b)=>rtLateScore(b)-rtLateScore(a));return rs}
 function rtLedger(){const rs=rtList(),st=rtStaffs();
  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
   <button class="btn primary" type="button" onclick="S.rtOpen='new';render()">＋ 新しい納品</button>
@@ -1866,8 +1894,9 @@ function rtLedger(){const rs=rtList(),st=rtStaffs();
   <label class="meta" style="display:flex;gap:4px;align-items:center">取り込む期間：納品日<input type="date" class="sim" id="rt-since" value="${rtSinceDef()}">以降</label>
   <label class="btn" for="rtx" style="display:inline-flex">Excel を取り込む</label><input type="file" id="rtx" accept=".xlsx,.xlsm,.xls" onchange="S.rtSince=($('#rt-since')||{}).value;rtImport(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div>
  <div id="rtImp">${S.rtImp||""}</div>
+ ${(S.rf||"hot")==="hot"?(c=>`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="btn sm ${S.rwK?"":"primary"}" type="button" onclick="S.rwK='';render()">すべて</button>${RT_LATE.map(L=>{const v=c[L[0]];return v?`<button class="btn sm ${S.rwK===L[0]?"primary":""}" type="button" style="${v.red&&S.rwK!==L[0]?"border-color:#c0392b;color:#c0392b":""}" onclick="S.rwK='${L[0]}';render()">${L[1]} ${esc(L[2].replace(/！$/,""))} ${v.n}${v.red?`（赤 ${v.red}）`:""}</button>`:""}).join("")}</div>`)(rtLateSum()):""}
  <div class="rtw"><table class="rt"><thead><tr><th>納品日</th><th>利用者</th><th>品目</th><th>居宅</th><th>担当</th><th>進み具合</th><th>要注意</th></tr></thead><tbody>
- ${rs.slice(0,S.rtAll?5000:300).map(r=>{const a=rtAlerts(r);return `<tr onclick="S.rtOpen='${r.id}';render()" style="${rtStop(r)?"opacity:.5;background:#f2f2f2":""}"><td class="num">${rtStop(r)?`<span class="ac o">${esc(r.jflag)}</span> `:""}${esc(isD(r.deliv)?r.deliv.slice(2).replace(/-/g,"/"):r.deliv||"")}</td><td><b>${esc(r.cname||"")}</b></td><td>${esc(r.item||"")}</td><td>${esc(r.officeName||"")}</td><td>${esc(r.staff||"")}</td><td>${rtProgHtml(r)}</td><td>${rtWarn(a)}</td></tr>`}).join("")}
+ ${rs.slice(0,S.rtAll?5000:300).map(r=>{const a=rtAlerts(r);return `<tr onclick="S.rtOpen='${r.id}';render()" style="${rtStop(r)?"opacity:.5;background:#f2f2f2":""}"><td class="num">${rtStop(r)?`<span class="ac o">${esc(r.jflag)}</span> `:""}${esc(isD(r.deliv)?r.deliv.slice(2).replace(/-/g,"/"):r.deliv||"")}</td><td><b>${esc(r.cname||"")}</b></td><td>${esc(r.item||"")}</td><td>${esc(r.officeName||"")}</td><td>${esc(r.staff||"")}</td><td>${rtProgHtml(r)}</td><td>${rtLateHtml(r)||rtWarn(a)}</td></tr>`}).join("")}
  </tbody></table></div>${rs.length>300&&!S.rtAll?`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.rtAll=true;render()">すべて表示（${rs.length}件）</button>`:""}`}
 const RT_FIELDS=[["deliv","納品日","date"],["input","ケアレンツ入力","sel:有,―,ロング,入院中,申請中,新規申請中,無し"],["start","レンタル開始","date"],["jflag","実費・中止","sel:,実費,中止,デモ解約,済,保留"],["cname","利用者","text"],["item","品目","sel:ベット,ベット付属,車椅子,車付属,歩行器,手すり,杖,スロープ,床ずれ予防,体位変換,徘徊,リフト,吸引器"],["officeName","居宅","office"],["cmName","担当CM","text"],["staff","担当営業","staff"],["kubun","区分","sel:新規,追加,交換,実費,切り替え,ﾒﾝﾃ交換,再新規,―"]];
 const RT_TG=[["報告書",[["rp_print","印刷"],["rp_sub","提出"]],[["rp_send","持出・FAX","sel:,ＦＡＸ,FAX予定分,ﾃﾞﾓ中FAX,予定分,提供表,メール,CM渡済,営業持出"],["rp_date","提出日","date"]]],
@@ -1926,6 +1955,8 @@ const rtGoers=()=>[...new Set(rtStaffs().filter(x=>x!=="（担当なし）").con
 window.rtCtGo=(id,name)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;const d=rtCtISO(r)||today(),st=rtCtStaff(r);rtPut(id,{ct_print:"済",ct_doc:"出 "+d+(name&&name!==st?" @"+name:"")});
  if(name&&name!==st){const me=myId();(DB.users||[]).filter(u=>stUni(u.name)===name&&u.email&&u.email!==me).forEach(u=>{persist([{table:"msgs",row:{id:newId("m"),req:dmKey(me,u.email),office:"",to:u.email,from:me,fromName:USER?USER.name:"デモ",text:"🚗 契約に行く依頼が1件あります（"+(st?"担当 "+st+" の分":"")+"）\n「やること」で確認できます。",at:new Date().toISOString(),read:""}}]).catch(()=>{})});toast(name+" さんに頼みました")}};
 function ctGoList(all){const me=USER?stUni(USER.name):"";return (DB.rentals||[]).filter(r=>r.state!=="削除"&&rtCtStage(r)===3&&(all?(rtCtDays(r)||0)>=3:(MODE==="demo"||(me&&rtCtGoer(r)===me))))}
+function rtLateBox(){if(!(isJimu()||(USER&&USER.role==="admin")||MODE==="demo"))return "";const c=rtLateSum(),red=RT_LATE.filter(L=>c[L[0]]&&c[L[0]].red);if(!red.length)return "";
+ return `<div class="notice" style="margin:8px 0;border:2px solid #c0392b;cursor:pointer" onclick="S.view='jimu';S.jt='ledger';S.rtOpen=null;S.rf='hot';S.rwK='';render()"><b style="color:#c0392b">⚠ レンタル台帳の要注意（赤）</b> ${red.map(L=>L[1]+" "+esc(L[2].replace(/！$/,""))+" "+c[L[0]].red+"件").join(" ・ ")} <span class="meta">→ 台帳を開く</span></div>`}
 function ctGoBox(){const row=(r,red)=>{const cid=rtCliId(r),u=cid?clientOf(cid):null,j=u&&u.code?lmRows().find(x=>codeN(x.code)===codeN(u.code)):null,d=rtCtDays(r);
   return `<div class="logi ${red?"over":""}"><b>🚗 契約に行く：${esc(r.cname||"")} 様</b> <span class="meta">${esc([r.item,r.officeName].filter(Boolean).join("・"))}${d!=null?" ・ 持ち出し "+d+"日目":""}${red?" ・ 行く人 "+esc(rtCtGoer(r)||"未定")+(rtCtStaff(r)&&rtCtGoer(r)!==rtCtStaff(r)?"（担当 "+esc(rtCtStaff(r))+"）":""):rtCtStaff(r)&&rtCtGoer(r)!==rtCtStaff(r)?" ・ 担当 "+esc(rtCtStaff(r))+" から依頼":""}</span>${j&&j.lat!=null?` <button class="btn sm" type="button" style="padding:2px 8px" onclick="S.view='umap';lmGo('${j.code}')">🗺</button>`:""}</div>`};
  const A=ctGoList(false),B=(isJimu()||(USER&&USER.role==="admin"))&&MODE==="live"?ctGoList(true):[];
@@ -1966,7 +1997,7 @@ function rfStepRow(r,k,i){const st=RF_STEPS[k],on=st.done(r),sub=st.sub(r);let e
  if(k==="send")extra+=rtLab("提出日",rtDt(r,"rp_date"))+rtTb(r,"rp_print","印刷");
  if(k==="ct_doc"){const cs=rtCtStage(r);extra=cs?`<div class="seg">${[1,2,3,4].map(n=>`<button type="button" class="${cs===n?"on":""}" style="padding:4px 8px" onclick="rtCtSet('${r.id}',${n})">${RT_CTS[n][0]} ${RT_CTS[n][1]}</button>`).join("")}</div>${cs<4?`<span class="status st-alert ${cs<3?"blink":""}" style="font-size:14px">${RT_CTS[cs][2]}${cs===3&&rtCtDays(r)!=null?"（"+rtCtDays(r)+"日目）":""}</span>`:""}${cs===3?rtLab("行く人",`<select class="sim" onchange="rtCtGo('${r.id}',this.value)">${(L=>L.includes(rtCtGoer(r))?L:L.concat([rtCtGoer(r)]))(rtGoers()).filter(Boolean).map(n=>`<option ${n===rtCtGoer(r)?"selected":""}>${esc(n)}</option>`).join("")}</select>${rtCtStaff(r)&&rtCtGoer(r)!==rtCtStaff(r)?`<span class="meta">（担当 ${esc(rtCtStaff(r))}）</span>`:""}`):""}`:`<span class="meta">「借りる」になると印刷待ちから始まります</span>`}
  if(k==="conf"){const d0=`<label class="meta" style="display:inline-flex;gap:4px;align-items:center">確認日<input type="date" class="sim" value="${esc(r.confDate||"")}" onchange="rtPut('${r.id}',{confDate:this.value})"></label><label class="meta" style="display:inline-flex;gap:4px;align-items:center">開始日<input type="date" class="sim" value="${esc(r.start||"")}" onchange="rtPut('${r.id}',{start:this.value})"></label>`;
-  extra=(on?d0:`<button class="btn sm primary" type="button" onclick="rtPut('${r.id}',{confDate:today()})">✅ 借りる</button><button class="btn sm" type="button" onclick="if(confirm('借りないことになりましたか？（デモで終了にします）'))rtPut('${r.id}',{jflag:'デモ解約',confDate:today()})">借りない</button>${buyOk(r)?`<button class="btn sm" type="button" onclick="rtBuy('${r.id}',this)">🛒 購入する</button>`:""}`)
+  extra=(on?d0:`<span class="meta blink" style="color:#a06a00;font-weight:700">選んでね →</span><button class="btn sm" type="button" style="background:#fff3c4;border:2px solid #e0a800;color:#5a4500;font-weight:700" onclick="rtPut('${r.id}',{confDate:today()})">借りる</button><button class="btn sm" type="button" style="background:#fff3c4;border:2px solid #e0a800;color:#5a4500;font-weight:700" onclick="if(confirm('借りないことになりましたか？（デモで終了にします）'))rtPut('${r.id}',{jflag:'デモ解約',confDate:today()})">借りない</button>${buyOk(r)?`<button class="btn sm" type="button" style="background:#fff3c4;border:2px solid #e0a800;color:#5a4500;font-weight:700" onclick="rtBuy('${r.id}',this)">🛒 購入する</button>`:""}`)
    +`<input class="sim" style="flex:1 1 180px;min-width:140px" placeholder="備考（確認のときのこと）" value="${esc(r.confNote||"")}" onchange="rtPut('${r.id}',{confNote:this.value.trim()})">`}
  if(k==="mail")extra=`<select class="sim" onchange="rtPut('${r.id}',{meisai:this.value})">${["",...MEISAI_L].map(o=>`<option value="${o}" ${o===meisaiNorm(r.meisai)?"selected":""}>${o||(meisaiOf(r)?meisaiOf(r)+"（自動）":"選ぶ")}</option>`).join("")}</select>`;
  if(k==="pay")extra=`<select class="sim" onchange="rtPut('${r.id}',{db_way:this.value})">${(L=>L.concat(payWay(r)&&!L.includes(payWay(r))?[payWay(r)]:[]))(["","口座有","NICOS","ゆうちょ","集金","生保","リトレス","要手続","―"]).map(o=>`<option value="${o}" ${o===payWay(r)?"selected":""}>${o||"方法を選ぶ"}</option>`).join("")}</select>`+rtTb(r,"db_hand","お渡し")+rtTb(r,"db_col","回収")+rtTb(r,"db_send","発送")+rtTb(r,"db_ok","受理");
@@ -2798,7 +2829,7 @@ function viewTodo(){markRead("sales");const t=today(),list=schedMine(),open=list
  ${users.length?`<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:8px">担当者 <select class="sim" onchange="S.schedWho=this.value;render()"><option value="">全員</option>${users.map(([e,n])=>`<option value="${esc(e)}" ${S.schedWho===e?"selected":""}>${esc(n)}</option>`).join("")}</select></label>`:""}
  ${S.schedEdit?schedForm():""}
  ${news.length?`<div class="section-t"><h2 style="font-size:16px;color:var(--accent)">連絡（事務・営業から）</h2><span class="meta">${news.length}件</span></div><div class="log">${news.map(x=>`<div>${x.html}<div style="margin:-4px 0 8px"><button class="btn sm" type="button" onclick="dismiss('${x.k}')">✓ 確認した</button></div></div>`).join("")}</div>`:""}
- ${ctGoBox()}${waitsBox(false)}${seeAllRec()&&MODE==="live"?waitsBox(true,"⚠ 全員の待ち（期限切れ・明日まで）").replace(/^/,""):""}
+ ${rtLateBox()}${ctGoBox()}${waitsBox(false)}${seeAllRec()&&MODE==="live"?waitsBox(true,"⚠ 全員の待ち（期限切れ・明日まで）").replace(/^/,""):""}
  ${casesSection("")}
  ${grp.map(([h,f])=>{const xs=open.filter(f);return xs.length?`<div class="section-t"><h2 style="font-size:16px${h.startsWith("期限")?";color:#c0392b":""}">${h}</h2><span class="meta">${xs.length}件</span></div><div class="log">${xs.map(s=>schedItem(s,true)).join("")}</div>`:""}).join("")}
  ${open.length||news.length?"":`<div class="empty">今やることはありません。「＋ 予定を入れる」か、記録を保存したあとのカードから入れられます。</div>`}
@@ -2861,7 +2892,7 @@ window.fdQuick=async(id,b)=>{const r=DB.records.find(x=>x.id===id);if(!r)return;
  catch(e){if(b)b.disabled=false;toast("送れませんでした："+errText(e))}};
 /* ===== ほかの端末・ほかの人の変更を取り込む（変わった分だけ） ===== */
 let SYNC_TS="",SYNC_BUSY=false;
-const editingNow=()=>typing()||!!(S.cmEdit||S.recEdit||S.schedEdit||S.recOpen||S.bulk||RC.on||(CI.stage&&CI.stage!=="idle")||CB.items.length);
+const editingNow=()=>typing()||!!(S.lmDet||S.cmEdit||S.recEdit||S.schedEdit||S.recOpen||S.bulk||RC.on||(CI.stage&&CI.stage!=="idle")||CB.items.length);
 async function syncNow(manual){if(MODE!=="live"||!USER||SYNC_BUSY||!SYNC_TS||S.bgLoad)return;
  if(!manual&&(document.hidden||editingNow()))return;
  SYNC_BUSY=true;const sb=$("#syncBtn");if(sb)sb.textContent="…";let n=0;
@@ -3762,7 +3793,8 @@ function render(){
  if(MAP&&!(S.view==="list"&&S.listMode==="map")){try{MAP.remove()}catch(e){}MAP=null}
  $("#app").innerHTML=pushNag()+lmPopHtml()+lmDetHtml()+(S.view==="visit"||S.view==="log"?pendBox():"")+v+(MODE==="demo"?`<p class="demo">デモ：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`:`<p class="demo">データは会社のスプレッドシートに保存されます。すぐ開けるよう前回の内容と保存前の録音をこの端末に覚えています（ログアウトで消えます）。</p>`);
 }
-const _render=render;render=function(){_render();if(S.view==="list"&&S.listMode==="map"&&$("#map"))drawMap();if(S.view==="umap"&&$("#umap"))drawUmap();else if(UMAP){try{UMAP.remove()}catch(e){}UMAP=null}};
+let RK_LAST="";const rKey=()=>[S.view,S.lmDet||"",S.office||"",S.rtOpen||"",S.caseId||"",S.jt||"",S.room||""].join("|");
+const _render=render;render=function(){const rk=rKey(),sy=scrollY;_render();if(S.view==="list"&&S.listMode==="map"&&$("#map"))drawMap();if(S.view==="umap"&&$("#umap"))drawUmap();else if(UMAP){try{UMAP.remove()}catch(e){}UMAP=null}if(rk===RK_LAST&&sy>0){scrollTo(0,sy);requestAnimationFrame(()=>{if(rKey()===rk)scrollTo(0,sy)})}RK_LAST=rk};
 /* スマホの「戻る」でアプリ内のひとつ前の画面に戻る（最初の画面では2回押すと終了） */
 let NAV_LAST=null,NAV_POP=false,EXIT_AT=0,NAV_DEPTH=0;
 const navKey=()=>S.view+"|"+(S.view==="visit"?(S.office||""):S.view==="case"?(S.caseId||""):"");
