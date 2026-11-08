@@ -427,7 +427,7 @@ function applyOp(t,row){if(t==="records"&&!mineRec(row)){DB.records=DB.records.f
 async function persist(ops){
  if(MODE==="live"){let d;
   try{d=await api("batch",{ops:ops.map(o=>{const row=toServer(o.table,o.row),ex=Array.isArray(DB[o.table])?DB[o.table].find(x=>x.id===o.row.id):null;if(ex&&ex.updatedAt!=null)row._base=ex.updatedAt;return {table:o.table,row}})})}
-  catch(e){if(e&&e.code==="conflict")syncNow(true);throw e}
+  catch(e){if(e&&e.code==="conflict")syncNow("quiet");throw e}
   d.rows.forEach((r,i)=>{const v=fromServer(ops[i].table,r);if(ops[i].table==="records"){const ex=DB.records.find(x=>x.id===v.id);if(ex&&ex.trans&&!v.trans)v.trans=ex.trans;if(!v.trans&&ex&&ex.hasTrans)v.hasTrans=ex.hasTrans}applyOp(ops[i].table,v)});cacheSoon()}
  else{ops.forEach(o=>applyOp(o.table,o.row));save()}}
 /* どの保存でも、上に「保存中…」→「✓ 保存しました」を出す（押したのが分かるように） */
@@ -702,13 +702,14 @@ let LMC={n:-1,m:{}};
 function lmClient(code){if(LMC.n!==DB.clients.length){LMC={n:DB.clients.length,m:{}};DB.clients.forEach(u=>{const k=codeN(u.code);if(k)LMC.m[k]=u})}return LMC.m[codeN(code)]||null}
 function lmRows(){const m={};(DB.caselog||[]).forEach(l=>{if(l.kind!=="地図"||l.state==="削除")return;let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}j.id=l.id;j.code=String(l.case||"").slice(2);m[j.code]=j});return Object.values(m).filter(j=>!(j.gone&&daysFrom(j.gone)>90)).map(lmStayLL)}
 const lmStayAddr=t=>{t=String(t||"").trim();return t.length>=6&&/[都道府県市区町村郡]/.test(t)&&/[0-9０-９一二三四五六七八九十丁番]/.test(t)};
-function lmStayLL(j){if(j.fix||j.sLat==null)return j;const u=lmClient(j.code);if(!u||!u.stay||String(u.stay).trim()!==j.sAddr)return j;j.lat0=j.lat;j.lng0=j.lng;j.lat=j.sLat;j.lng=j.sLng;j.atStay=1;return j}
+function lmStayLL(j){if(j.fix)return j;const u=lmClient(j.code);if(!u||!u.stay)return j;const a=String(u.stay).trim();let p=null;if(j.sLat!=null&&j.sAddr===a)p=[j.sLat,j.sLng];else{const c=(LM_SC||lmSC())[a];if(c)p=c}if(!p)return j;j.lat0=j.lat;j.lng0=j.lng;j.lat=p[0];j.lng=p[1];j.atStay=1;return j}
 const lmClean=j=>{const nj=Object.assign({},j);if(nj.atStay){nj.lat=nj.lat0;nj.lng=nj.lng0}delete nj.lat0;delete nj.lng0;delete nj.atStay;delete nj.id;delete nj.code;return nj};
-let LM_SG={};
-async function lmStayGeo(){if(MODE==="setup"||(MODE==="live"&&!USER))return;const todo=[];lmRows().forEach(j=>{const u=lmClient(j.code);if(!u||!lmStayAddr(u.stay)||j.fix)return;const a=String(u.stay).trim();if(j.sAddr===a||LM_SG[j.code]===a)return;todo.push([j,a])});
- if(!todo.length)return;let n=0;for(const [j,a] of todo.slice(0,25)){LM_SG[j.code]=a;try{const g=await gsiGeo(a);if(!g)continue;const nj=Object.assign(lmClean(j),{sLat:g.lat,sLng:g.lng,sAddr:a});
-  await persist([{table:"caselog",row:{id:"lm"+codeN(j.code),case:"m:"+j.code,kind:"地図",text:JSON.stringify(nj),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}]);n++}catch(e){}}
- if(n&&S.view==="umap"&&!typing())render()}
+let LM_SG={};let LM_SC=null;
+const lmSC=()=>{if(!LM_SC){try{LM_SC=JSON.parse(localStorage.getItem("kyotaku-stay-geo")||"{}")}catch(e){LM_SC={}}}return LM_SC};
+/* 滞在先の位置は端末ごとに覚える（スプレッドシートには書かない＝同時に書いてぶつからない） */
+async function lmStayGeo(){if(MODE==="setup"||(MODE==="live"&&!USER))return;const C=lmSC(),todo=[];lmRows().forEach(j=>{const u=lmClient(j.code);if(!u||!lmStayAddr(u.stay)||j.fix)return;const a=String(u.stay).trim();if(C[a]||LM_SG[a]||j.sAddr===a)return;todo.push(a)});
+ const L=[...new Set(todo)].slice(0,25);if(!L.length)return;let n=0;for(const a of L){LM_SG[a]=1;try{const g=await gsiGeo(a);if(g){C[a]=[g.lat,g.lng];n++}}catch(e){}}
+ if(n){try{localStorage.setItem("kyotaku-stay-geo",JSON.stringify(C))}catch(e){}if(S.view==="umap"&&!typing())render()}}
 const LM_FIX=[["佐々木","#8b5a2b","@pp"],["荒木","#27ae60","🐱"],["福田","#f1c40f","@fk"],["三井","#8e44ad","🍺"],["沖藤","#d81b60","🍞"],["郷坪","#4fc3f7","🦦"],["小坂","#f8bbd0","@sc"]];
 const lmStaffIco=n=>{const f=LM_FIX.find(x=>x[0]===n);return f?f[2]:""};
 const LM_IMG={"@sc":"data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2231%22%20fill%3D%22%23fff%22/%3E%3Cpath%20d%3D%22M13%2016c2-4%208-5%2011-1l-2%2012c-4%201-8-2-9-5z%22%20fill%3D%22%2355595d%22/%3E%3Cpath%20d%3D%22M51%2016c-2-4-8-5-11-1l2%2012c4%201%208-2%209-5z%22%20fill%3D%22%2355595d%22/%3E%3Cpath%20d%3D%22M18%2026c0-9%206-14%2014-14s14%205%2014%2014v8c0%206-6%209-14%209s-14-3-14-9z%22%20fill%3D%22%238a8f94%22/%3E%3Cpath%20d%3D%22M20%2027c3-4%207-4%2010-2M44%2027c-3-4-7-4-10-2%22%20fill%3D%22none%22%20stroke%3D%22%23e9eaeb%22%20stroke-width%3D%224%22%20stroke-linecap%3D%22round%22/%3E%3Ccircle%20cx%3D%2226%22%20cy%3D%2231%22%20r%3D%222%22%20fill%3D%22%231d1d1d%22/%3E%3Ccircle%20cx%3D%2238%22%20cy%3D%2231%22%20r%3D%222%22%20fill%3D%22%231d1d1d%22/%3E%3Cpath%20d%3D%22M20%2036c0%2010%206%2017%2012%2017s12-7%2012-17c-3%203-7%204-12%204s-9-1-12-4z%22%20fill%3D%22%23e9eaeb%22/%3E%3Cpath%20d%3D%22M24%2044c1%203%202%205%203%206M40%2044c-1%203-2%205-3%206M32%2044v8%22%20stroke%3D%22%23c9cbcd%22%20stroke-width%3D%221.2%22%20stroke-linecap%3D%22round%22/%3E%3Cellipse%20cx%3D%2232%22%20cy%3D%2237%22%20rx%3D%224%22%20ry%3D%223%22%20fill%3D%22%231d1d1d%22/%3E%3C/svg%3E","@fk":"data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2231%22%20fill%3D%22%23fff%22/%3E%3Cpath%20d%3D%22M14%2056c-3-4-1-8-2-12-2-4%200-8%201-12%200-12%208-21%2019-21s19%209%2019%2021c1%204%203%208%201%2012-1%204%201%208-2%2012-3%202-6%201-8-1l-1-16H25l-1%2016c-2%202-5%203-8%201z%22%20fill%3D%22%234a2f17%22/%3E%3Cpath%20d%3D%22M14%2036c-2%202-2%205%200%207M13%2046c-2%202-1%205%201%207M50%2036c2%202%202%205%200%207M51%2046c2%202%201%205-1%207%22%20fill%3D%22none%22%20stroke%3D%22%232e1c0c%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22/%3E%3Cellipse%20cx%3D%2232%22%20cy%3D%2235%22%20rx%3D%2212%22%20ry%3D%2214%22%20fill%3D%22%23f6d2b3%22/%3E%3Cpath%20d%3D%22M19%2032c1-9%206-14%2013-14s12%205%2013%2014c-2-3-4-4-6-4-1-2-4-3-7-3s-6%201-7%203c-2%200-4%201-6%204z%22%20fill%3D%22%234a2f17%22/%3E%3Cpath%20d%3D%22M21%2022c2-2%204-1%205%201%201-2%204-3%206-1%202-2%205-1%206%201%201-2%204-2%205%200%22%20fill%3D%22none%22%20stroke%3D%22%232e1c0c%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M23%2031h6M35%2031h6%22%20stroke%3D%22%232e1c0c%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22/%3E%3Ccircle%20cx%3D%2227%22%20cy%3D%2235%22%20r%3D%221.8%22%20fill%3D%22%23222%22/%3E%3Ccircle%20cx%3D%2237%22%20cy%3D%2235%22%20r%3D%221.8%22%20fill%3D%22%23222%22/%3E%3Cpath%20d%3D%22M27%2042c3%202%207%202%2010%200%22%20fill%3D%22none%22%20stroke%3D%22%238b4a2b%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M24%2044c2%205%2014%205%2016%200%22%20fill%3D%22none%22%20stroke%3D%22%237a5a44%22%20stroke-width%3D%221.2%22%20stroke-dasharray%3D%221%202%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E"};
@@ -2871,7 +2872,7 @@ async function syncNow(manual){if(MODE!=="live"||!USER||SYNC_BUSY||!SYNC_TS||S.b
     const v=["offices","cms","records"].includes(t)?fromServer(t,r):r;
     if(t==="records"){const ex=DB.records.find(x=>x.id===r.id);if(ex&&ex.trans&&!v.trans)v.trans=ex.trans}
     applyOp(t,v)})});
-  if(n)cacheSoon();if(n&&(manual||!editingNow()))render();if(manual)toast(n?"最新にしました（"+n+"件）":"最新の状態です")}
+  if(n)cacheSoon();if(n&&(manual||!editingNow()))render();if(manual===true)toast(n?"最新にしました（"+n+"件）":"最新の状態です")}
  catch(e){if(manual)toast("更新できませんでした："+errText(e))}
  finally{SYNC_BUSY=false;const b2=$("#syncBtn");if(b2)b2.textContent="↻"}}
 window.syncNow=syncNow;
