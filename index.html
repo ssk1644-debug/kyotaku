@@ -817,9 +817,12 @@ const LM_VAR={"髙":"高","﨑":"崎","嵜":"崎","碕":"崎","邊":"辺","邉":
 const lmK=s=>snorm([...String(s||"").normalize("NFKC")].map(c=>LM_VAR[c]!=null?LM_VAR[c]:c).join("").replace(/様$/,""));
 function lmHay(j){const u=lmClient(j.code)||{};return [lmName(j),j.nm,u.kana,u.town,u.addr,u.tel,u.tel2,j.code,j.c,j.n,j.b2,j.pk,lmEr(j).map(e=>e.t).join(" "),u.note,lmStaff(j)].map(lmK).join("|")}
 const lmMe=()=>{if(!USER)return "";const n=lmStaffName(USER.name);return lmStaffs().includes(n)?n:""};
-const lmStE=()=>S.lmSt==="@me"?lmMe():(S.lmSt||"");
+/* 初期表示：ふだんは自分の担当。メンテ要員は全員（11/9 社長） */
+const LM_ALLDEF=["小坂","吉田","三井","沖藤","郷坪"];
+const lmStV=()=>S.lmSt!=null?S.lmSt:(USER&&LM_ALLDEF.includes(lmStaffName(USER.name))?"":"@me");
+const lmStE=()=>{const v=lmStV();return v==="@me"?lmMe():(v||"")};
 window.lmStSet=v=>{S.lmSt=v;S.lmAll=false;try{localStorage.setItem("kyotaku-lm-st",v)}catch(e){}render()};
-try{const v=localStorage.getItem("kyotaku-lm-st");S.lmSt=v==null?"@me":v}catch(e){S.lmSt="@me"}
+try{const v=localStorage.getItem("kyotaku-lm-st");S.lmSt=v==null?null:v}catch(e){S.lmSt=null}
 try{S.lmQAll=localStorage.getItem("kyotaku-lm-qall")!=="0"}catch(e){S.lmQAll=true}
 window.lmQAllT=()=>{S.lmQAll=!S.lmQAll;try{localStorage.setItem("kyotaku-lm-qall",S.lmQAll?"1":"0")}catch(e){}if(S.lmQ){S.lmFit=true}render()};
 function lmBase(){let L=lmRows();const st=lmStE(),f=S.lmF||"todo";
@@ -888,7 +891,7 @@ function viewUmap(){const all=lmRows();const so=S.lmSo||(S.pos?"near":"staff"),f
  if(!all.length)return `${seeJimu()?lmImportBox():""}<div class="empty">まだ取り込まれていません。${seeJimu()?"上の「マイマップを取り込む」から入れてください。":"事務所で取り込むと出ます。"}</div>`;
  const stE=lmStE(),me=lmMe(),allS=stE?all.filter(j=>lmStaff(j)===stE):all;
  const chip=(v,lab,ic,on)=>`<button type="button" class="${on?"on":""}" style="padding:4px 9px;display:inline-flex;align-items:center;gap:4px" onclick="lmStSet('${v}')">${ic?`<span style="width:20px;height:20px;border-radius:50%;background:${lmStaffCol(ic)};display:inline-grid;place-items:center;font-size:12px;flex:none">${lmIcoHtml(lmStaffIco(ic),15)}</span>`:""}${esc(lab)}</button>`;
- const stRow=`<div class="seg" style="flex:none">${me?chip("@me","自分",me,S.lmSt==="@me"||S.lmSt===me):""}${chip("","全員","",!stE)}${sts.filter(x=>x!==me).map(x=>chip(x,x,x,S.lmSt===x)).join("")}</div>`;
+ const stRow=`<div class="seg" style="flex:none">${me?chip("@me","自分",me,lmStV()==="@me"||lmStV()===me):""}${chip("","全員","",!stE)}${sts.filter(x=>x!==me).map(x=>chip(x,x,x,lmStV()===x)).join("")}</div>`;
  const live=allS.filter(j=>!j.gone),n=k=>k==="todo"?live.filter(j=>!lmCal(j)&&!lmNoCal(j)).length:k==="doc"?live.filter(lmBusy).length:k==="go"?live.filter(j=>lmPri(j)>0).length+loList().length:k==="done"?live.filter(lmCal).length:allS.length;
  const soL={near:"近い順",staff:"担当順",town:"町名順"}[so]||"";
  const mapHtml=`<div style="position:relative;isolation:isolate"><div id="umap" style="height:60vh;min-height:300px;border-radius:12px;border:1px solid var(--line)"><div class="progress" style="padding:20px">地図を読み込み中…</div></div>${wide?"":`<div id="lmSheet">${lmSheetHtml()}</div>`}</div>`;
@@ -1853,7 +1856,7 @@ function uiDlg(msg,withInput,def){return new Promise(res=>{const w=document.crea
 const uiConfirm=m=>uiDlg(m,false);const uiPrompt=(m,d)=>uiDlg(m,true,d);
 /* 進み具合に対して止まっている日数（要注意） */
 const RT_LATE=[["send","📠","デモ内容 未送信！",2,4],["demo","⏳","デモ期間 超過！",8,14],["ct","🖨","契約まだ！",3,5],["ctout","🚗","契約書 未回収",3,7],["pay","💳","引落用紙 未回収",14,30],["in","⌨","ケアレンツ未入力",1,3]];
-function rtLate(r){if(r.state==="削除"||rtStop(r)||(isD(r.deliv)&&typeof RT_FROM!=="undefined"&&RT_FROM&&r.deliv<RT_FROM))return [];const fl=RF_FLOW[rtFlow(r)]||[],out=[],dv=isD(r.deliv)?daysFrom(r.deliv):null,cf=isD(r.confDate)?daysFrom(r.confDate):null,cs=rtCtStage(r);
+function rtLate(r){if(r.state==="削除"||rtStop(r)||(isD(r.deliv)&&typeof RT_FROM!=="undefined"&&RT_FROM&&r.deliv<RT_FROM))return [];const fl=RF_FLOW[rtFlow(r)]||[],out=[],dv=isD(r.deliv)?daysFrom(r.deliv):null,cf=isD(r.confDate)?daysFrom(r.confDate):isD(r.start)?daysFrom(r.start):dv,cs=rtCtStage(r);
  const add=(k,d)=>{const L=RT_LATE.find(x=>x[0]===k);if(d!=null&&d>=L[3])out.push({k,ic:L[1],t:L[2],d,red:d>=L[4]})};
  if(fl.includes("send")&&!RF_STEPS.send.done(r))add("send",dv);
  if(fl.includes("conf")&&!confDone(r))add("demo",dv);
@@ -1892,7 +1895,7 @@ function rtBoard(){const rs=(DB.rentals||[]).filter(r=>r.state!=="削除"),cases
 function rtList(){const q=(S.rq2||"").trim(),st=S.rst||"",f=S.rf||"hot";let rs=(DB.rentals||[]).filter(r=>r.state!=="削除");
  if(st)rs=rs.filter(r=>(stUni(r.staff)||"（担当なし）")===st);
  const dk=r=>r.jflag==="デモ解約"&&((d=>d!=null&&d<=30)(daysFrom(isD(r.confDate)?r.confDate:r.deliv)));
- if(f==="ctg")rs=rs.filter(r=>{const k=rtCtStage(r);return k>0&&k<4});else if(f==="hot")rs=rs.filter(r=>S.rwK?rtLate(r).some(x=>x.k===S.rwK):(rtLate(r).length||dk(r)));else if(f==="demo")rs=rs.filter(r=>{const a=rtAlerts(r)[f];return dk(r)||(a&&(a.k==="r"||a.k==="o"||a.k==="h"))});else if(f!=="all")rs=rs.filter(r=>{const a=rtAlerts(r)[f];return a&&(a.k==="r"||a.k==="o"||(f==="demo"&&a.k==="h")||(f==="in"&&a.k==="r"))});
+ if(f==="ctg")rs=rs.filter(r=>{const k=rtCtStage(r);return k>0&&k<4});else if(f==="hot")rs=rs.filter(r=>S.rwK?rtLate(r).some(x=>x.k===S.rwK):(rtLate(r).length||rtHot(r)||dk(r)));else if(f==="demo")rs=rs.filter(r=>{const a=rtAlerts(r)[f];return dk(r)||(a&&(a.k==="r"||a.k==="o"||a.k==="h"))});else if(f!=="all")rs=rs.filter(r=>{const a=rtAlerts(r)[f];return a&&(a.k==="r"||a.k==="o"||(f==="demo"&&a.k==="h")||(f==="in"&&a.k==="r"))});
  if(q){const tk=qTokens(q);rs=rs.filter(r=>{const cu=r.client?clientOf(r.client):null,h=snorm([r.cname,cu?cu.kana:"",r.item,r.officeName,r.cmName,r.memo,r.biko].join(" "));return tk.every(t=>h.includes(t))})}
  rs.sort((a,b)=>String(b.deliv).localeCompare(String(a.deliv))||String(b.id).localeCompare(String(a.id)));if(f==="ctg")rs.sort((a,b)=>rtCtStage(a)-rtCtStage(b));if(f==="hot")rs.sort((a,b)=>rtLateScore(b)-rtLateScore(a));return rs}
 function rtLedger(){const rs=rtList(),st=rtStaffs();
@@ -3815,6 +3818,8 @@ function render(){
 }
 let RK_LAST="";const rKey=()=>[S.view,S.lmDet||"",S.office||"",S.rtOpen||"",S.caseId||"",S.jt||"",S.room||""].join("|");
 const _render=render;render=function(){const rk=rKey(),sy=scrollY;_render();if(S.view==="list"&&S.listMode==="map"&&$("#map"))drawMap();if(S.view==="umap"&&$("#umap"))drawUmap();else if(UMAP){try{UMAP.remove()}catch(e){}UMAP=null}if(rk===RK_LAST&&sy>0){scrollTo(0,sy);requestAnimationFrame(()=>{if(rKey()===rk)scrollTo(0,sy)})}RK_LAST=rk};
+/* 詳細を閉じた後もスクロールが止まったままにならないように：.full（詳細の枠）が無くなったら必ず noscroll を外す */
+{let nsT=0;const nsFix=()=>{nsT=0;document.body.classList.toggle("noscroll",!!document.querySelector(".full"))};try{new MutationObserver(()=>{if(!nsT)nsT=requestAnimationFrame(nsFix)}).observe(document.body,{childList:true,subtree:true})}catch(e){}window.addEventListener("popstate",()=>setTimeout(nsFix,50))}
 /* スマホの「戻る」でアプリ内のひとつ前の画面に戻る（最初の画面では2回押すと終了） */
 let NAV_LAST=null,NAV_POP=false,EXIT_AT=0,NAV_DEPTH=0;
 const navKey=()=>S.view+"|"+(S.view==="visit"?(S.office||""):S.view==="case"?(S.caseId||""):"");
