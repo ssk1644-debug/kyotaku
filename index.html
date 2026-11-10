@@ -435,6 +435,36 @@ async function persist(ops){
 let SAVE_N=0,SAVE_T=null;function saveInd(st){let el=$("#saveInd");if(!el){el=document.createElement("div");el.id="saveInd";el.className="saveind";document.body.appendChild(el)}
  clearTimeout(SAVE_T);if(st==="busy"){el.textContent="保存中…";el.className="saveind on"}else if(st==="ok"){el.textContent="✓ 保存しました";el.className="saveind on ok";SAVE_T=setTimeout(()=>{el.className="saveind"},1400)}else el.className="saveind"}
 {const _p0=persist;persist=async function(ops){SAVE_N++;saveInd("busy");let ok=false;try{const r=await _p0(ops);ok=true;return r}finally{SAVE_N--;if(!SAVE_N)saveInd(ok?"ok":"")}}}
+
+/* ===== すぐ保存（11/10 レスポンス改善 第1段階）
+   押した瞬間にこの端末のデータと画面を変え、サーバーへの保存は裏で行う。
+   同じ行への連続変更は1つにまとめ、最後の内容を順番どおりに保存。失敗は3回まで自動でやり直し、だめなら赤い帯で知らせる。
+   新規作成・削除・取り込み・通知は、これまでどおり persist（完了を待つ）を使う。 ===== */
+const SQ={};
+const sqKeys=()=>Object.keys(SQ);
+const sqFailN=()=>sqKeys().filter(k=>SQ[k].fail).length;
+function sqInd(){const busy=sqKeys().some(k=>!SQ[k].fail);if(busy)saveInd("busy");else if(!SAVE_N)saveInd(sqFailN()?"":"ok");
+ let bar=document.getElementById("sqBar");const n=sqFailN();
+ if(!n){if(bar)bar.remove();return}
+ if(!bar){bar=document.createElement("div");bar.id="sqBar";bar.style.cssText="position:fixed;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 86px);z-index:9001;background:#b3261e;color:#fff;border-radius:12px;padding:10px 12px;display:flex;gap:8px;align-items:center;box-shadow:0 4px 14px rgba(0,0,0,.3)";document.body.appendChild(bar)}
+ bar.innerHTML=`<div style="flex:1;font-size:14px"><b>⚠ 保存できていない変更 ${n}件</b><div style="font-size:12px;opacity:.9">電波の良い所で押してください。画面は変えたままです</div></div><button class="btn sm" type="button" onclick="sqRetry()">もう一度</button>`}
+function sqReapply(t,id){const k=t+":"+id,q=SQ[k];if(!q)return;const ex=(DB[t]||[]).find(x=>x.id===id);if(ex){const u=ex.updatedAt;Object.assign(ex,q.row);if(u!=null)ex.updatedAt=u}}
+async function sqSend(k){const q=SQ[k];if(!q||q.busy)return;q.busy=true;q.fail=false;sqInd();const seq=q.seq,t=q.table,row=Object.assign({},q.row);let again=false;
+ try{if(MODE==="live"){const ex=(DB[t]||[]).find(x=>x.id===row.id),sr=toServer(t,row);if(ex&&ex.updatedAt!=null)sr._base=ex.updatedAt;
+   const d=await api("batch",{ops:[{table:t,row:sr}]});const v=fromServer(t,d.rows[0]);
+   if(SQ[k]===q&&q.seq===seq){applyOp(t,v);delete SQ[k]}else{const e=(DB[t]||[]).find(x=>x.id===row.id);if(e&&v&&v.updatedAt!=null)e.updatedAt=v.updatedAt;again=true}
+   cacheSoon()}
+  else{save();if(q.seq===seq)delete SQ[k];else again=true}
+  q.tries=0}
+ catch(e){if(e&&e.code==="conflict"){delete SQ[k];toast("ほかの人が先に変えていました。最新の内容にします");syncNow("quiet")}
+  else{q.tries=(q.tries||0)+1;if(q.tries<=3){q.busy=false;setTimeout(()=>sqSend(k),1000*Math.pow(2,q.tries));sqInd();return}q.fail=true}}
+ q.busy=false;sqInd();if(again&&SQ[k])sqSend(k)}
+/* ops：[{table,row}]（どれも id で上書きする行）。すぐ画面を変えて、保存は裏で */
+function saveFast(ops,msg){ops.forEach(o=>{applyOp(o.table,Object.assign({},o.row));const k=o.table+":"+o.row.id,q=SQ[k]||(SQ[k]={table:o.table,row:{},seq:0,tries:0});Object.assign(q.row,o.row);q.seq++;q.tries=0;q.fail=false});
+ if(MODE!=="live")save();buzz(30);if(msg)toast(msg);render();ops.forEach(o=>sqSend(o.table+":"+o.row.id));return true}
+window.sqRetry=()=>{sqKeys().forEach(k=>{const q=SQ[k];if(q.fail){q.fail=false;q.tries=0;sqSend(k)}})};
+window.addEventListener("beforeunload",e=>{if(sqKeys().length){e.preventDefault();e.returnValue="保存できていない変更があります"}});
+window.addEventListener("online",()=>{if(sqFailN())sqRetry()});
 /* AIの処理中は、上の段の色を変えてアスポッピーが考え中の顔に（どの画面に移っても分かる） */
 let AI_N=0,AI_T0=0,AI_IV=null,AI_TX="";
 function aiBusy(d,pl){AI_N=Math.max(0,AI_N+d);const lb=document.querySelector(".locbar");if(!lb)return;let bar=$("#aiBar");
@@ -737,7 +767,7 @@ function lmAlerts0(j){const A=[],hz=(()=>{const u=lmClient(j.code);return u&&hos
 const lmStateTag=j=>j.gone?`<span class="status" style="font-size:11px;background:#ddd;color:#555">利用終了</span>`:lmPriTag(j)+lmStateTag0(j)+" "+lmRentTag(j);
 const lmStateTag0=j=>`<span class="status ${lmCal(j)?"st-ok":lmDoc(j)?"st-alert":"st-warn"}" style="font-size:11px">${esc(lmNoCal(j)&&!lmCal(j)?"カレンダー不要":(KB_L[j.k||""]||("区分"+j.k)))}</span>`;
 async function lmSet(code,patch,b,msg){const j=lmRows().find(x=>x.code===code)||{};const nj=Object.assign(lmClean(j),patch);
- if(b)b.disabled=true;try{await persist([{table:"caselog",row:{id:"lm"+codeN(code),case:"m:"+code,kind:"地図",text:JSON.stringify(nj),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}]);buzz(60);if(msg)toast(msg);render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}}
+ saveFast([{table:"caselog",row:{id:"lm"+codeN(code),case:"m:"+code,kind:"地図",text:JSON.stringify(nj),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}],msg)}
 window.lmDel=async(code,b)=>{const j=lmRows().find(x=>x.code===code);if(!j)return;if(!await uiConfirm(lmName(j)+" 様を地図から消します。よろしいですか？\n（間違い・重複のとき用。ケアレンツの利用者一覧は消えません）"))return;
  const nj=lmClean(j);if(b)b.disabled=true;
  try{await persist([{table:"caselog",row:{id:"lm"+codeN(code),case:"m:"+code,kind:"地図",text:JSON.stringify(nj),state:"削除",rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}]);buzz(60);toast("地図から消しました");S.lmDet=null;S.lmEd=false;render()}catch(e){if(b)b.disabled=false;toast("消せませんでした："+errText(e))}};
@@ -798,8 +828,8 @@ window.lmEdSave=(code,b)=>{const v=id=>String(($("#"+id)||{}).value||"").trim();
 function loAll(){const m={};(DB.caselog||[]).forEach(l=>{if(l.kind!=="居宅用事"||l.state==="削除")return;let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}m[String(l.case||"").slice(2)]=j});return m}
 function loGet(oid){const j=Object.assign({},loAll()[oid]||{});if(!Array.isArray(j.er))j.er=[];return j}
 function loList(){const m=loAll();return DB.offices.filter(o=>!offGone(o)).map(o=>{const j=m[o.id];return j&&(j.pri||(j.er||[]).length)?{o,j:Object.assign({er:[]},j)}:null}).filter(Boolean).sort((a,b)=>lmPri(b.j)-lmPri(a.j)||String(a.o.name).localeCompare(String(b.o.name),"ja"))}
-async function loSet(oid,patch,b,msg){const j=Object.assign(loGet(oid),patch);if(b)b.disabled=true;
- try{await persist([{table:"caselog",row:{id:"lo"+oid,case:"o:"+oid,kind:"居宅用事",text:JSON.stringify(j),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}]);buzz(60);if(msg)toast(msg);render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}}
+async function loSet(oid,patch,b,msg){const j=Object.assign(loGet(oid),patch);
+ saveFast([{table:"caselog",row:{id:"lo"+oid,case:"o:"+oid,kind:"居宅用事",text:JSON.stringify(j),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}],msg)}
 window.loPri=async (oid,k)=>{let t="";if(k){t=await uiPrompt((k==="u"?"🚨 至急":"📌 優先")+"の理由（ひとこと・空でも可）","");if(t===null)return;t=t.trim()}
  loSet(oid,{pri:k,priT:t,priBy:k?(USER?USER.name:"デモ"):"",priAt:k?today():""},null,k?"印を付けました":"印を外しました");
  if(k==="u"){const o=DB.offices.find(x=>x.id===oid);const em=o?staffOf(o):[];lmUrgPush("居宅",(DB.users||[]).filter(u=>em.includes(u.email)||em.includes(u.name)),t)}};
@@ -2355,8 +2385,8 @@ const HM_KIND=["入院","入所","ショート","ロングショート"],HM_FAX=
 const hmName=h=>{const u=h.client?clientOf(h.client):null;return u?nmOnly(u.name):(h.clientName||"")};
 /* 最終結果（帰宅／帰宅困難）：GASを変えずに caselog kind=結果、id="hr"+入退院id、case="h:"+入退院id、text=帰宅|帰宅困難 */
 const hmRes=h=>{let v="";(DB.caselog||[]).forEach(l=>{if(l.kind==="結果"&&l.case==="h:"+h.id&&l.state!=="削除")v=String(l.text||"")});return v};
-window.hmResSet=async(id,b)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h)return;const cur=hmRes(h),nx=cur===""?"帰宅":cur==="帰宅"?"帰宅困難":"";if(b)b.disabled=true;
- try{await persist([{table:"caselog",row:{id:"hr"+id,case:"h:"+id,kind:"結果",text:nx,rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}]);render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
+window.hmResSet=async(id,b)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h)return;const cur=hmRes(h),nx=cur===""?"帰宅":cur==="帰宅"?"帰宅困難":"";
+ saveFast([{table:"caselog",row:{id:"hr"+id,case:"h:"+id,kind:"結果",text:nx,rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}])};
 const hmResCell=h=>{const r=hmRes(h),p=hLast(h),hint=!r&&p&&/在宅復帰困難|死亡・解約/.test(p.dir||"");
  return `<button type="button" class="btn sm" title="押すと切り替え（未定→帰宅→帰宅困難）" style="padding:2px 8px;white-space:nowrap;${r==="帰宅"?"background:#e6f4ea;border-color:#2e7d32;color:#1b5e20;font-weight:700":r==="帰宅困難"?"background:#fdecea;border-color:#c0392b;color:#a93226;font-weight:700":""}" onclick="hmResSet('${h.id}',this)">${r==="帰宅"?"🏠 帰宅":r==="帰宅困難"?"⛔ 帰宅困難":"― 未定"}</button>${hint?'<div class="meta" style="color:#c0392b;font-size:11px">⛔にする？</div>':""}`};
 const HM_RED="box-shadow:inset 0 0 0 2px #e53935;border-radius:6px;";
@@ -2388,7 +2418,7 @@ const hmNm=h=>{const u=h.client?clientOf(h.client):null;if(!u)return String(h.cl
 window.hmCell=async(id,k,el)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h)return;let v;
  if(el.tagName==="BUTTON"){v=h[k]==="✓"?"":"✓"}else v=String(el.value||"").trim();
  const row={id,[k]:v},nx=Object.assign({},h,row);if(h.state!=="確認待ち")row.state=nx.pickKind?"引上げ":nx.outDate?"退院":"入院中";
- if(el.tagName==="BUTTON")el.disabled=true;try{await persist([{table:"hosp",row}]);render()}catch(e){toast("保存できませんでした："+errText(e));render()}};
+ saveFast([{table:"hosp",row}])};
 window.hmMemo=async (id,k)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h)return;const v=await uiPrompt((k==="reason"?"入院理由・病院・備考":"期間の見込み")+"（"+hmNm(h)+" 様）",h[k]||"");if(v===null)return;hmCell(id,k,{tagName:"INPUT",value:v})};
 const hmCk=(h,k)=>`<button type="button" class="hmck ${h[k]==="✓"?"on":""}" onclick="event.stopPropagation();hmCell('${h.id}','${k}',this)" aria-label="${k}">${h[k]==="✓"?"✓":""}</button>`;
 const hmD=(h,k)=>`<input type="date" class="hmd" value="${esc(isD(h[k])?h[k]:"")}" onchange="hmCell('${h.id}','${k}',this)">`;
@@ -2692,7 +2722,10 @@ window.caseCreate=async(office,b)=>{const v=$("#cn-client").value,u=findClient(v
  if(cond.trim()||direct){const p={people:[],cond:cond.trim(),prep:[],waits:direct?[{what:"CMの了承",due:addDays(today(),3),at:today()}]:[]};ops.push(partOp(row.id,p));if(direct)ops.push(clog(row.id,"待ち","「CMの了承」を待つ（期限 "+md(addDays(today(),3))+"）"))}
  try{await persist(ops);S.caseNew=null;buzz(60);caseOpen(row.id)}
  catch(e){b.disabled=false;toast("作れませんでした："+errText(e))}};
-window.caseOpen=id=>{S.caseId=id;S.view="case";render();scrollTo(0,0)};
+window.caseOpen=async id=>{if(S.mergeFrom&&id!==S.mergeFrom){const a=(DB.cases||[]).find(x=>x.id===S.mergeFrom),t=(DB.cases||[]).find(x=>x.id===id);
+  if(a&&t){if(!await uiConfirm("「"+caseHead(a)+"」を\n「"+caseHead(t)+"」にまとめますか？\n（経過・記録も移ります）"))return;const from=S.mergeFrom;S.mergeFrom=null;mgBar();await caseMergeTo(from,id,null);return}}
+ if(S.mergeFrom&&id===S.mergeFrom){toast("まとめ先は、ほかのカードを選んでください");return}
+ if(S.view!=="case")S.caseBack=S.view;S.caseId=id;S.view="case";render();scrollTo(0,0)};
 /* 最初の内容（AIがまとめた会話の中身）を全文で出す */
 function caseFirst(c){const l=(DB.caselog||[]).filter(x=>x.case===c.id&&x.kind==="会話"&&String(x.text||"").trim()).sort((a,b)=>String(a.at).localeCompare(String(b.at)))[0];
  return l?`<div class="form" style="margin-top:10px;gap:2px"><div class="meta">最初の内容（${esc(fmtAt(l.at))}）</div><div style="white-space:pre-wrap">${esc(l.text)}</div></div>`:""}
@@ -2752,7 +2785,7 @@ function viewCase(){const c=(DB.cases||[]).find(x=>x.id===S.caseId);if(!c)return
   <label>利用者<input id="cs-client" list="csClients" value="${esc(u?clientLabel(u):c.clientName||"")}" placeholder="名前の一部で候補から選ぶ"></label></div>
   <datalist id="csClients">${DB.clients.map(clOpt).join("")}</datalist>
   <div><button class="btn primary" type="button" onclick="caseSave('${c.id}',this)">保存</button></div></details>
- ${caseFirst(c)}${casePartsHtml(c)}
+ <div style="margin:2px 0 6px;text-align:right"><button class="btn sm" type="button" onclick="mgStart('${c.id}')">🔗 ほかのカードとまとめる</button></div> ${caseFirst(c)}${casePartsHtml(c)}
  ${ci<st.length-1?`<button class="btn primary" type="button" style="width:100%;margin-top:8px" onclick="caseStage('${c.id}','${st[ci+1]}',this)">次の段階へ：${esc(st[ci+1])}</button>`:""}
  ${caseRentals(c)}
  <div class="section-t"><h2>事務とのやりとり</h2></div>
@@ -2764,7 +2797,8 @@ function viewCase(){const c=(DB.cases||[]).find(x=>x.id===S.caseId);if(!c)return
  <div class="rbox"><textarea id="cs-memo" rows="1" placeholder="メモを足す（例：ケアマネに日程を確認中）"></textarea><button class="btn sm primary" type="button" style="padding:10px 14px" onclick="caseMemo('${c.id}',this)">足す</button></div>
  <div class="log" style="margin-top:8px">${caseLogs(c.id).map(l=>`<div class="logi"><div class="meta">${fmtAt(l.at)} ・ ${esc(l.byName||"")} ・ ${esc(l.kind||"")}${l.rec&&DB.records.some(r=>r.id===l.rec)?` ・ <a href="#" onclick="recShow('${l.rec}');return false">元の会話を見る</a>`:""}</div>${esc(l.text)}</div>`).join("")||'<div class="meta">まだ経過がありません</div>'}</div>
  <details class="form" style="margin-top:14px"><summary class="meta" style="cursor:pointer">まとめる・削除</summary>
-  ${others.length?`<label>このカードを、同じ利用者の別のカードにまとめる<select id="cs-merge"><option value="">選ぶ</option>${others.map(x=>`<option value="${x.id}">${esc(x.type)}（${esc(x.stage||"受付")}）${esc((x.title||x.next||"").slice(0,20))}</option>`).join("")}</select></label><div><button class="btn sm" type="button" onclick="caseMerge('${c.id}',this)">まとめる</button></div>`:'<div class="meta">同じ利用者のほかのカードはありません</div>'}
+  <div style="margin:4px 0 8px"><button class="btn sm primary" type="button" onclick="mgStart('${c.id}')">🔗 画面からまとめ先を選ぶ</button> <span class="meta">押したあと、まとめたいカードをタップ</span></div>
+  ${others.length?`<label>または、同じ利用者の別のカードから選ぶ<select id="cs-merge"><option value="">選ぶ</option>${others.map(x=>`<option value="${x.id}">${esc(x.type)}（${esc(x.stage||"受付")}）${esc((x.title||x.next||"").slice(0,20))}</option>`).join("")}</select></label><div><button class="btn sm" type="button" onclick="caseMerge('${c.id}',this)">まとめる</button></div>`:'<div class="meta">同じ利用者のほかのカードはありません</div>'}
   <div><button class="btn sm" type="button" style="color:var(--alert)" onclick="caseDel('${c.id}',this)">このカードを削除</button></div></details>`}
 /* タスクカードにつながる事務への依頼：カードから送ったもの（rec=c:案件ID）と、カードに入れた会話から送ったもの */
 function caseReqs(c){const recs=new Set((DB.caselog||[]).filter(l=>l.case===c.id&&l.rec).map(l=>l.rec));
@@ -2780,7 +2814,7 @@ window.caseStage=(id,x,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c||cStage(c)
  const ops=[{table:"cases",row:{id,stage:x,state:x==="完了"?"完了":"",doneAt:x==="完了"?new Date().toISOString():""}},clog(id,"進捗",cStage(c)+" → "+x)];
  const sw=STAGE_WAIT[x];if(sw){const p=cParts(c);if(!p.waits.some(w=>!w.done&&w.what===sw[0])){const due=addDays(today(),sw[1]);p.waits.push({what:sw[0],due,at:today()});ops.push(partOp(id,p),clog(id,"待ち","「"+sw[0]+"」を待つ（期限 "+md(due)+"）"))}}
  if(x==="完了"){const p=cParts(c);if(p.waits.some(w=>!w.done)){p.waits.forEach(w=>{if(!w.done)w.done=today()});ops.push(partOp(id,p))}}
- return caseOps(ops,b,x==="完了"?"完了にしました"+(c.cm||c.office?"。CMに報告しましたか？":""):sw?"「"+sw[0]+"」の期限を"+sw[1]+"日後に入れました":"")};
+ return saveFast(ops,x==="完了"?"完了にしました"+(c.cm||c.office?"。CMに報告しましたか？":""):sw?"「"+sw[0]+"」の期限を"+sw[1]+"日後に入れました":"")};
 window.caseSave=async(id,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c)return;const v=String($("#cs-client").value||"").trim(),u=findClient(v),nv=v.replace(/（.*$/,"").replace(/[\s　]*様$/,"").trim();
  if(v&&!u&&nv!==String(c.clientName||"").replace(/[\s　]*様$/,"")&&!await uiConfirm("「"+nv+" 様」は一覧にいません。\n新規の方として、この名前にしますか？"))return;
  const type=$("#cs-type").value,st=CTYPES[type]||CTYPES["その他"],stage=st.includes(c.stage)?c.stage:(c.stage==="完了"?"完了":st[0]);
@@ -2789,7 +2823,15 @@ window.caseSave=async(id,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c)return;c
  return caseOps([{table:"cases",row}],b,"保存しました")};
 window.caseMemo=(id,b)=>{const t=($("#cs-memo").value||"").trim();if(!t){toast("メモを入れてください");return}
  return caseOps([{table:"cases",row:{id}},clog(id,"メモ",t)],b,"")};
-window.caseMerge=async(id,b)=>{const to=$("#cs-merge").value;if(!to){toast("まとめる先を選んでください");return}const c=DB.cases.find(y=>y.id===id);
+window.caseMerge=(id,b)=>{const to=$("#cs-merge").value;if(!to){toast("まとめる先を選んでください");return}return caseMergeTo(id,to,b)};
+/* 画面のカードをタップしてまとめる（11/10）：まとめる元を覚えて、次に開いたカードへまとめる */
+const mgBar=()=>{let e=document.getElementById("mgBar");const c=S.mergeFrom&&(DB.cases||[]).find(x=>x.id===S.mergeFrom);
+ if(!c){if(e)e.remove();S.mergeFrom=null;return}
+ if(!e){e=document.createElement("div");e.id="mgBar";e.style.cssText="position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top,0px) + 64px);z-index:9000;background:#1f2a28;color:#fff;border-radius:12px;padding:10px 12px;box-shadow:0 4px 14px rgba(0,0,0,.3);display:flex;gap:8px;align-items:center";document.body.appendChild(e)}
+ e.innerHTML=`<div style="flex:1;font-size:14px">🔗 <b>まとめ先のカードをタップ</b><div style="font-size:12px;opacity:.85">「${esc(caseHead(c))}」をまとめます</div></div><button class="btn sm" type="button" onclick="mgStop()">やめる</button>`};
+window.mgStart=id=>{S.mergeFrom=id;if(S.view==="case"){S.caseId=null;S.view=S.caseBack&&S.caseBack!=="case"?S.caseBack:"sched";render();scrollTo(0,0)}else render();mgBar();toast("まとめ先のカードをタップしてください")};
+window.mgStop=()=>{S.mergeFrom=null;mgBar()};
+window.caseMergeTo=async(id,to,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c||id===to)return;
  const ops=caseLogs(id).map(l=>({table:"caselog",row:{id:l.id,case:to}}));ops.push({table:"cases",row:{id,state:"削除"}},{table:"cases",row:{id:to}},clog(to,"まとめ","「"+(c.type||"")+(c.title?"："+c.title:"")+"」をこのカードにまとめました"));
  if(await caseOps(ops,b,"まとめました"))caseOpen(to)};
 window.caseDel=async(id,b)=>{if(!await uiConfirm("このカードを削除しますか？（経過も見えなくなります）"))return;const c=DB.cases.find(x=>x.id===id),st0=c?c.state||"":"";
@@ -2825,7 +2867,7 @@ function chipMenu(r,c){const k=r.id+"_"+c.id;return `<div class="form" style="ma
  <div><b>🗂 ${esc(cName(c))}・${esc(cTopic(c))}</b>${r.client&&c.client&&r.client!==c.client?' <span class="meta" style="color:var(--alert)">⚠ この記録の利用者と違います</span>':""}</div>
  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="btn sm" type="button" onclick="caseOpen('${c.id}')">開く</button>
  <input id="cm-${k}" list="chipCl" placeholder="利用者を選ぶ（新規は名前を入れる）" style="flex:1;min-width:150px;margin:0"><datalist id="chipCl">${DB.clients.map(clOpt).join("")}</datalist><button class="btn sm primary" type="button" onclick="chipClient('${c.id}','cm-${k}',this)">利用者を変える</button>
- <button class="btn sm" type="button" onclick="chipUnlink('${r.id}','${c.id}',this)">この記録から外す</button><button class="btn sm" type="button" style="color:var(--alert)" onclick="caseDel('${c.id}',this)">カードを削除</button><button class="btn sm" type="button" onclick="S.chipM='';render()">閉じる</button></div></div>`}
+ <button class="btn sm" type="button" onclick="S.chipM='';mgStart('${c.id}')">🔗 ほかのカードにまとめる</button> <button class="btn sm" type="button" onclick="chipUnlink('${r.id}','${c.id}',this)">この記録から外す</button><button class="btn sm" type="button" style="color:var(--alert)" onclick="caseDel('${c.id}',this)">カードを削除</button><button class="btn sm" type="button" onclick="S.chipM='';render()">閉じる</button></div></div>`}
 window.chipClient=async(cid,iid,b)=>{const c=(DB.cases||[]).find(x=>x.id===cid),v=String(($("#"+iid)||{}).value||"").trim(),u=findClient(v);if(!c)return;if(!v){toast("利用者の名前を入れてください");return}
  if(!u){const nm=v.replace(/（.*$/,"").replace(/[\s　]*様$/,"").trim();if(!await uiConfirm("「"+nm+" 様」は一覧にいません。\n新規の方として、この名前にしますか？"))return;
   S.chipM="";return caseOps([{table:"cases",row:{id:cid,client:"",clientName:nm}}],b,"新規の「"+nm+" 様」にしました")}
@@ -2926,8 +2968,7 @@ window.schedSave=async b=>{{const o=DB.offices.find(x=>x.id===SF.office);if(o&&S
  try{await persist([{table:"sched",row}]);S.schedEdit=null;buzz(60);toast(SF.id?"予定を直しました":"予定を入れました");render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
 window.schedDel=async(id,b)=>{if(!await uiConfirm("この予定を削除しますか？"))return;b.disabled=true;
  try{await persist([{table:"sched",row:{id,state:"削除"}}]);S.schedEdit=null;toast("予定を削除しました");render()}catch(e){b.disabled=false;toast("削除できませんでした："+errText(e))}};
-window.schedDone=async(id,done,b)=>{if(b)b.disabled=true;
- try{await persist([{table:"sched",row:{id,state:done?"済":"",doneAt:done?new Date().toISOString():""}}]);buzz(40);render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
+window.schedDone=(id,done,b)=>saveFast([{table:"sched",row:{id,state:done?"済":"",doneAt:done?new Date().toISOString():""}}]);
 function schedItem(s,showOffice){const o=DB.offices.find(x=>x.id===s.office),cm=DB.cms.find(c=>c.id===s.cm),done=s.state==="済",col=skColor(s.kind);
  const who=canAdmin()&&MODE==="live"&&!S.schedWho&&s.staff?` ・ ${esc(s.staff)}`:"";
  return `<div class="logi" style="border-left-color:${col};${done?"opacity:.6":""}"><div class="meta"><span style="background:${col};color:#fff;border-radius:999px;padding:1px 8px;font-weight:700">${esc(s.kind||"その他")}</span> ${s.date?esc(String(s.date).slice(5).replace("-","/"))+"（"+wd(s.date)+"）":"日付なし"}${s.time?" "+esc(s.time):""}${showOffice&&o?" ・ "+esc(o.name):""}${cm?" ・ "+esc(cm.name):""}${s.place?" ・ "+esc(s.place):""}${who}</div>
@@ -3035,7 +3076,7 @@ async function syncNow(manual){if(MODE!=="live"||!USER||SYNC_BUSY||!SYNC_TS||S.b
     if((t==="records"&&r.kind==="削除")||(t==="sched"&&r.state==="削除")){DB[t]=DB[t].filter(x=>x.id!==r.id);return}
     const v=["offices","cms","records"].includes(t)?fromServer(t,r):r;
     if(t==="records"){const ex=DB.records.find(x=>x.id===r.id);if(ex&&ex.trans&&!v.trans)v.trans=ex.trans}
-    applyOp(t,v)})});
+    applyOp(t,v);sqReapply(t,r.id)})});
   if(n)cacheSoon();if(n&&(manual||!editingNow()))render();if(manual===true)toast(n?"最新にしました（"+n+"件）":"最新の状態です")}
  catch(e){if(manual)toast("更新できませんでした："+errText(e))}
  finally{SYNC_BUSY=false;const b2=$("#syncBtn");if(b2)b2.textContent="↻"}}
