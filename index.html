@@ -719,7 +719,10 @@ const LM_IMG={"@sc":"data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3
 const lmIcoHtml=(ic,sz)=>LM_IMG[ic]?`<img src="${LM_IMG[ic]}" alt="" style="width:${sz}px;height:${sz}px;display:block">`:ic==="@pp"?`<span style="width:${sz}px;height:${sz}px;border-radius:50%;background:#fff var(--pp-smile) center/contain no-repeat;display:block"></span>`:(ic||"");
 const lmSN=x=>String(x||"").replace(/[\s　]/g,"").replace(/滝/g,"瀧").replace(/阪/g,"坂").replace(/^ササキ|^ｻｻｷ/,"佐々木").replace(/^沖東/,"沖藤").replace(/^長瀧/,"郷坪");
 function lmStaffName(raw){const n=lmSN(raw);if(!n)return "";const ks=LM_FIX.map(x=>x[0]).concat((DB.users||[]).map(u=>lmSN(stUni(u.name))));const k=ks.find(x=>x&&n.startsWith(x));return k||stUni(raw)}
-const lmStaff=j=>{const u=lmClient(j.code);return lmStaffName((j.stFix&&j.st)||(u&&u.staff)||j.st||"")||"（担当なし）"};
+/* 退職した人は画面に出さない（11/10 社長：高本）。ユーザーの「有効」が無の人も同じ */
+const RETIRED_NM=["高本"];
+const isRetired=n=>{const k=String(n||"").replace(/[\s　]/g,"");if(!k)return false;return RETIRED_NM.some(x=>k.includes(x))||(DB.users||[]).some(u=>String(u.active||"有")==="無"&&u.name&&k.includes(String(u.name).replace(/[\s　]/g,"")))};
+const lmStaff=j=>{const u=lmClient(j.code),n=lmStaffName((j.stFix&&j.st)||(u&&u.staff)||j.st||"");return n&&!isRetired(n)?n:"（担当なし）"};
 const lmStaffCol=n=>{const f=LM_FIX.find(x=>x[0]===n);if(f)return f[1];const L=lmStaffs().filter(x=>!LM_FIX.some(y=>y[0]===x));return LM_COL[Math.max(0,L.indexOf(n))%LM_COL.length]};
 function lmStaffs(){return [...new Set(lmRows().map(lmStaff))].sort()}
 const lmColor=j=>j.gone?"#aaa":(lmCal(j)||lmNoCal(j))?"#222":lmStaffCol(lmStaff(j));
@@ -1602,7 +1605,7 @@ function dupNotice(cms){const ds=cms.map(c=>({c,d:cmDups(c)})).filter(x=>x.d.len
 /* ===== AIが見つけた予定・事務への依頼（保存のあとに確認カードを出す。勝手には入れない） ===== */
 const FOUND=[];
 const wd=d=>"日月火水木金土"[new Date(String(d)+"T00:00:00").getDay()]||"";
-const FIND_KEYS=`,"events":[{"title":"予定の名前（例：担当者会議、納品、見積り提出の期限）","date":"YYYY-MM-DD","start":"HH:MM（分からなければ空）","end":"HH:MM（分からなければ空）","place":"場所（分からなければ空）"}],"requests":["事務所（事務員）にお願いすること。1件ずつ短い文で"],"cases":[{"client":"話題になった利用者の名前（例：加藤）","head":"用件の見出し。20字以内（例：車いす引上げ、ベッド新規、手すり見積、浴室改修）","type":"「レンタル新規」「購入」「住宅改修」「交換・回収」「修理・不具合」「追加・変更」「点検の希望」「相談・苦情」「その他」のどれか","text":"この利用者のこの用件について話した内容（1〜3文）","next":"この用件で次にやること（なければ空）","due":"この用件の期限 YYYY-MM-DD（なければ空）","cond":"用途・体の状態・希望などの条件（なければ空）","people":[{"role":"「CM」「家族」「本人」「病院」「業者」「その他」のどれか","name":"名前（分かれば）","rel":"続柄・立場（例：長男の妻）","go":"同行するなら true"}],"prep":["用意するもの・持っていくもの（なければ []）"],"waits":[{"what":"返事や連絡を待っていること（例：CMの了承、家族の日程の返事、デモの感想、退院日の連絡）","who":"だれの返事か（分かれば）","due":"いつ確認するか YYYY-MM-DD（分からなければ空）"}]}],"hosp":[{"client":"入院・退院した利用者の名前（例：加藤）","kind":"「入院」か「退院」","date":"入院日または退院日 YYYY-MM-DD（分からなければ空）","outPlan":"入院のとき、退院予定日 YYYY-MM-DD（分からなければ空）","note":"病院名・理由・見込みなど一言","dir":"今の方向性。「経過観察」「退院予定」「転院検討」「施設検討」「在宅復帰困難」「死亡・解約」のどれか（分からなければ空）"}]`;
+const FIND_KEYS=`,"events":[{"title":"予定の名前（例：担当者会議、納品、見積り提出の期限）","date":"YYYY-MM-DD","start":"HH:MM（分からなければ空）","end":"HH:MM（分からなければ空）","place":"場所（分からなければ空）","fix":"前に決めた予定の時間の確定・変更・訂正の連絡なら true、新しい予定なら false"}],"requests":["事務所（事務員）にお願いすること。1件ずつ短い文で"],"cases":[{"client":"話題になった利用者の名前（例：加藤）","head":"用件の見出し。20字以内（例：車いす引上げ、ベッド新規、手すり見積、浴室改修）","type":"「レンタル新規」「購入」「住宅改修」「交換・回収」「修理・不具合」「追加・変更」「点検の希望」「相談・苦情」「その他」のどれか","text":"この利用者のこの用件について話した内容（1〜3文）","next":"この用件で次にやること（なければ空）","due":"この用件の期限 YYYY-MM-DD（なければ空）","cond":"用途・体の状態・希望などの条件（なければ空）","people":[{"role":"「CM」「家族」「本人」「病院」「業者」「その他」のどれか","name":"名前（分かれば）","rel":"続柄・立場（例：長男の妻）","go":"同行するなら true"}],"prep":["用意するもの・持っていくもの（なければ []）"],"waits":[{"what":"返事や連絡を待っていること（例：CMの了承、家族の日程の返事、デモの感想、退院日の連絡）","who":"だれの返事か（分かれば）","due":"いつ確認するか YYYY-MM-DD（分からなければ空）"}]}],"hosp":[{"client":"入院・退院した利用者の名前（例：加藤）","kind":"「入院」か「退院」","date":"入院日または退院日 YYYY-MM-DD（分からなければ空）","outPlan":"入院のとき、退院予定日 YYYY-MM-DD（分からなければ空）","note":"病院名・理由・見込みなど一言","dir":"今の方向性。「経過観察」「退院予定」「転院検討」「施設検討」「在宅復帰困難」「死亡・解約」のどれか（分からなければ空）"}]`;
 const FIND_RULE=date=>`
 予定（events）：日時が決まった予定・期限だけ入れる。会話した日は${date}（${wd(date)}曜日）なので、「来週火曜」などはこの日を基準に年月日に直すこと。なければ []。
 事務への依頼（requests）：書類の送付・納品や回収の日程調整・見積りや請求書の作成・商品の手配など、営業本人ではなく事務所にやってもらうべきことだけ入れる。なければ []。
@@ -1610,7 +1613,7 @@ const FIND_RULE=date=>`
 案件（cases）：利用者ごと・用件ごとに分けて入れる。同じ利用者でも用件が違えば別にする（例：ベッドの新規と手すりの見積りは別）。手配・修理・デモ・見積・下見など対応が要る話は必ず入れる（利用者名が分からなければ client は空）。返事待ち・了承待ちは waits、持っていく物は prep、同行・連絡する相手は people に入れる（電話番号・住所は入れない）。なければ []。
 入院・退院（hosp）：利用者が入院した・入院している・退院した（予定を含む）話だけ入れる。なければ []。`;
 function addFound(d,rec,office,cm,date,who){d=d||{};
- const ev=(Array.isArray(d.events)?d.events:[]).filter(e=>e&&e.title&&/^\d{4}-\d{2}-\d{2}$/.test(String(e.date||""))).map(e=>({title:String(e.title),date:String(e.date),start:String(e.start||""),end:String(e.end||""),place:String(e.place||""),added:false}));
+ const ev=(Array.isArray(d.events)?d.events:[]).filter(e=>e&&e.title&&/^\d{4}-\d{2}-\d{2}$/.test(String(e.date||""))).map(e=>({title:String(e.title),date:String(e.date),start:String(e.start||""),end:String(e.end||""),place:String(e.place||""),fix:e.fix===true||e.fix==="true",added:false}));
  const rq=(Array.isArray(d.requests)?d.requests:[]).map(x=>String(x||"").trim()).filter(Boolean).map(text=>({text,on:true}));
  const cs=(Array.isArray(d.cases)?d.cases:[]).filter(x=>x&&(x.text||x.client)).map(x=>{let u=who&&who.nw?null:matchClient(x.client,office);if(who&&who.u&&(!u||!String(x.client||"").trim()))u=who.u;if(who&&who.nw)x.client=who.nw;
   const type=CTYPES[x.type]?x.type:"その他",same=u?openCasesOf(u.id).find(c=>c.type===type):null;
@@ -1619,7 +1622,7 @@ function addFound(d,rec,office,cm,date,who){d=d||{};
    prep:(Array.isArray(x.prep)?x.prep:[]).map(t=>String(t||"").trim()).filter(Boolean),waits:(Array.isArray(x.waits)?x.waits:[]).filter(w=>w&&w.what).map(w=>({what:String(w.what).trim(),who:String(w.who||"").trim(),due:/^\d{4}-\d{2}-\d{2}$/.test(String(w.due||""))?w.due:""}))}});
  const hs=(Array.isArray(d.hosp)?d.hosp:[]).filter(x=>x&&x.client).map(x=>{if(who&&who.nw)x.client=who.nw;const u=who&&who.nw?null:matchClient(x.client,office),dt=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||""))?String(v):"";
   return {cname:String(x.client||""),client:u?u.id:"",kind:x.kind==="退院"?"退院":"入院",date:dt(x.date)||(x.kind==="退院"?"":date||""),outPlan:dt(x.outPlan),note:String(x.note||"").trim(),dir:HDIRS.includes(x.dir)?x.dir:"",on:true}});
- const items=ev.map(e=>({t:e.title,date:e.date,time:e.start,place:e.place,def:"sched",st:""})).concat(rq.map(x=>({t:x.text,date:"",def:"jimu",st:""})));
+ const items=ev.map(e=>({t:e.title,date:e.date,time:e.start,place:e.place,def:"sched",fix:e.fix,st:""})).concat(rq.map(x=>({t:x.text,date:"",def:"jimu",st:""})));
  const nx=String(d.next||"").trim();if(nx&&!items.some(x=>x.t===nx))items.push({t:nx,date:"",def:/事務|FAX|ＦＡＸ|書類を送|手配/.test(nx)?"jimu":"sched",st:""});
  const fe={id:newId("f"),rec,office,cm,date,events:[],reqs:[],cases:cs,hosp:[],hospAuto:hs.length,items,sent:false};
  if(items.length||hs.length||cs.length)FOUND.push(fe);if(hs.length)hospAuto(hs,office,cm,date,rec,fe)}
@@ -1680,17 +1683,37 @@ function calUrl(e,o,cm){const d=e.date.replace(/-/g,""),tm=s=>{const m=String(s|
  else{const n=new Date(e.date+"T00:00:00");n.setDate(n.getDate()+1);dates=d+"/"+n.toLocaleDateString("sv-SE").replace(/-/g,"")}
  const q=new URLSearchParams({action:"TEMPLATE",text:e.title+(o&&o.name?"（"+o.name+"）":""),dates,details:`居宅：${o?o.name:""}${cm?"\nケアマネ："+cm.name:""}\n（アスポッピー営業ナビから追加）`,location:e.place||"",ctz:"Asia/Tokyo"});
  return "https://calendar.google.com/calendar/render?"+q.toString()}
+/* 前に入れた予定の時間を直す候補（同じ居宅・まだ済んでいない・今日以降）。利用者名・種類・用件の言葉が重なるほど上 */
+const fxNames=t=>(String(t||"").match(/[^\s、。・（）()「」:：]{1,8}(?=様)/g)||[]).map(pnorm).filter(x=>x.length>=2);
+const FX_W=/下見|納品|搬入|担当者会議|会議|訪問|デモ|契約|回収|見積|面談|退院|カンファ|モニタ|引上げ|引き上げ|調査|工事/g;
+function fxCands(f,x){const t=String(x.t||""),nm=fxNames(t),kd=guessKind(t),ws=new Set(t.match(FX_W)||[]),td=today(),me=USER?USER.name:"";
+ return (DB.sched||[]).filter(s=>s.state!=="済"&&s.state!=="削除"&&s.office===f.office&&f.office&&(!s.date||s.date>=td)&&!(s.date===(x.date||"")&&String(s.time||"")===String(x.time||"")))
+  .map(s=>{const st=String(s.text||""),sn=fxNames(st);let sc=0;if(nm.some(n=>sn.some(m=>m.includes(n)||n.includes(m))))sc+=4;if(s.kind===kd)sc+=1;
+   if([...ws].some(w=>st.includes(w)))sc+=2;if(s.staff===me)sc+=1;if(f.cm&&s.cm===f.cm)sc+=1;return {s,sc}})
+  .filter(o=>o.sc>=3||(x.fix&&o.sc>=2)).sort((a,b)=>b.sc-a.sc).slice(0,3).map(o=>o.s)}
+const fxDt=(d,t)=>d?d.slice(5).replace("-","/")+"（"+wd(d)+"）"+(t?" "+t:""):"日付なし";
+window.fdFix=async(fi,i,sid,b)=>{const f=FOUND[fi],x=f&&f.items&&f.items[i],s=(DB.sched||[]).find(y=>y.id===sid);if(!x||!s)return;
+ if(!x.date&&!x.time){toast("新しい日付か時間を入れてください");return}
+ const nd=x.date||s.date||"",nt=x.time||(x.date&&x.date!==s.date?"":s.time)||"";
+ if(!await uiConfirm("前の予定を直します。\n"+fxDt(s.date,s.time)+"　"+String(s.text||"").slice(0,30)+"\n　↓\n"+fxDt(nd,nt)))return;if(b)b.disabled=true;
+ const old=fxDt(s.date,s.time),row={id:sid,date:nd,time:nt};if(x.place)row.place=x.place;
+ if(!/（\d+\/\d+ 変更）$/.test(String(s.text||"")))row.text=String(s.text||"")+"（"+md(today())+" 変更）";
+ try{await persist([{table:"sched",row}]);x.st="fix";x.fixFrom=old;buzz(40);fdTidy(fi);render();toast("予定を "+fxDt(nd,nt)+" に直しました")}
+ catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
 /* 記録を保存した直後のカード：見つかったやることを1件ずつ「予定に入れる／事務に連絡／いらない」で振り分ける */
 function fcardsHtml(f,fi){const o=DB.offices.find(x=>x.id===f.office),cm=DB.cms.find(c=>c.id===f.cm),its=f.items||[],left=its.filter(x=>!x.st).length;
- const lbl={sched:"✓ 予定に入れました",jimu:"✓ 事務にお願いしました",drop:"いらない"};
+ const lbl={sched:"✓ 予定に入れました",jimu:"✓ 事務にお願いしました",drop:"いらない",fix:"✓ 前の予定を直しました"};
  return `<div class="form found" style="border-color:var(--accent);margin:8px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>記録を保存しました。${its.length?"会話から "+its.length+"件 見つかりました":""}</b></div>
  <div class="meta">${esc(o?o.name:"")}${cm?" ・ "+esc(cm.name):""} ・ ${esc(f.date)} の記録から ・ AIのおすすめに色が付いています</div>
  ${(f.cases||[]).length?fcHtml(f,fi):""}
  ${(f.hosp||[]).length?fhHtml(f,fi):""}${f.hospAuto?`<div style="margin-top:8px"><b>🏥 入院・退院の知らせ</b>${f.hospSt==="err"?`<div class="meta" style="color:var(--alert);font-weight:700">⚠ ${f.hospAuto}件を入退院表に入れられませんでした（${esc(f.hospErr||"")}）</div><button class="btn sm" type="button" onclick="haRetry('${f.id}')">もう一度入れる</button>`:f.hospSt==="busy"?`<div class="meta">⏳ ${f.hospAuto}件を入退院表に入れています…</div>`:`<div class="meta">✅ ${f.hospAuto}件を「確認待ち」で入退院表に入れました。利用者が合っているかは、入退院表（事務所）で確認します。</div>`}</div>`:""}
- ${its.map((x,i)=>x.st?`<div class="logi"><span class="meta">${lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}</div>`:`<div class="fcard">
-  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="date" value="${esc(x.date||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].date=this.value" aria-label="日付"><span class="meta">${x.date?"":"日付なしでも入れられます"}</span></div>
+ ${its.map((x,i)=>{if(x.st)return `<div class="logi"><span class="meta">${lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}${x.st==="fix"&&x.fixFrom?` <span class="meta">（${esc(x.fixFrom)} → ${esc(fxDt(x.date,x.time))}）</span>`:""}</div>`;const fx=fxCands(f,x);return `<div class="fcard">
+  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="date" value="${esc(x.date||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].date=this.value;render()" aria-label="日付"><input type="time" value="${esc(x.time||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].time=this.value;render()" aria-label="時間"><span class="meta">${x.date?"":"日付なしでも入れられます"}</span></div>
   <textarea rows="2" oninput="FOUND[${fi}].items[${i}].t=this.value">${esc(x.t)}</textarea>
-  <div style="display:flex;gap:6px"><button class="btn sm ${x.def==="sched"?"primary":""}" type="button" style="flex:1" onclick="fdDo(${fi},${i},'sched',this)">予定に入れる</button><button class="btn sm ${x.def==="jimu"?"primary":""}" type="button" style="flex:1" onclick="fdDo(${fi},${i},'jimu',this)">事務にお願い</button><button class="btn sm" type="button" onclick="fdDo(${fi},${i},'drop',this)">いらない</button></div></div>`).join("")}
+  ${fx.length?`<div style="margin:4px 0 6px;padding:6px 8px;border-radius:8px;background:#fff6d6;border:1px solid #f0a500"><div class="meta" style="font-weight:700">🔁 ${x.fix?"時間の変更・確定の連絡のようです。":"同じ件の予定がもう入っているかも。"}前の予定を直しますか？</div>
+   ${fx.map(s=>`<div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap"><span class="meta" style="flex:1;min-width:150px">${esc(fxDt(s.date,s.time))} ${esc(String(s.text||"").slice(0,28))}</span><button class="btn sm ${x.fix?"primary":""}" type="button" onclick="fdFix(${fi},${i},'${s.id}',this)">→ ${esc(fxDt(x.date,x.time))} に直す</button></div>`).join("")}
+   <div class="meta" style="margin-top:2px">新しい別の予定なら「予定に入れる」を押してください。</div></div>`:""}
+  <div style="display:flex;gap:6px"><button class="btn sm ${x.def==="sched"&&!(x.fix&&fx.length)?"primary":""}" type="button" style="flex:1" onclick="fdDo(${fi},${i},'sched',this)">予定に入れる</button><button class="btn sm ${x.def==="jimu"?"primary":""}" type="button" style="flex:1" onclick="fdDo(${fi},${i},'jimu',this)">事務にお願い</button><button class="btn sm" type="button" onclick="fdDo(${fi},${i},'drop',this)">いらない</button></div></div>`}).join("")}
  <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" type="button" onclick="fdClose(${fi})">閉じる</button>${left?`<span class="meta">押していない${left}件は「やること（日付なし）」に入ります</span>`:""}</div></div>`}
 window.fdDo=async(fi,i,act,b)=>{const f=FOUND[fi],x=f&&f.items&&f.items[i];if(!x)return;
  if(act==="drop"){x.st="drop";fdTidy(fi);render();return}
@@ -1746,7 +1769,10 @@ window.fdSend=async(fi,b)=>{const f=FOUND[fi];if(!f)return;let list=f.reqs.filte
 /* 事務への依頼の一覧（面談記録の画面） */
 /* ===== 事務の画面（依頼の受付・状態・返事、営業への連絡）とやりとり ===== */
 const JIMU="jimu";
-const isJimu=()=>!!USER&&(USER.role==="jimu"||USER.role==="事務");
+/* 営業と事務の両方を使う人（11/10 社長）：右上のボタンで切り替え。事務の画面のときは事務と同じ扱い */
+const BOTH_NM=["小坂","吉岡","難波"];
+const isBoth=()=>!!USER&&USER.role!=="admin"&&BOTH_NM.some(n=>String(USER.name||"").replace(/[\s　]/g,"").includes(n));
+const isJimu=()=>!!USER&&(isBoth()?!!JIMU_URL:(USER.role==="jimu"||USER.role==="事務"));
 const JIMU_VK="kyotaku-jimu-view",JIMU_URL=/[?&#]jimu\b/.test(location.href)||(()=>{try{return localStorage.getItem(JIMU_VK)==="1"}catch(e){return false}})();
 /* 管理者の「営業｜事務所」切り替え（この端末に覚えて開き直す） */
 window.viewSwitch=()=>{const jm=jimuMode();try{jm?localStorage.removeItem(JIMU_VK):localStorage.setItem(JIMU_VK,"1")}catch(e){}
@@ -2075,7 +2101,7 @@ window.rtImportGo=async b=>{if(!RT_PEND)return;b.disabled=true;const all=RT_PEND
  catch(e){b.disabled=false;b.textContent="続きから取り込む";toast("途中で止まりました（"+done+"件まで完了）："+errText(e));RT_PEND=all.slice(done)}};
 /* ===== 利用者（事務所アプリ）：一覧・並べ替え・新規追加・修正。ケアレンツのマスターを取り込むと同じ人は1人にまとまる ===== */
 const clTown=u=>{const m=String(u.name||"").match(/^(\S+?(町|丁目|区|村|市|郡))\s+/);return m?m[1]:""};
-function clRow(u){const o=DB.offices.find(x=>x.id===clOffice(u)),cm=DB.cms.find(c=>c.id===u.cm),h=hospOf(u.id);return {u,o,town:u.town||clTown(u),name:u.town&&String(u.name||"").startsWith(u.town+" ")?String(u.name).slice(u.town.length+1):nmBare(u.name),off:o?o.name:(u.officeName||""),cm:cm?cm.name:(u.cmName||""),staff:String(u.staff||"").replace(/[\s　]+/g," ").trim()||(o?staffNames(o).replace(/^未設定$/,""):""),h,app:/アプリで登録/.test(u.recent||""),end:u.useState==="終了"}}
+function clRow(u){const o=DB.offices.find(x=>x.id===clOffice(u)),cm=DB.cms.find(c=>c.id===u.cm),h=hospOf(u.id);return {u,o,town:u.town||clTown(u),name:u.town&&String(u.name||"").startsWith(u.town+" ")?String(u.name).slice(u.town.length+1):nmBare(u.name),off:o?o.name:(u.officeName||""),cm:cm?cm.name:(u.cmName||""),staff:(isRetired(u.staff)?"":String(u.staff||"").replace(/[\s　]+/g," ").trim())||(o?staffNames(o).replace(/^未設定$/,""):""),h,app:/アプリで登録/.test(u.recent||""),end:u.useState==="終了"}}
 const CL_COLS=[["town","町名",x=>x.town],["name","利用者",x=>x.name],["off","居宅",x=>x.off],["cm","担当CM",x=>x.cm],["staff","担当営業",x=>x.staff],["lv","介護度",x=>x.u.lv||""],["items","品目",x=>x.u.items||""],["tel","電話",x=>x.u.tel||""],["h","入院",x=>x.h?"1":""]];
 window.clSort=k=>{if(S.clSk===k)S.clSd=-(S.clSd||1);else{S.clSk=k;S.clSd=1}render()};
 function clList(){const a=krClBox(),b=billSumBox(),n=knBox();return `<button class="btn sm" type="button" style="margin-bottom:6px" onclick="S.view='umap';render()">🗺 利用者マップ（マイマップの取り込み・カレンダー配布）</button>`+(a||b||n?tbar("cl",[n?{id:"kn",label:"🆕 新規・解約",html:()=>n,auto:!!S.knPlan}:null,a?{id:"kc",label:"📥 ケアレンツから取り込む",html:()=>a,auto:!!(S.kcPlan||!DB.clients.some(u=>u.code))}:null,b?{id:"bs",label:"📊 居宅別の人数・売上",html:()=>b}:null]):"")+clList0()}
@@ -2105,7 +2131,7 @@ function clForm(){const isNew=S.clOpen==="new",u=isNew?{name:"",lv:"",items:""}:
 const telHref=t=>String(t||"").replace(/[^0-9+]/g,"");
 const mapHref=a=>"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(String(a||"").trim().split(/[\s　]+/)[0]);
 function clContact(u){const t=u.tel||u.tel2;if(!t&&!u.addr)return "";return `<div class="meta" style="grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap">${t?`<a class="btn sm" href="tel:${esc(telHref(t))}">📞 ${esc(t)}</a>`:""}${u.addr?`<a class="btn sm" href="${esc(mapHref(u.addr))}" target="_blank" rel="noopener">🗺 地図</a>`:""}</div>`}
-function clDetail(u){const L=[["顧客コード",u.code],["状態",u.useState?(u.useState+(u.billMonth?"（"+u.billMonth+" の請求）":"")):""],["住所",u.addr],["電話",u.tel],["連絡先",u.tel2],["滞在先",u.stay],["担当CM",u.cmName],["担当営業",u.staff],["引落",[u.payWay,u.payOrg].filter(Boolean).join(" ・ ")],["備考",u.note],...knLines(u)].filter(x=>String(x[1]||"").trim());
+function clDetail(u){const L=[["顧客コード",u.code],["状態",u.useState?(u.useState+(u.billMonth?"（"+u.billMonth+" の請求）":"")):""],["住所",u.addr],["電話",u.tel],["連絡先",u.tel2],["滞在先",u.stay],["担当CM",u.cmName],["担当営業",isRetired(u.staff)?"":u.staff],["引落",[u.payWay,u.payOrg].filter(Boolean).join(" ・ ")],["備考",u.note],...knLines(u)].filter(x=>String(x[1]||"").trim());
  const reqB=`<div style="margin-top:8px"><button class="btn primary" type="button" onclick="caseFromClient('${u.id}')">📞 依頼を受けた（タスクカードを作る）</button></div>`;
  if(!L.length)return u.id?reqB:"";return `${u.id?reqB:""}<div class="form" style="margin-top:10px"><b>ケアレンツの情報</b><dl class="kv">${L.map(([k,v])=>`<dt>${k}</dt><dd style="white-space:pre-wrap">${k==="電話"||k==="連絡先"?`<a href="tel:${esc(telHref(v))}">${esc(v)}</a>`:k==="住所"?`${esc(v)} <a href="${esc(mapHref(v))}" target="_blank" rel="noopener">地図</a>`:esc(v)}</dd>`).join("")}</dl></div>`}
 const kcG=(r,k)=>String(r[k]==null?"":r[k]).replace(/　/g," ").replace(/\s+/g," ").trim();
@@ -2352,7 +2378,7 @@ const hmF=()=>{if(!S.hmf){try{S.hmf=localStorage.getItem("kyotaku-hmf")||"open"}
 window.hmSetF=k=>{S.hmf=k;try{localStorage.setItem("kyotaku-hmf",k)}catch(e){}render()};
 /* 入退院の行に、居宅・担当CM・担当営業を付ける（登録の利用者から。なければ居宅名から） */
 function hmInfo(h){const u=h.client?clientOf(h.client):null,o=DB.offices.find(x=>x.id===(h.office||(u&&clOffice(u))))||(h.officeName?DB.offices.find(x=>x.name===h.officeName):null),cm=u&&u.cm?DB.cms.find(c=>c.id===u.cm):null;
- return {u,o,off:o?o.name:(h.officeName||""),cm:cm?cm.name:(h.cmName||""),staff:(h.staffName||(u&&u.staff)||(o?staffOf(o).filter(e=>{const x=(DB.users||[]).find(v=>v.email===e);return !x||String(x.active||"有")!=="無"}).map(uname).join("・"):"")||"").split("・").map(stUni).filter(Boolean).join("・")}}
+ return {u,o,off:o?o.name:(h.officeName||""),cm:cm?cm.name:(h.cmName||""),staff:((!isRetired(h.staffName)&&h.staffName)||(u&&!isRetired(u.staff)&&u.staff)||(o?staffOf(o).filter(e=>{const x=(DB.users||[]).find(v=>v.email===e);return !x||String(x.active||"有")!=="無"}).map(uname).join("・"):"")||"").split("・").map(stUni).filter(Boolean).join("・")}}
 /* 居宅の簡易表示（「居宅介護支援事業所」などを省く） */
 const offShort=n=>{n=String(n||"");const t=n.replace(/(指定)?居宅介護支援(事業所|センター)?|ケアプラン(センター|サービス)|介護支援センター|株式会社|（株）|\(株\)|社会福祉法人|医療法人(社団)?|有限会社/g,"").replace(/[\s　]+/g," ").trim();return t||n};
 /* 町名と名前を分ける */
@@ -2755,11 +2781,11 @@ window.caseStage=(id,x,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c||cStage(c)
  const sw=STAGE_WAIT[x];if(sw){const p=cParts(c);if(!p.waits.some(w=>!w.done&&w.what===sw[0])){const due=addDays(today(),sw[1]);p.waits.push({what:sw[0],due,at:today()});ops.push(partOp(id,p),clog(id,"待ち","「"+sw[0]+"」を待つ（期限 "+md(due)+"）"))}}
  if(x==="完了"){const p=cParts(c);if(p.waits.some(w=>!w.done)){p.waits.forEach(w=>{if(!w.done)w.done=today()});ops.push(partOp(id,p))}}
  return caseOps(ops,b,x==="完了"?"完了にしました"+(c.cm||c.office?"。CMに報告しましたか？":""):sw?"「"+sw[0]+"」の期限を"+sw[1]+"日後に入れました":"")};
-window.caseSave=(id,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c)return;const v=$("#cs-client").value,u=findClient(v);
- if(v&&!u&&v!==(c.clientName||"")){toast("利用者を一覧から選んでください");return}
+window.caseSave=async(id,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c)return;const v=String($("#cs-client").value||"").trim(),u=findClient(v),nv=v.replace(/（.*$/,"").replace(/[\s　]*様$/,"").trim();
+ if(v&&!u&&nv!==String(c.clientName||"").replace(/[\s　]*様$/,"")&&!await uiConfirm("「"+nv+" 様」は一覧にいません。\n新規の方として、この名前にしますか？"))return;
  const type=$("#cs-type").value,st=CTYPES[type]||CTYPES["その他"],stage=st.includes(c.stage)?c.stage:(c.stage==="完了"?"完了":st[0]);
  const row={id,title:$("#cs-title").value.trim(),next:$("#cs-next").value.trim(),due:$("#cs-due").value,type,stage};
- if(u){row.client=u.id;row.clientName="";row.office=clOffice(u)||c.office;row.cm=u.cm||c.cm}
+ if(u){row.client=u.id;row.clientName="";row.office=clOffice(u)||c.office;row.cm=u.cm||c.cm}else if(nv){row.client="";row.clientName=nv}
  return caseOps([{table:"cases",row}],b,"保存しました")};
 window.caseMemo=(id,b)=>{const t=($("#cs-memo").value||"").trim();if(!t){toast("メモを入れてください");return}
  return caseOps([{table:"cases",row:{id}},clog(id,"メモ",t)],b,"")};
@@ -2782,7 +2808,7 @@ function threads(recs){const g=new Map();recs.forEach(r=>{const k=recRoot(r).id;
 const thrHtml=list=>list.length<2?recRow(list[0]):`<div class="thr"><div class="thr-h">🔗 同じ件のやりとり ${list.length}件（新しい順）</div>${list.map(recRow).join("")}</div>`;
 const contCands=(office,excl)=>DB.records.filter(r=>r.office===office&&r.id!==excl&&r.kind!=="削除"&&daysFrom(r.date)!=null&&daysFrom(r.date)<=45).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,8);
 const contTxt=cs=>cs.length?`
-続きの判定：この会話が、次の過去の記録と同じ件（同じ利用者・同じ用件）のやりとりの続きなら、JSONの "cont" にその番号を1つ入れる。違えば 0。
+続きの判定：この会話が、次の過去の記録と同じ件（同じ利用者・同じ用件）のやりとりの続きなら、JSONの "cont" にその番号を1つ入れる。前の記録で話した訪問・下見・納品・会議などの、正式な日時の連絡や時間の変更・訂正も「続き」とする。違えば 0。
 ${cs.map((r,i)=>`[${i+1}] ${r.date} ${r.kind||"面談"}：${firstLine(r.text).replace(/^・/,"").slice(0,60)}`).join("\n")}`:"";
 async function linkCont(recId,cands,n){n=parseInt(n,10);if(!recId||!cands||!(n>=1&&n<=cands.length))return;
  try{await persist([{table:"caselog",row:{id:newId("l"),case:"r:"+cands[n-1].id,kind:"続き",text:"",rec:recId,by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}])}catch(e){}}
@@ -2798,9 +2824,11 @@ function recRow(r){const o=DB.offices.find(x=>x.id===r.office),cm=DB.cms.find(c=
 function chipMenu(r,c){const k=r.id+"_"+c.id;return `<div class="form" style="margin:-2px 0 6px;border:2px solid var(--accent);padding:8px 10px">
  <div><b>🗂 ${esc(cName(c))}・${esc(cTopic(c))}</b>${r.client&&c.client&&r.client!==c.client?' <span class="meta" style="color:var(--alert)">⚠ この記録の利用者と違います</span>':""}</div>
  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="btn sm" type="button" onclick="caseOpen('${c.id}')">開く</button>
- <input id="cm-${k}" list="chipCl" placeholder="正しい利用者を選ぶ" style="flex:1;min-width:150px;margin:0"><datalist id="chipCl">${DB.clients.map(clOpt).join("")}</datalist><button class="btn sm primary" type="button" onclick="chipClient('${c.id}','cm-${k}',this)">利用者を変える</button>
+ <input id="cm-${k}" list="chipCl" placeholder="利用者を選ぶ（新規は名前を入れる）" style="flex:1;min-width:150px;margin:0"><datalist id="chipCl">${DB.clients.map(clOpt).join("")}</datalist><button class="btn sm primary" type="button" onclick="chipClient('${c.id}','cm-${k}',this)">利用者を変える</button>
  <button class="btn sm" type="button" onclick="chipUnlink('${r.id}','${c.id}',this)">この記録から外す</button><button class="btn sm" type="button" style="color:var(--alert)" onclick="caseDel('${c.id}',this)">カードを削除</button><button class="btn sm" type="button" onclick="S.chipM='';render()">閉じる</button></div></div>`}
-window.chipClient=(cid,iid,b)=>{const c=(DB.cases||[]).find(x=>x.id===cid),v=($("#"+iid)||{}).value||"",u=findClient(v);if(!c)return;if(!u){toast("利用者を一覧から選んでください");return}
+window.chipClient=async(cid,iid,b)=>{const c=(DB.cases||[]).find(x=>x.id===cid),v=String(($("#"+iid)||{}).value||"").trim(),u=findClient(v);if(!c)return;if(!v){toast("利用者の名前を入れてください");return}
+ if(!u){const nm=v.replace(/（.*$/,"").replace(/[\s　]*様$/,"").trim();if(!await uiConfirm("「"+nm+" 様」は一覧にいません。\n新規の方として、この名前にしますか？"))return;
+  S.chipM="";return caseOps([{table:"cases",row:{id:cid,client:"",clientName:nm}}],b,"新規の「"+nm+" 様」にしました")}
  S.chipM="";return caseOps([{table:"cases",row:{id:cid,client:u.id,clientName:"",office:clOffice(u)||c.office,cm:u.cm||c.cm}}],b,"利用者を変えました")};
 window.chipUnlink=async(rid,cid,b)=>{const ls=(DB.caselog||[]).filter(l=>l.rec===rid&&l.case===cid&&!isCont(l)&&l.state!=="削除");if(!ls.length)return;
  const rest=(DB.caselog||[]).filter(l=>l.case===cid&&l.kind!=="部品"&&l.state!=="削除"&&!ls.includes(l)).length;
@@ -3245,7 +3273,7 @@ function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="
 /* 事務所の画面・管理者のパソコンは「全部を見る」使い方（自分の担当だけ・近い順は使わない） */
 const wideV=()=>MODE==="live"&&!!USER&&(jimuMode()||(USER.role==="admin"&&PP_PC()));
 const mineEff=()=>S.mine&&!wideV();
-const salesList=()=>(DB.users||[]).filter(u=>u.role!=="jimu"&&u.role!=="事務");
+const salesList=()=>(DB.users||[]).filter(u=>u.role!=="jimu"&&u.role!=="事務"&&String(u.active||"有")!=="無"&&!isRetired(u.name));
 function listRows(){
  const q=(S.lq||"").trim();
  let rows=S.pos?nearest().concat(DB.offices.filter(o=>o.lat==null).map(o=>({o,d:null}))):DB.offices.map(o=>({o,d:null}));
@@ -3323,7 +3351,7 @@ function cst(c){return c.status||"在籍"}
 /* ===== 担当営業 ===== */
 function me(){return MODE==="live"?(USER&&USER.email):(DB.users[0]&&DB.users[0].email)}
 function isMine(o){const s=staffOf(o);if(!USER&&MODE==="demo")return s.includes(me());return !!USER&&(s.includes(USER.email)||s.includes(USER.name))}
-function staffOf(o){return String(o.staff||"").split(",").map(x=>x.trim()).filter(Boolean)}
+function staffOf(o){return String(o.staff||"").split(",").map(x=>x.trim()).filter(Boolean).filter(e=>{const x=(DB.users||[]).find(v=>v.email===e);return !x||(String(x.active||"有")!=="無"&&!isRetired(x.name))})}
 function uname(e){const u=DB.users.find(x=>x.email===e);return u?u.name:e}
 function staffNames(o){const s=staffOf(o);return s.length?s.map(uname).join("・"):"未設定"}
 function findUserByName(n){n=String(n||"").replace(/[\s　]/g,"");if(!n)return null;
@@ -3883,7 +3911,7 @@ function render(){
  const gated=MODE==="setup"||(MODE==="live"&&(!USER||S.loading));
  document.querySelector(".tabs").hidden=gated;sim.hidden=gated||MODE==="live";
  {const jm=MODE==="live"&&jimuMode(),lb=jm?"アスポート 事務所":"アスポート 営業用";$("#brandSub").textContent=MODE==="demo"?lb+" ・ デモ（ダミーデータ）":USER?lb+" ・ "+USER.name:lb;const bm=$("#bMode");if(bm)bm.hidden=!jm;
-  const mb=$("#modeBtn");if(mb){mb.hidden=!(MODE==="live"&&USER&&USER.role==="admin"&&!S.loading);mb.innerHTML=jm?"🚗 営業<span class=\"ml\">の画面へ</span>":"🏢 事務<span class=\"ml\">所の画面へ</span>"}document.body.classList.toggle("jmm",!!jm)}
+  const mb=$("#modeBtn");if(mb){mb.hidden=!(MODE==="live"&&USER&&(USER.role==="admin"||isBoth())&&!S.loading);mb.innerHTML=jm?"🚗 営業<span class=\"ml\">の画面へ</span>":"🏢 事務<span class=\"ml\">所の画面へ</span>"}document.body.classList.toggle("jmm",!!jm)}
  if(MODE==="setup"){$("#app").innerHTML=viewSetup();return}
  if(gated){$("#app").innerHTML=viewLogin();renderGisButton();return}
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));jimuTabsUpd();
