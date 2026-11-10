@@ -2052,7 +2052,7 @@ window.rtBuy=async(id,b)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)ret
  const o=DB.offices.find(x=>x.name===r.officeName),row=newCaseRow({clientName:String(r.cname||"").trim(),office:o?o.id:"",type:"購入",title:(String(r.item||"").trim()||"購入").slice(0,40)});row.next="台帳:"+r.id;
  try{await persist([{table:"rentals",row:{id,jflag:"購入へ",confDate:r.confDate||today()}},{table:"cases",row},clog(row.id,"作成","レンタル台帳から購入に切り替え"+(r.item?"："+r.item:""))]);buzz(60);toast("購入のタスクカードを作りました");render()}
  catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
-async function rtPut(id,row){row.id=id;{const r0=(DB.rentals||[]).find(x=>x.id===id);if(r0&&String(r0.db_way||"").trim()==="リコー"&&row.db_way===undefined)row.db_way="リトレス"}try{await persist([{table:"rentals",row}]);buzz(30);render()}catch(e){toast("保存できませんでした："+errText(e))}}
+async function rtPut(id,row){row.id=id;{const r0=(DB.rentals||[]).find(x=>x.id===id);if(r0&&String(r0.db_way||"").trim()==="リコー"&&row.db_way===undefined)row.db_way="リトレス"}saveFast([{table:"rentals",row}])}
 window.rfTap=async (id,k)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;const st=RF_STEPS[k],on=st.done(r),t=today(),row={};
  if(k==="send"){row.rp_sub=on?"":"済";if(!on&&!r.rp_date)row.rp_date=t}
  else if(k==="conf"){if(on){if(!await uiConfirm("「借りる」を取り消しますか？（確認日・開始日を消します）"))return;row.confDate="";row.start=""}else row.confDate=t}
@@ -3968,7 +3968,10 @@ function render(){
  $("#app").innerHTML=pushNag()+lmPopHtml()+lmDetHtml()+(S.view==="visit"||S.view==="log"?pendBox():"")+v+(MODE==="demo"?`<p class="demo">デモ：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`:`<p class="demo">データは会社のスプレッドシートに保存されます。すぐ開けるよう前回の内容と保存前の録音をこの端末に覚えています（ログアウトで消えます）。</p>`);
 }
 let RK_LAST="";const rKey=()=>[S.view,S.lmDet||"",S.office||"",S.rtOpen||"",S.caseId||"",S.jt||"",S.room||""].join("|");
-const _render=render;render=function(){const rk=rKey(),sy=scrollY;_render();if(S.view==="list"&&S.listMode==="map"&&$("#map"))drawMap();if(S.view==="umap"&&$("#umap"))drawUmap();else if(UMAP){try{UMAP.remove()}catch(e){}UMAP=null}if(rk===RK_LAST&&sy>0){scrollTo(0,sy);requestAnimationFrame(()=>{if(rKey()===rk)scrollTo(0,sy)})}RK_LAST=rk};
+const SK_SEL=".rtw,.full,.hmw,.tblw";
+const skGet=()=>{const o={};document.querySelectorAll(SK_SEL).forEach(e=>{const c=(e.className||"").split(" ")[0];(o[c]=o[c]||[]).push([e.scrollLeft,e.scrollTop])});return o};
+const skSet=o=>{const n={};document.querySelectorAll(SK_SEL).forEach(e=>{const c=(e.className||"").split(" ")[0],i=n[c]=(n[c]||0),v=o[c]&&o[c][i];n[c]++;if(v&&(v[0]||v[1])){e.scrollLeft=v[0];e.scrollTop=v[1]}})};
+const _render=render;render=function(){const rk=rKey(),sy=scrollY,sk=rk===RK_LAST?skGet():null;_render();if(sk){skSet(sk);requestAnimationFrame(()=>{if(rKey()===rk)skSet(sk)})}if(S.view==="list"&&S.listMode==="map"&&$("#map"))drawMap();if(S.view==="umap"&&$("#umap"))drawUmap();else if(UMAP){try{UMAP.remove()}catch(e){}UMAP=null}if(rk===RK_LAST&&sy>0){scrollTo(0,sy);requestAnimationFrame(()=>{if(rKey()===rk)scrollTo(0,sy)})}RK_LAST=rk};
 /* 詳細を閉じた後もスクロールが止まったままにならないように：.full（詳細の枠）が無くなったら必ず noscroll を外す */
 {let nsT=0;const nsFix=()=>{nsT=0;document.body.classList.toggle("noscroll",!!document.querySelector(".full"))};try{new MutationObserver(()=>{if(!nsT)nsT=requestAnimationFrame(nsFix)}).observe(document.body,{childList:true,subtree:true})}catch(e){}window.addEventListener("popstate",()=>setTimeout(nsFix,50))}
 /* スマホの「戻る」でアプリ内のひとつ前の画面に戻る（最初の画面では2回押すと終了） */
