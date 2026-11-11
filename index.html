@@ -760,7 +760,7 @@ const lmSN=x=>String(x||"").replace(/[\s　]/g,"").replace(/滝/g,"瀧").replace
 function lmStaffName(raw){const n=lmSN(raw);if(!n)return "";const ks=LM_FIX.map(x=>x[0]).concat((DB.users||[]).map(u=>lmSN(stUni(u.name))));const k=ks.find(x=>x&&n.startsWith(x));return k||stUni(raw)}
 /* 退職した人は画面に出さない（11/10 社長：高本）。ユーザーの「有効」が無の人も同じ */
 const RETIRED_NM=["高本"];
-const isRetired=n=>{const k=String(n||"").replace(/[\s　]/g,"");if(!k)return false;return RETIRED_NM.some(x=>k.includes(x))||(DB.users||[]).some(u=>String(u.active||"有")==="無"&&u.name&&k.includes(String(u.name).replace(/[\s　]/g,"")))};
+const isRetired=n=>{const k=String(n||"").replace(/[\s　]/g,"");if(!k)return false;return RETIRED_NM.some(x=>k.includes(x))||(DB.users||[]).some(u=>{const un=String(u.name||"").replace(/[\s　]/g,"");return String(u.active||"有")==="無"&&un.length>=2&&k===un})};
 const lmStaff=j=>{const u=lmClient(j.code),n=lmStaffName((j.stFix&&j.st)||(u&&u.staff)||j.st||"");return n&&!isRetired(n)?n:"（担当なし）"};
 const lmStaffCol=n=>{const f=LM_FIX.find(x=>x[0]===n);if(f)return f[1];const L=lmStaffs().filter(x=>!LM_FIX.some(y=>y[0]===x));return LM_COL[Math.max(0,L.indexOf(n))%LM_COL.length]};
 function lmStaffs(){return [...new Set(lmRows().map(lmStaff))].sort()}
@@ -785,6 +785,18 @@ window.lmUndo=(code,b)=>{const j=lmRows().find(x=>x.code===code);if(!j)return;lm
 window.lmInsp=(code,b)=>lmSet(code,{ins:today()},b,"🔧 点検した日を入れました");
 window.lmDocDone=(code,b)=>{const j=lmRows().find(x=>x.code===code);if(!j)return;lmSet(code,{k:j.k==="3"?"2":j.k==="4"?"":j.k,docAt:today()},b,"書類・用事を済にしました")};
 window.lmMemo=async code=>{const j=lmRows().find(x=>x.code===code);if(!j)return;const v=await uiPrompt("内容（ピンの横に出ます）",j.c||"");if(v===null)return;lmSet(code,{c:v.trim()},null,"保存しました")};
+
+/* ===== 📍 利用者のチェックイン（11/11）：caselog kind=利用者訪問、case="m:"+コード、text=JSON{away,d}、by／byName／at ===== */
+const CK_NEAR=100;
+const ckList=code=>(DB.caselog||[]).filter(l=>l.kind==="利用者訪問"&&l.state!=="削除"&&l.case==="m:"+code).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+const ckLast=code=>{const l=ckList(code)[0];return l?l:null};
+const ckLastT=code=>{const l=ckLast(code);if(!l)return "";const n=daysFrom(String(new Date(l.at).toLocaleDateString("sv-SE")));return n===0?"今日 訪問済":"最終訪問 "+n+"日前"};
+const ckToday=code=>ckList(code).some(l=>new Date(l.at).toLocaleDateString("sv-SE")===today()&&String(l.by||"").toLowerCase()===String(myId()).toLowerCase());
+window.ckClient=async(code,b)=>{const j=lmRows().find(x=>x.code===code);if(!j)return;
+ if(ckToday(code)&&!await uiConfirm(lmName(j)+" 様は今日もうチェックインしています。もう一度記録しますか？"))return;
+ const d=lmDist(j),away=d==null||d>CK_NEAR;S.lmPop=null;try{beep(SND.checkin)}catch(e){}buzz(150);
+ saveFast([{table:"caselog",row:{id:newId("ck"),case:"m:"+code,kind:"利用者訪問",text:JSON.stringify({away:away?1:0,d:d==null?"":Math.round(d)}),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}],away?"チェックインしました（家から離れた場所からなので印が付きます）":"チェックインしました")};
+const ckBtn=(code,cls)=>`<button class="btn ${cls||""}" type="button" onclick="ckClient('${code}',this)">📍 ${ckToday(code)?"チェックイン済":"チェックイン"}</button>`;
 function lmDist(j){return S.pos&&j.lat!=null?dist(S.pos.lat,S.pos.lng,+j.lat,+j.lng):null}
 const lmDistT=d=>d==null?"":d<1000?Math.round(d)+"m":(d/1000).toFixed(1)+"km";
 /* ===== 11/7 patch24：直す・確認待ち・用事・至急/優先・台帳の印・居宅の訪問管理 ===== */
@@ -926,18 +938,18 @@ window.lmImport=async b=>{const pg=$("#lm-geo");if(pg&&pg.checked&&S.lmPlan){con
   else if(keep&&old[r.code]){nj=lmClean(o);const ed=!!o.edAt;nj.v=r.v;nj.y=r.y;if(!(o.calAt||o.edAt||o.docAt))nj.k=r.k;if(!ed){nj.c=r.c;nj.n=r.n}if(!o.fix&&r.lat!=null){nj.lat=r.lat;nj.lng=r.lng}if(!o.stFix)nj.st=r.st;if(!lmClient(r.code))nj.nm=r.nm}
   else{nj={k:r.k,v:r.v,c:r.c,n:r.n,lat:r.lat,lng:r.lng,st:r.st,y:r.y,ins:o.ins||""};if(!lmClient(r.code))nj.nm=r.nm}return {table:"caselog",row:{id:"lm"+codeN(r.code),case:"m:"+r.code,kind:"地図",text:JSON.stringify(nj),rec:"",by,byName:bn,at}}});
  if(rm){const codes=new Set(p.rows.map(r=>r.code));Object.values(old).filter(j=>!codes.has(j.code)).forEach(j=>ops.push({table:"caselog",row:{id:"lm"+codeN(j.code),case:"m:"+j.code,kind:"地図",text:JSON.stringify(lmClean(j)),state:"削除",rec:"",by,byName:bn,at}}))}
- try{for(let i=0;i<ops.length;i+=100){const st=$("#lm-st");if(st)st.textContent="保存中… "+i+"/"+ops.length;await persist(ops.slice(i,i+100))}S.lmPlan=null;buzz(60);toast(p.rows.length+"件を取り込みました"+(rm?"（マイマップにいない人を外しました）":""));render()}
+ if(!await impPre("マイマップ",ops)){b.disabled=false;return}try{for(let i=0;i<ops.length;i+=100){const st=$("#lm-st");if(st)st.textContent="保存中… "+i+"/"+ops.length;await persist(ops.slice(i,i+100))}impLog("マイマップ","");S.lmPlan=null;buzz(60);toast(p.rows.length+"件を取り込みました"+(rm?"（マイマップにいない人を外しました）":""));render()}
  catch(e){b.disabled=false;toast("取り込めませんでした："+errText(e))}};
 const lmIsWide=()=>innerWidth>=1000;
 function viewUmap(){const all=lmRows();const so=S.lmSo||(S.pos?"near":"staff"),f=S.lmF||"todo",mode=S.lmMode||"map",wide=lmIsWide(),sts=lmStaffs();
- if(!all.length)return `${seeJimu()?lmImportBox():""}<div class="empty">まだ取り込まれていません。${seeJimu()?"上の「マイマップを取り込む」から入れてください。":"事務所で取り込むと出ます。"}</div>`;
+ if(!all.length)return `${canImport()?lmImportBox():""}<div class="empty">まだ取り込まれていません。${canImport()?"上の「マイマップを取り込む」から入れてください。":"事務所で取り込むと出ます。"}</div>`;
  const stE=lmStE(),me=lmMe(),allS=stE?all.filter(j=>lmStaff(j)===stE):all;
  const chip=(v,lab,ic,on)=>`<button type="button" class="${on?"on":""}" style="padding:4px 9px;display:inline-flex;align-items:center;gap:4px" onclick="lmStSet('${v}')">${ic?`<span style="width:20px;height:20px;border-radius:50%;background:${lmStaffCol(ic)};display:inline-grid;place-items:center;font-size:12px;flex:none">${lmIcoHtml(lmStaffIco(ic),15)}</span>`:""}${esc(lab)}</button>`;
  const stRow=`<div class="seg" style="flex:none">${me?chip("@me","自分",me,lmStV()==="@me"||lmStV()===me):""}${chip("","全員","",!stE)}${sts.filter(x=>x!==me).map(x=>chip(x,x,x,lmStV()===x)).join("")}</div>`;
  const live=allS.filter(j=>!j.gone),n=k=>k==="todo"?live.filter(j=>!lmCal(j)&&!lmNoCal(j)).length:k==="doc"?live.filter(lmBusy).length:k==="go"?live.filter(j=>lmPri(j)>0).length+loList().length:k==="done"?live.filter(lmCal).length:allS.length;
  const soL={near:"近い順",staff:"担当順",town:"町名順"}[so]||"";
  const mapHtml=`<div style="position:relative;isolation:isolate"><div id="umap" style="height:60vh;min-height:300px;border-radius:12px;border:1px solid var(--line)"><div class="progress" style="padding:20px">地図を読み込み中…</div></div>${wide?"":`<div id="lmSheet">${lmSheetHtml()}</div>`}</div>`;
- return `${seeJimu()&&(S.lmImp||S.lmPlan)?lmImportBox():""}
+ return `${canImport()&&(S.lmImp||S.lmPlan)?lmImportBox():""}
  <form onsubmit="lmDoSearch();return false" style="display:flex;gap:6px;align-items:center;margin:4px 0">
   <div style="position:relative;flex:1;min-width:0"><input id="lmq" class="search" type="search" enterkeyhint="search" autocomplete="off" style="margin:0;width:100%;padding-right:30px" placeholder="名前・読み・町名・電話で探す" value="${esc(S.lmQ||"")}">${S.lmQ?`<button type="button" aria-label="消す" onclick="lmClearQ()" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);border:0;background:none;font-size:20px;color:var(--muted);padding:0 6px">×</button>`:""}</div>
   <button class="btn sm" type="button" title="検索する範囲" style="padding:6px 8px;white-space:nowrap;flex:none" onclick="lmQAllT()">${S.lmQAll||!stE?"全員から":"担当から"}</button>
@@ -952,14 +964,14 @@ function viewUmap(){const all=lmRows();const so=S.lmSo||(S.pos?"near":"staff"),f
  </div>
  ${S.lmOpt?`<div class="form" style="padding:8px;margin:0 0 6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
   <div class="seg">${[["near","近い順"],["staff","担当順"],["town","町名順"]].map(([k,l])=>`<button type="button" class="${so===k?"on":""}" onclick="S.lmSo='${k}';render()">${l}</button>`).join("")}</div>
-  ${seeJimu()?`<button class="btn sm" type="button" onclick="S.lmImp=!S.lmImp;S.lmOpt=false;render()">📥 マイマップ取り込み${S.lmImp?"を隠す":""}</button>`:""}<button class="btn sm" type="button" onclick="S.lmOpt=false;render()">閉じる</button></div>`:""}
+  ${canImport()&&S.lmImp?`<button class="btn sm" type="button" onclick="S.lmImp=false;S.lmOpt=false;render()">📥 マイマップ取り込みを隠す</button>`:""}<button class="btn sm" type="button" onclick="S.lmOpt=false;render()">閉じる</button></div>`:""}
  ${lmPendHtml()}
  ${S.lmQ?`<div class="meta" style="margin-bottom:4px">「${esc(S.lmQ)}」を${S.lmQAll||!stE?"全員（"+all.length+"人）":esc(stE)+"さんの担当"}から検索 → <b>${lmFiltered().length}件</b>（区分の絞り込みは外しています）</div>`:""}
  ${S.lmFix?`<div class="notice" style="margin:4px 0;border:2px solid #e0a800">📍 <b>${esc(lmName(lmRows().find(x=>x.code===S.lmFix)||{}))} 様</b>の正しい場所を地図で押してください。<button class="btn sm" type="button" onclick="S.lmFix=null;render()">やめる</button></div>`:""}
  ${wide?`<div style="display:grid;grid-template-columns:420px 1fr;gap:10px;align-items:start"><div id="lmList" class="lmside" style="overflow:auto;height:60vh">${lmListHtml()}</div>${mapHtml}</div>`:mode==="list"&&!S.lmFix?`<div id="lmList">${lmListHtml()}</div>`:mapHtml}`}
 function lmMini(j,act){const u=lmClient(j.code)||{},d=lmDist(j),st=lmStaff(j),A=lmAlerts(j);
  return `<div style="display:flex;gap:8px;align-items:center;padding:7px 4px;border-bottom:1px solid var(--line);cursor:pointer" onclick="${act}('${j.code}')"><span style="flex:none;width:28px;height:28px;border-radius:50%;background:${lmColor(j)};border:2px solid #fff;box-shadow:0 0 0 1px #bbb;display:grid;place-items:center;font-size:15px">${lmIcoHtml(lmStaffIco(st),20)}</span>
- <div style="flex:1;min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>${esc(lmName(j))}</b> 様 ${lmStateTag(j)}</div><div class="meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(st)}${u.stay?" ・ 🏠 "+esc(String(u.stay).slice(0,14)):u.town?" ・ "+esc(u.town):""}${A.length&&!S.lmHideNote?" ・ "+esc(A[0]):""}</div></div>${d!=null?`<span class="meta" style="flex:none">${lmDistT(d)}</span>`:""}</div>`}
+ <div style="flex:1;min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>${esc(lmName(j))}</b> 様 ${lmStateTag(j)}</div><div class="meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(st)}${u.stay?" ・ 🏠 "+esc(String(u.stay).slice(0,14)):u.town?" ・ "+esc(u.town):""}${A.length&&!S.lmHideNote?" ・ "+esc(A[0]):""}${ckToday(j.code)?" ・ ✓訪問":""}</div></div>${d!=null?`<span class="meta" style="flex:none">${lmDistT(d)}</span>`:""}</div>`}
 function lmSheetHtml(){if(!S.lmQ)return "";const L=lmFiltered();
  if(S.lmSheet===false)return `<button class="btn sm" type="button" style="position:absolute;left:8px;bottom:8px;z-index:500;box-shadow:0 2px 6px rgba(0,0,0,.3)" onclick="S.lmSheet=true;lmSheetUpd()">🔎 ${L.length}件の一覧を出す</button>`;
  return `<div style="position:absolute;left:0;right:0;bottom:0;z-index:500;max-height:50%;display:flex;flex-direction:column;background:var(--surface);border-radius:14px 14px 12px 12px;box-shadow:0 -3px 12px rgba(0,0,0,.25)">
@@ -1006,8 +1018,8 @@ function lmDetHtml(){if(!S.lmDet)return "";const j=lmRows().find(x=>x.code===S.l
  const row=(k,v)=>v?`<dt>${k}</dt><dd style="white-space:pre-wrap">${v}</dd>`:"";const o=u.office?DB.offices.find(x=>x.id===u.office):null;
  return `<div class="full" role="dialog" aria-modal="true" style="z-index:70"><div class="full-in"><div class="full-bar"><button class="btn" type="button" onclick="S.lmDet=null;render()">← 地図に戻る</button></div>
  <div class="form"><h2 style="font-size:22px;margin:0">${esc(lmName(j))} 様</h2><div class="meta">${esc(u.kana||"")}${u.lv?" ・ "+esc(u.lv):""} ・ 担当 ${esc(lmStaff(j))} ${lmStateTag(j)}</div>
- <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">${tel(u.tel)}${tel(u.tel2)}${j.lat!=null?`<button class="btn sm" type="button" style="padding:4px 10px" onclick="S.lmDet=null;lmGo('${j.code}')">🗺 地図で見る（ルートは地図から）</button>`:""}</div>
- <dl class="kv">${u.stay?row("🏠 滞在先",`<b style="font-size:16px">${esc(u.stay)}</b>${j.atStay?' <span class="meta">（地図・道案内は滞在先）</span>':""}`):""}${row(u.stay?"住所（本来）":"住所",(u.stay?'<span class="meta">':"")+esc([u.zip?"〒"+u.zip:"",u.addr].filter(Boolean).join(" "))+(u.stay?"</span>":""))}${row("居宅",esc(o?o.name:(u.officeName||"")))}${row("ケアマネ",esc(u.cmName||""))}${row("用具",esc(u.items||""))}${row("区分",esc(KB_L[j.k||""]||j.k||""))}${row("備考1",esc(j.c||""))}${row("備考2",esc(j.b2||""))}${row("⚠ 注意事項",esc(j.n||""))}${row("🅿 駐車場",esc(j.pk||""))}${(R=>R?row("レンタル",esc(R.all.map(r=>(r.item||"用具")+(rtDemoNow(r)?"（デモ中）":confDone(r)?"（契約）":"（納品・確認前）")).join("、"))):"")(lmRent(j))}${row("点検",j.ins?esc(md(j.ins))+"（"+daysFrom(j.ins)+"日前）":"")}${row("カレンダー",j.calAt?esc(md(j.calAt))+" "+esc(j.calBy||""):"")}${row("備考",esc(u.note||""))}${row("支払い",esc([u.payWay,u.payOrg].filter(Boolean).join(" ")))}</dl>
+ <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">${tel(u.tel)}${tel(u.tel2)}${j.lat!=null?`<button class="btn sm" type="button" style="padding:4px 10px" onclick="S.lmDet=null;lmGo('${j.code}')">🗺 地図で見る（ルートは地図から）</button>`:""}<button class="btn sm ${ckToday(j.code)?"":"primary"}" type="button" style="padding:4px 10px" onclick="ckClient('${j.code}',this)">📍 ${ckToday(j.code)?"チェックイン済":"チェックイン"}</button>${ckLastT(j.code)?`<span class="meta" style="align-self:center">${esc(ckLastT(j.code))}</span>`:""}</div>
+ <dl class="kv">${u.stay?row("🏠 滞在先",`<b style="font-size:16px">${esc(u.stay)}</b>${j.atStay?' <span class="meta">（地図・道案内は滞在先）</span>':""}`):""}${row(u.stay?"住所（本来）":"住所",(u.stay?'<span class="meta">':"")+esc([u.zip?"〒"+u.zip:"",u.addr].filter(Boolean).join(" "))+(u.stay?"</span>":""))}${row("居宅",esc(o?o.name:(u.officeName||"")))}${row("ケアマネ",esc(u.cmName||""))}${row("用具",esc(u.items||""))}${row("区分",esc(KB_L[j.k||""]||j.k||""))}${row("備考1",esc(j.c||""))}${row("備考2",esc(j.b2||""))}${row("⚠ 注意事項",esc(j.n||""))}${row("🅿 駐車場",esc(j.pk||""))}${(R=>R?row("レンタル",R.all.map(r=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:2px 0">${esc(r.item||"用具")}<span class="meta">${rtDemoNow(r)?"（デモ中）":confDone(r)?"（契約）":"（納品・確認前）"}</span><button class="btn sm" type="button" style="padding:2px 8px" onclick="tagScan('${r.id}')">🏷 ${tagOf(r.id)?"タグ読み直す":"タグを読む"}</button></div>${tagOf(r.id)?`<div class="meta" style="margin:0 0 4px 8px">${esc(tagLine(r.id))}</div>`:""}`).join("")):"")(lmRent(j))}${row("点検",j.ins?esc(md(j.ins))+"（"+daysFrom(j.ins)+"日前）":"")}${row("カレンダー",j.calAt?esc(md(j.calAt))+" "+esc(j.calBy||""):"")}${row("備考",esc(u.note||""))}${row("支払い",esc([u.payWay,u.payOrg].filter(Boolean).join(" ")))}</dl>
  ${A.length?`<div class="notice" style="margin-top:8px">${A.map(esc).join("<br>")}</div>`:""}
  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${lmCal(j)?`<button class="btn" type="button" onclick="lmUndo('${j.code}',this)">カレンダーをまだに戻す</button>`:`<button class="btn primary" type="button" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`}${lmDoc(j)?`<button class="btn" type="button" onclick="lmDocDone('${j.code}',this)">📄 書類・用事 済</button>`:""}<button class="btn" type="button" onclick="lmInsp('${j.code}',this)">🔧 点検した</button><button class="btn" type="button" onclick="S.lmEd=!S.lmEd;render()">✏ 直す</button></div>
  ${j.gone?`<div class="notice" style="margin-top:8px">利用終了（${esc(md(j.gone))} ${esc(j.goneBy||"")}）。${90-daysFrom(j.gone)}日後に地図から消えます。${lmCanSt()?` <button class="btn sm" type="button" onclick="lmSet('${j.code}',{gone:'',goneNo:1},this,'元に戻しました')">元に戻す</button>`:""}</div>`:""}
@@ -1035,7 +1047,7 @@ async function drawUmap(){const el=$("#umap");if(!el)return;try{await loadLeafle
   const ic=lmStaffIco(lmStaff(j)),col=lmColor(j),done=lmCal(j)||lmNoCal(j),pr=lmPri(j),z=hq||pr?36:28,iz=hq||pr?26:20;
   const mk=L.marker(ll,{zIndexOffset:hq||pr?1000+pr*100:0,icon:L.divIcon({className:"",iconSize:[z,z],iconAnchor:[z/2,z/2],popupAnchor:[0,-z/2+1],html:`<div class="${pr===2?"lmpulse":""}" style="width:${z}px;height:${z}px;border-radius:50%;background:${col};border:${pr===2?"4px solid #e60000":pr===1?"4px solid #f39c12":doc?"3px solid #8e44ad":"2px solid #fff"};box-shadow:0 1px 3px rgba(0,0,0,.45);display:grid;place-items:center;font-size:${hq?21:15}px;line-height:1;color:#fff;">${lmIcoHtml(ic,iz)}</div>`})}).addTo(UMAP);window.__lmMk[j.code]=mk;
   {const tt=((lmShow("w")&&j.n?"⚠":"")+(lmShow("p")&&j.pk?"🅿":"")+(lmShow("b")&&(j.c||j.b2)?" "+String(j.c||j.b2).slice(0,14):"")).trim();if(tt)mk.bindTooltip(esc(tt),{permanent:true,direction:"right",offset:[12,0],className:"lmtip"})}
-  mk.bindPopup(`<b>${esc(lmName(j))} 様</b><br><span style="font-size:12px">${esc(lmStaff(j))} ・ ${esc(KB_L[j.k||""]||"")}</span>${A.length?"<br>"+A.map(esc).join("<br>"):""}<br>${lmCal(j)?`<button type="button" class="btn sm" style="margin-top:6px" onclick="lmUndo('${j.code}',this)">まだに戻す</button>`:`<button type="button" class="btn sm primary" style="margin-top:6px" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`} <button type="button" class="btn sm" style="margin-top:6px" onclick="lmInsp('${j.code}',this)">🔧 点検した</button> <button type="button" class="btn sm" style="margin-top:6px" onclick="lmDetOpen('${j.code}')">👤 詳細・電話</button> <a class="btn sm primary" style="margin-top:6px;text-decoration:none;display:inline-block" href="https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}" target="_blank" rel="noopener">🚗 ルート</a>`)});
+  mk.bindPopup(`<b>${esc(lmName(j))} 様</b><br><span style="font-size:12px">${esc(lmStaff(j))} ・ ${esc(KB_L[j.k||""]||"")}</span>${A.length?"<br>"+A.map(esc).join("<br>"):""}<br>${lmCal(j)?`<button type="button" class="btn sm" style="margin-top:6px" onclick="lmUndo('${j.code}',this)">まだに戻す</button>`:`<button type="button" class="btn sm primary" style="margin-top:6px" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`} <button type="button" class="btn sm" style="margin-top:6px" onclick="lmInsp('${j.code}',this)">🔧 点検した</button> <button type="button" class="btn sm" style="margin-top:6px" onclick="ckClient('${j.code}',this)">📍 チェックイン</button> <button type="button" class="btn sm" style="margin-top:6px" onclick="lmDetOpen('${j.code}')">👤 詳細・電話</button>${ckLastT(j.code)?`<div style="font-size:12px;margin-top:4px">${esc(ckLastT(j.code))}</div>`:""} <a class="btn sm primary" style="margin-top:6px;text-decoration:none;display:inline-block" href="https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}" target="_blank" rel="noopener">🚗 ルート</a>${(R=>R&&R.demo.length?R.demo.map(r=>` <button type="button" class="btn sm" style="margin-top:6px" onclick="tagScan('${r.id}')">🏷 ${esc(String(r.item||"品").slice(0,8))}のタグ${tagOf(r.id)?"（済）":""}</button>`).join(""):"")(lmRent(j))}`)});
  loList().filter(x=>x.o.lat!=null).forEach(({o,j})=>{const pr=lmPri(j);L.marker([+o.lat,+o.lng],{zIndexOffset:900,icon:L.divIcon({className:"",iconSize:[32,32],iconAnchor:[16,16],popupAnchor:[0,-15],html:`<div class="${pr===2?"lmpulse":""}" style="width:32px;height:32px;border-radius:8px;background:#fff;border:${pr===2?"4px solid #e60000":pr===1?"4px solid #f39c12":"3px solid #2c3e50"};box-shadow:0 1px 3px rgba(0,0,0,.45);display:grid;place-items:center;font-size:17px">🏢</div>`})}).addTo(UMAP).bindPopup(`<b>${esc(o.name)}</b><br>${esc([j.priT].concat(j.er.map(e=>"📋 "+e.t+(e.due?"（〜"+md(e.due)+"）":""))).filter(Boolean).join("<br>")).replace(/&lt;br&gt;/g,"<br>")}<br><button type="button" class="btn sm" style="margin-top:6px" onclick="S.view='visit';S.office='${o.id}';S.autoOpened='${o.id}';render()">居宅を開く</button>`)});
  if(S.pos){L.circleMarker([S.pos.lat,S.pos.lng],{radius:8,color:"#fff",weight:3,fillColor:"#1e90ff",fillOpacity:1}).addTo(UMAP).bindTooltip("現在地")}
  if(S.lmFit&&pts.length){S.lmFit=false;UMAP.fitBounds(pts,{padding:[30,30],maxZoom:17})}else if(c&&z)UMAP.setView(c,z);else if(S.pos)UMAP.setView([S.pos.lat,S.pos.lng],13);else if(pts.length)UMAP.fitBounds(pts,{padding:[20,20]});else UMAP.setView([34.486,133.362],12);
@@ -1055,9 +1067,9 @@ function lmPopHtml(){if(!S.lmPop)return "";if(String(S.lmPop).startsWith("o:")){
  const j=lmRows().find(x=>x.code===S.lmPop);if(!j){S.lmPop=null;return ""}const A=lmAlerts(j),d=lmDist(j);
  return `<div style="position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:60;width:min(440px,94vw);background:#fffbe6;border:3px solid #e0a800;border-radius:16px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:12px 14px">
  <div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:17px">📍 近くです：${esc(lmName(j))} 様</b><button class="btn sm" type="button" onclick="S.lmPop=null;render()">✕</button></div>
- <div class="meta">${esc(lmStaff(j))}${d!=null?" ・ "+lmDistT(d):""}</div>
+ <div class="meta">${esc(lmStaff(j))}${d!=null?" ・ "+lmDistT(d):""}${ckLastT(j.code)?" ・ "+ckLastT(j.code):""}</div>
  <div style="font-size:16px;margin:6px 0;line-height:1.6">${A.map(esc).join("<br>")}${j.pk?"<br>🅿 "+esc(j.pk):""}</div>
- <div style="display:flex;gap:6px;flex-wrap:wrap">${lmCal(j)||lmNoCal(j)?"":`<button class="btn primary" type="button" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`}<button class="btn" type="button" onclick="lmInsp('${j.code}',this);S.lmPop=null">🔧 点検した</button><button class="btn" type="button" onclick="lmDetOpen('${j.code}')">👤 詳細・電話</button></div></div>`}
+ <div style="display:flex;gap:6px;flex-wrap:wrap">${ckBtn(j.code,ckToday(j.code)?"":"primary")}${lmCal(j)||lmNoCal(j)?"":`<button class="btn primary" type="button" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`}<button class="btn" type="button" onclick="lmInsp('${j.code}',this);S.lmPop=null">🔧 点検した</button><button class="btn" type="button" onclick="lmDetOpen('${j.code}')">👤 詳細・電話</button></div></div>`}
 
 /* ===== 営業支援：デモ中・開始直後と「話のネタ」 ===== */
 const NEW_DAYS=14;
@@ -2015,8 +2027,8 @@ function rtLedger(){const rs=rtList(),st=rtStaffs();
   <select class="sim" onchange="S.rst=this.value;render()"><option value="">営業：全員</option>${st.map(n=>`<option ${S.rst===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
   <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="利用者・品目・居宅で探す" value="${esc(S.rq2||"")}" onchange="S.rq2=this.value;render()">
   <span class="meta">${rs.length}件</span>
-  <label class="meta" style="display:flex;gap:4px;align-items:center">取り込む期間：納品日<input type="date" class="sim" id="rt-since" value="${rtSinceDef()}">以降</label>
-  <label class="btn" for="rtx" style="display:inline-flex">Excel を取り込む</label><input type="file" id="rtx" accept=".xlsx,.xlsm,.xls" onchange="S.rtSince=($('#rt-since')||{}).value;rtImport(this)" style="position:absolute;opacity:0;width:1px;height:1px"></div>
+  ${canImport()&&(S.rtImpShow||S.rtImp)?`<label class="meta" style="display:flex;gap:4px;align-items:center">取り込む期間：納品日<input type="date" class="sim" id="rt-since" value="${rtSinceDef()}">以降</label>
+  <label class="btn" for="rtx" style="display:inline-flex">Excel を取り込む</label><input type="file" id="rtx" accept=".xlsx,.xlsm,.xls" onchange="S.rtSince=($('#rt-since')||{}).value;rtImport(this)" style="position:absolute;opacity:0;width:1px;height:1px"><button class="btn sm" type="button" onclick="S.rtImpShow=false;S.rtImp='';render()">取り込みを閉じる</button>`:""}</div>
  <div id="rtImp">${S.rtImp||""}</div>
  ${(S.rf||"hot")==="hot"?(c=>`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="btn sm ${S.rwK?"":"primary"}" type="button" onclick="S.rwK='';render()">すべて</button>${RT_LATE.map(L=>{const v=c[L[0]];return v?`<button class="btn sm ${S.rwK===L[0]?"primary":""}" type="button" style="${v.red&&S.rwK!==L[0]?"border-color:#c0392b;color:#c0392b":""}" onclick="S.rwK='${L[0]}';render()">${L[1]} ${esc(L[2].replace(/！$/,""))} ${v.n}${v.red?`（赤 ${v.red}）`:""}</button>`:""}).join("")}</div>`)(rtLateSum()):""}
  <div class="rtw"><table class="rt"><thead><tr><th>納品日</th><th>利用者</th><th>品目</th><th>居宅</th><th>担当</th><th>進み具合</th><th>要注意</th></tr></thead><tbody>
@@ -2116,6 +2128,11 @@ window.rtCtGo=(id,name)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)retu
 function ctGoList(all){const me=USER?stUni(USER.name):"";return (DB.rentals||[]).filter(r=>r.state!=="削除"&&rtCtStage(r)===3&&(all?(rtCtDays(r)||0)>=3:(MODE==="demo"||(me&&rtCtGoer(r)===me))))}
 function rtLateBox(){if(!(isJimu()||(USER&&USER.role==="admin")||MODE==="demo"))return "";const c=rtLateSum(),red=RT_LATE.filter(L=>c[L[0]]&&c[L[0]].red);if(!red.length)return "";
  return `<div class="notice" style="margin:8px 0;border:2px solid #c0392b;cursor:pointer" onclick="S.view='jimu';S.jt='ledger';S.rtOpen=null;S.rf='hot';S.rwK='';render()"><b style="color:#c0392b">⚠ レンタル台帳の要注意（赤）</b> ${red.map(L=>L[1]+" "+esc(L[2].replace(/！$/,""))+" "+c[L[0]].red+"件").join(" ・ ")} <span class="meta">→ 台帳を開く</span></div>`}
+/* やること：自分の担当のデモ中の品（タグの読み取り・地図）11/11 */
+function myDemoBox(){const L=(DB.rentals||[]).filter(r=>r.state!=="削除"&&!rtStop(r)&&rtDemoNow(r)&&mineRec(r)).sort((a,b)=>String(a.deliv).localeCompare(String(b.deliv)));if(!L.length)return "";
+ return `<div class="form" style="margin-bottom:10px;border-color:var(--accent)"><b>🧪 デモ中の品 ${L.length}件</b> <span class="meta">タグを読むと型番・管理番号が台帳に残ります</span>
+ ${L.map(r=>{const cid=rtCliId(r),u=cid?clientOf(cid):null,j=u&&u.code?lmRows().find(x=>codeN(x.code)===codeN(u.code)):null,t=tagOf(r.id);
+  return `<div style="border-top:1px solid var(--line);padding:6px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:160px"><b>${esc(String(r.cname||"").replace(/\s*様$/,""))} 様</b> ・ ${esc(r.item||"")} <span class="meta">${isD(r.deliv)?md(r.deliv)+"〜（"+(daysFrom(r.deliv)+1)+"日目）":""}</span>${t?`<div class="meta">${esc(tagLine(r.id))}</div>`:""}</div><button class="btn sm ${t?"":"primary"}" type="button" style="padding:3px 10px" onclick="tagScan('${r.id}')">🏷 ${t?"読み直す":"タグを読む"}</button>${j&&j.lat!=null?`<button class="btn sm" type="button" style="padding:3px 10px" onclick="S.view='umap';lmGo('${j.code}')">🗺 地図</button>`:""}</div>`}).join("")}</div>`}
 function ctGoBox(){const row=(r,red)=>{const cid=rtCliId(r),u=cid?clientOf(cid):null,j=u&&u.code?lmRows().find(x=>codeN(x.code)===codeN(u.code)):null,d=rtCtDays(r);
   return `<div class="logi ${red?"over":""}"><b>🚗 契約に行く：${esc(r.cname||"")} 様</b> <span class="meta">${esc([r.item,r.officeName].filter(Boolean).join("・"))}${d!=null?" ・ 持ち出し "+d+"日目":""}${red?" ・ 行く人 "+esc(rtCtGoer(r)||"未定")+(rtCtStaff(r)&&rtCtGoer(r)!==rtCtStaff(r)?"（担当 "+esc(rtCtStaff(r))+"）":""):rtCtStaff(r)&&rtCtGoer(r)!==rtCtStaff(r)?" ・ 担当 "+esc(rtCtStaff(r))+" から依頼":""}</span>${j&&j.lat!=null?` <button class="btn sm" type="button" style="padding:2px 8px" onclick="S.view='umap';lmGo('${j.code}')">🗺</button>`:""}</div>`};
  const A=ctGoList(false),B=(isJimu()||(USER&&USER.role==="admin"))&&MODE==="live"?ctGoList(true):[];
@@ -2213,16 +2230,16 @@ window.rtImport=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;const
    <div class="meta">登録の利用者と名前が一致した行は ${list.filter(r=>r.client).length}件（入院情報とつながります）</div>
    <div style="display:flex;gap:8px;margin-top:6px"><button class="btn primary" type="button" onclick="rtImportGo(this)">取り込む</button><button class="btn" type="button" onclick="RT_PEND=null;S.rtImp='';render()">やめる</button></div></div>`;render()}
  catch(e){box.textContent="読み込めませんでした："+(e.message||e)}};
-window.rtImportGo=async b=>{if(!RT_PEND)return;b.disabled=true;const all=RT_PEND,N=150;let done=0;
+window.rtImportGo=async b=>{if(!RT_PEND)return;if(!await impPre("レンタル台帳",RT_PEND.map(row=>({table:"rentals",row}))))return;b.disabled=true;const all=RT_PEND,N=150;let done=0;
  try{for(let i=0;i<all.length;i+=N){const part=all.slice(i,i+N);b.textContent="取り込み中… "+done+"/"+all.length;await persist(part.map(row=>({table:"rentals",row})));done+=part.length}
-  RT_PEND=null;S.rtImp=`<div class="notice" style="margin-bottom:8px">${done}件を取り込みました。</div>`;toast("取り込みました");render()}
+  impLog("レンタル台帳","");RT_PEND=null;S.rtImp=`<div class="notice" style="margin-bottom:8px">${done}件を取り込みました。</div>`;toast("取り込みました");render()}
  catch(e){b.disabled=false;b.textContent="続きから取り込む";toast("途中で止まりました（"+done+"件まで完了）："+errText(e));RT_PEND=all.slice(done)}};
 /* ===== 利用者（事務所アプリ）：一覧・並べ替え・新規追加・修正。ケアレンツのマスターを取り込むと同じ人は1人にまとまる ===== */
 const clTown=u=>{const m=String(u.name||"").match(/^(\S+?(町|丁目|区|村|市|郡))\s+/);return m?m[1]:""};
 function clRow(u){const o=DB.offices.find(x=>x.id===clOffice(u)),cm=DB.cms.find(c=>c.id===u.cm),h=hospOf(u.id);return {u,o,town:u.town||clTown(u),name:u.town&&String(u.name||"").startsWith(u.town+" ")?String(u.name).slice(u.town.length+1):nmBare(u.name),off:o?o.name:(u.officeName||""),cm:cm?cm.name:(u.cmName||""),staff:(isRetired(u.staff)?"":String(u.staff||"").replace(/[\s　]+/g," ").trim())||(o?staffNames(o).replace(/^未設定$/,""):""),h,app:/アプリで登録/.test(u.recent||""),end:u.useState==="終了"}}
 const CL_COLS=[["town","町名",x=>x.town],["name","利用者",x=>x.name],["off","居宅",x=>x.off],["cm","担当CM",x=>x.cm],["staff","担当営業",x=>x.staff],["lv","介護度",x=>x.u.lv||""],["items","品目",x=>x.u.items||""],["tel","電話",x=>x.u.tel||""],["h","入院",x=>x.h?"1":""]];
 window.clSort=k=>{if(S.clSk===k)S.clSd=-(S.clSd||1);else{S.clSk=k;S.clSd=1}render()};
-function clList(){const a=krClBox(),b=billSumBox(),n=knBox();return `<button class="btn sm" type="button" style="margin-bottom:6px" onclick="S.view='umap';render()">🗺 利用者マップ（マイマップの取り込み・カレンダー配布）</button>`+(a||b||n?tbar("cl",[n?{id:"kn",label:"🆕 新規・解約",html:()=>n,auto:!!S.knPlan}:null,a?{id:"kc",label:"📥 ケアレンツから取り込む",html:()=>a,auto:!!(S.kcPlan||!DB.clients.some(u=>u.code))}:null,b?{id:"bs",label:"📊 居宅別の人数・売上",html:()=>b}:null]):"")+clList0()}
+function clList(){const a="",b=billSumBox(),n="";return `<button class="btn sm" type="button" style="margin-bottom:6px" onclick="S.view='umap';render()">🗺 利用者マップ（マイマップの取り込み・カレンダー配布）</button>`+(a||b||n?tbar("cl",[n?{id:"kn",label:"🆕 新規・解約",html:()=>n,auto:!!S.knPlan}:null,a?{id:"kc",label:"📥 ケアレンツから取り込む",html:()=>a,auto:!!(S.kcPlan||!DB.clients.some(u=>u.code))}:null,b?{id:"bs",label:"📊 居宅別の人数・売上",html:()=>b}:null]):"")+clList0()}
 function clList0(){const q=(S.clq||"").trim();let rs=DB.clients.map(clRow);
  if(S.clf==="end")rs=rs.filter(x=>x.end);else{rs=rs.filter(x=>!x.end);if(S.clf==="h")rs=rs.filter(x=>x.h);else if(S.clf==="app")rs=rs.filter(x=>x.app)}
  if(q){const tk=qTokens(q);rs=rs.filter(x=>{const t=snorm([x.u.name,x.u.kana,x.u.code,x.off,x.cm,x.staff,x.u.items,x.u.tel].join(" "));return tk.every(y=>t.includes(y))})}
@@ -2288,11 +2305,36 @@ function kcMake(){const B=S.kcBill;if(!B||!B.length){S.kcPlan=null;return}
  if(canAdmin())Object.values(sum).forEach(row=>ops.push({table:"billsum",row}));
  S.kcPlan={ops,add,upd,end,month,people:Object.keys(by).length,noOff,noM,hasM:!!(S.kcMas&&S.kcMas.length)}}
 const djb=s=>{let h=5381;for(const ch of String(s))h=(Math.imul(h,33)^ch.charCodeAt(0))>>>0;return h};
-window.kcGo=async b=>{const pl=S.kcPlan;if(!pl)return;b.disabled=true;
+window.kcGo=async b=>{const pl=S.kcPlan;if(!pl)return;if(!await impPre("利用者・請求",pl.ops))return;b.disabled=true;
  try{for(let i=0;i<pl.ops.length;i+=100){S.kcSt="取り込み中… "+Math.min(i+100,pl.ops.length)+" / "+pl.ops.length;const st=$("#kcSt");if(st)st.textContent=S.kcSt;await persist(pl.ops.slice(i,i+100))}
-  S.kcSt="✓ "+pl.month+" 分を取り込みました（利用者 新規 "+pl.add+"・更新 "+pl.upd+(pl.end?"・終了 "+pl.end:"")+"）";S.kcPlan=null;S.kcBill=null;S.kcMas=null;S.kcBillName=S.kcMasName="";buzz(60);render()}
+  impLog("利用者・請求",(S.kcBillName||"")+(S.kcMasName?" / "+S.kcMasName:""));S.kcSt="✓ "+pl.month+" 分を取り込みました（利用者 新規 "+pl.add+"・更新 "+pl.upd+(pl.end?"・終了 "+pl.end:"")+"）";S.kcPlan=null;S.kcBill=null;S.kcMas=null;S.kcBillName=S.kcMasName="";buzz(60);render()}
  catch(e){b.disabled=false;S.kcSt="取り込めませんでした："+errText(e);render()}};
-function krClBox(){if(!(canAdmin()||isJimu()))return "";const pl=S.kcPlan,nf=pl?Object.entries(pl.noOff):[];
+
+/* ===== 取り込みの守り（11/11 社長）：①管理者（と指名した人）だけ ②上書きされる行を先にファイルへ保存 ③多い上書きは二重確認 ④履歴を残す
+   履歴：caselog kind=取り込み、case="imp"、text=JSON{name,file,add,upd,n,at,by} ===== */
+const IMP_USERS=[];   // 社長のほかに取り込みできる人の名前（例："田中"）
+const canImport=()=>MODE==="demo"||canAdmin()||(!!USER&&IMP_USERS.some(n=>String(USER.name||"").replace(/[\s　]/g,"").includes(n)));
+const IMP_BIG=50;
+function impBackup(name,ops){const by={};ops.forEach(o=>{const ex=(DB[o.table]||[]).find(x=>x.id===o.row.id);if(ex)(by[o.table]=by[o.table]||[]).push(ex)});
+ const n=Object.values(by).reduce((a,x)=>a+x.length,0);if(!n)return 0;
+ try{const blob=new Blob([JSON.stringify({name,at:new Date().toISOString(),by:USER?USER.name:"",rows:by},null,1)],{type:"application/json"}),a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download="取り込み前の控え_"+name+"_"+new Date().toLocaleString("sv-SE").replace(/[: ]/g,"-").slice(0,16)+".json";document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000)}catch(e){}
+ return n}
+async function impPre(name,ops,opt){opt=opt||{};if(!opt.any&&!canImport()){toast("この取り込みは管理者だけができます");return false}
+ const upd=ops.filter(o=>(DB[o.table]||[]).some(x=>x.id===o.row.id)).length,add=ops.length-upd;
+ if(upd>=IMP_BIG&&!await uiConfirm("「"+name+"」で "+upd+"件 を上書きします（新規 "+add+"件）。\n上書きする前の内容は、このパソコンにファイルで保存します。\n本当に取り込みますか？"))return false;
+ const bk=impBackup(name,ops);if(bk)toast("上書き前の "+bk+"件 をファイルに保存しました（ダウンロード）");
+ S.impLast={name,add,upd,n:ops.length};return true}
+function impLog(name,file){const L=S.impLast||{};S.impLast=null;try{persist([{table:"caselog",row:{id:newId("i"),case:"imp",kind:"取り込み",text:JSON.stringify({name,file:file||"",add:L.add||0,upd:L.upd||0,n:L.n||0}),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}]).catch(()=>{})}catch(e){}}
+function impHist(){const L=(DB.caselog||[]).filter(l=>l.kind==="取り込み"&&l.state!=="削除").sort((a,b)=>String(b.at).localeCompare(String(a.at))).slice(0,30);
+ return L.length?`<div class="log">${L.map(l=>{let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}return `<div class="logi"><div class="meta">${esc(fmtAt(l.at))} ・ ${esc(l.byName||"")}</div><b>${esc(j.name||"")}</b> ${j.file?'<span class="meta">'+esc(j.file)+"</span> ":""}・ 新規 ${j.add||0}件 ・ 上書き ${j.upd||0}件</div>`}).join("")}</div>`:'<div class="meta">まだありません</div>'}
+function impAdminBox(){if(!canImport())return "";
+ return `<div class="form"><b>⚙ 管理者の取り込み</b><div class="meta">ケアレンツなどのデータをまとめて入れる所です。管理者${IMP_USERS.length?"と "+esc(IMP_USERS.join("・")):""}だけに出ます。上書きされる行は、取り込む前に自動でこのパソコンにファイル保存します（${IMP_BIG}件以上の上書きは確認が出ます）。</div>
+ ${tbar("imp",[{id:"kn",label:"🆕 新規・解約",html:()=>knBox()},{id:"kc",label:"📥 利用者・請求",html:()=>krClBox()},
+  {id:"rt",label:"📦 レンタル台帳",html:()=>`<div class="meta">台帳の画面の上に取り込みの欄を出します。</div><button class="btn" type="button" onclick="S.rtImpShow=true;S.view='jimu';S.jt='ledger';render();scrollTo(0,0)">📦 台帳の取り込みを開く</button>`},
+  {id:"lm",label:"🗺 マイマップ",html:()=>`<button class="btn" type="button" onclick="S.lmImp=true;S.view='umap';render();scrollTo(0,0)">🗺 マイマップの取り込みを開く</button>`},
+  {id:"hist",label:"🕘 履歴",html:impHist}])}</div>`}
+function krClBox(){if(!canImport())return "";const pl=S.kcPlan,nf=pl?Object.entries(pl.noOff):[];
  const fileBtn=(k,l,nm)=>`<label class="btn ${k==="bill"?"primary":""}" for="kc-${k}" style="display:inline-flex">${l}</label><input type="file" id="kc-${k}" accept=".xlsx,.xls,.csv" onchange="kcPick(this,'${k}')" style="position:absolute;opacity:0;width:1px;height:1px">${nm?` <span class="meta">✓ ${esc(nm)}</span>`:""}`;
  return `<details class="form" style="margin-bottom:10px" ${pl||S.kcSt||!DB.clients.some(u=>u.code)?"open":""}><summary style="cursor:pointer"><b>📥 ケアレンツから利用者を取り込む（毎月）</b></summary>
  <div class="meta">① 請求データ（各種集計リスト）だけでも取り込めます。② 顧客マスタも一緒に入れると、住所・電話も入ります。同じ月を何度入れても上書きです。先月いて今月いない人は「終了」になります。包括などから委託されている人は委託先の居宅・CMに入ります。</div>
@@ -2358,13 +2400,13 @@ function knMake(){const ops=[],now=new Date().toISOString(),by=myId(),byName=USE
  Object.entries(K).forEach(([code,k])=>{const u=C[code]||cOf(code),on=(k.it||[]).filter(x=>!x.e).map(x=>x.n);if(u&&KN_END&&k.it.length)ops.push({table:"clients",row:{id:u.id,items:on.join("・")}})});
  Object.entries(K).forEach(([code,k])=>ops.push({table:"caselog",row:{id:"kn"+code,case:"k:"+code,kind:"契約",text:JSON.stringify(k),rec:"",by,byName,at:now}}));
  S.knPlan=ops.length?Object.assign(P,{ops}):null}
-window.knGo=async b=>{const pl=S.knPlan;if(!pl)return;b.disabled=true;
+window.knGo=async b=>{const pl=S.knPlan;if(!pl)return;if(!await impPre("新規・解約",pl.ops))return;b.disabled=true;
  try{for(let i=0;i<pl.ops.length;i+=100){S.knSt="取り込み中… "+Math.min(i+100,pl.ops.length)+" / "+pl.ops.length;const st=$("#knSt");if(st)st.textContent=S.knSt;await persist(pl.ops.slice(i,i+100))}
-  S.knSt="✓ 取り込みました（新規 "+pl.nw.length+"人・解約 "+pl.end.filter(x=>!x.was).length+"人）";S.knPlan=null;KN_NEW=KN_END=null;buzz(60);render()}
+  impLog("新規・解約",[KN_NEW&&KN_NEW.name,KN_END&&KN_END.name].filter(Boolean).join(" / "));S.knSt="✓ 取り込みました（新規 "+pl.nw.length+"人・解約 "+pl.end.filter(x=>!x.was).length+"人）";S.knPlan=null;KN_NEW=KN_END=null;buzz(60);render()}
  catch(e){b.disabled=false;S.knSt="取り込めませんでした："+errText(e);render()}};
 function knMonthSum(){const M={};(DB.caselog||[]).forEach(l=>{if(l.kind!=="契約"||l.state==="削除")return;let k;try{k=JSON.parse(l.text||"{}")}catch(e){return}
   const code=String(l.case||"").slice(2);if(k.m)(M[k.m]=M[k.m]||{n:[],e:[]}).n.push({code,k});if(knEnded(k)){const m=k.end.slice(0,7);(M[m]=M[m]||{n:[],e:[]}).e.push({code,k})}});return M}
-function knBox(){if(!(canAdmin()||isJimu()))return "";const pl=S.knPlan,M=knMonthSum(),ms=Object.keys(M).sort().reverse(),sel=S.knMon&&M[S.knMon]?S.knMon:ms[0],A=sel?M[sel]:null;
+function knBox(){if(!canImport())return "";const pl=S.knPlan,M=knMonthSum(),ms=Object.keys(M).sort().reverse(),sel=S.knMon&&M[S.knMon]?S.knMon:ms[0],A=sel?M[sel]:null;
  const cn=code=>{const u=DB.clients.find(x=>x.code===code);return u?esc(nmBare(u.name)):esc(code)};
  const nf=pl?Object.entries(pl.noOff):[];
  return `<div class="form" style="margin-bottom:10px"><b>🆕 新規・解約を取り込む（毎月）</b>
@@ -2666,9 +2708,9 @@ window.krHospRead=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;S.k
     ops.push({table:"hosp",row})}});
   if(!ops.length)throw new Error("取り込める行がありませんでした");S.krPlan={ops,add,upd,open};S.krSt=f.name+" を読みました（"+ops.length+"件）";render()}
  catch(e){S.krSt="読み込めませんでした："+(e&&e.message||errText(e));render()}};
-window.krHospGo=async b=>{const pl=S.krPlan;if(!pl)return;b.disabled=true;
+window.krHospGo=async b=>{const pl=S.krPlan;if(!pl)return;if(!await impPre("入退院（休止データ）",pl.ops,{any:true}))return;b.disabled=true;
  try{for(let i=0;i<pl.ops.length;i+=100){S.krSt="取り込み中… "+Math.min(i+100,pl.ops.length)+" / "+pl.ops.length;const st=$("#krSt");if(st)st.textContent=S.krSt;await persist(pl.ops.slice(i,i+100))}
-  toast("✓ "+pl.ops.length+"件を取り込みました（新規 "+pl.add+"・更新 "+pl.upd+"）");S.krSt="";tpClose("h");S.krPlan=null;S.hmf="all";buzz(60);render()}
+  impLog("入退院（休止データ）","");toast("✓ "+pl.ops.length+"件を取り込みました（新規 "+pl.add+"・更新 "+pl.upd+"）");S.krSt="";tpClose("h");S.krPlan=null;S.hmf="all";buzz(60);render()}
  catch(e){b.disabled=false;S.krSt="取り込めませんでした："+errText(e);render()}};
 window.addEventListener("beforeunload",e=>{if((S.hsItems||[]).length||S.krPlan){e.preventDefault();e.returnValue="まだ登録していない入退院があります"}});
 window.hsSave=async b=>{const list=(S.hsItems||[]).filter(x=>x.on);if(!list.length){toast("チェックしたものがありません");return}
@@ -3135,17 +3177,68 @@ function viewTodo(){markRead("sales");const t=today(),list=schedMine(),open=list
  const asking=(DB.reqs||[]).filter(r=>(r.email===me||MODE==="demo")&&r.state!=="済").sort((a,b)=>String(b.at||"").localeCompare(String(a.at||"")));
  const rts=(DB.rentals||[]).filter(r=>r.state!=="削除"&&(MODE==="demo"||staffEmail(r.staff)===me)&&rtHot(r));
  const users=canAdmin()&&MODE==="live"?[...new Map((DB.sched||[]).filter(s=>s.email).map(s=>[String(s.email).toLowerCase(),s.staff||s.email])).entries()]:[];
- return `<div class="section-t"><h2>やること</h2><button class="btn sm primary" type="button" onclick="schedNew()">＋ 予定を入れる</button></div>
+ return `<div class="section-t"><h2>やること</h2><button class="btn sm primary" type="button" onclick="schedNew()">＋ 予定を入れる</button>${npOn()?`<button class="btn sm" type="button" onclick="S.view='nippo';S.npDate=today();render();scrollTo(0,0)">📝 日報${npGet(today(),myId())?"（提出済）":""}</button>`:""}</div>
  ${users.length?`<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:8px">担当者 <select class="sim" onchange="S.schedWho=this.value;render()"><option value="">全員</option>${users.map(([e,n])=>`<option value="${esc(e)}" ${S.schedWho===e?"selected":""}>${esc(n)}</option>`).join("")}</select></label>`:""}
  ${S.schedEdit?schedForm():""}
  ${news.length?`<div class="section-t"><h2 style="font-size:16px;color:var(--accent)">連絡（事務・営業から）</h2><span class="meta">${news.length}件</span></div><div class="log">${news.map(x=>`<div>${x.html}<div style="margin:-4px 0 8px"><button class="btn sm" type="button" onclick="dismiss('${x.k}')">✓ 確認した</button></div></div>`).join("")}</div>`:""}
- ${rtLateBox()}${ctGoBox()}${waitsBox(false)}${seeAllRec()&&MODE==="live"?waitsBox(true,"⚠ 全員の待ち（期限切れ・明日まで）").replace(/^/,""):""}
+ ${rtLateBox()}${ctGoBox()}${myDemoBox()}${waitsBox(false)}${seeAllRec()&&MODE==="live"?waitsBox(true,"⚠ 全員の待ち（期限切れ・明日まで）").replace(/^/,""):""}
  ${casesSection("")}
  ${grp.map(([h,f])=>{const xs=open.filter(f);return xs.length?`<div class="section-t"><h2 style="font-size:16px${h.startsWith("期限")?";color:#c0392b":""}">${h}</h2><span class="meta">${xs.length}件</span></div><div class="log">${xs.map(s=>schedItem(s,true)).join("")}</div>`:""}).join("")}
  ${open.length||news.length?"":`<div class="empty">今やることはありません。「＋ 予定を入れる」か、記録を保存したあとのカードから入れられます。</div>`}
  ${asking.length?`<details style="margin-top:12px"><summary class="meta" style="cursor:pointer">事務にお願い中（${asking.length}件） ・ 事務が済にするとここから消えます</summary><div class="log" style="margin-top:6px">${asking.map(r=>{const o=DB.offices.find(x=>x.id===r.office)||{name:""};return `<div class="logi"><div class="meta">${esc(String(r.at||"").slice(5,10).replace("-","/"))} ・ ${esc(o.name)} ・ ${esc(r.state||"未対応")}</div>${esc(r.text)}<div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${replyBox(r.id,JIMU,r.office||"","事務に一言（追加のお願いなど）")}</div>`}).join("")}</div></details>`:""}
  ${rts.length?`<details style="margin-top:8px"><summary class="meta" style="cursor:pointer">レンタル台帳の要注意（${rts.length}件） ・ 事務と確認してください</summary><div class="log" style="margin-top:6px">${rts.map(r=>`<div class="logi"><b>${esc(r.cname||"")}</b> <span class="meta">${esc(r.item||"")} ・ 納品 ${esc(String(r.deliv||"").slice(5).replace("-","/"))}</span><div>${rtWarn(rtAlerts(r))}</div></div>`).join("")}</div></details>`:""}
  ${done.length?`<details style="margin-top:8px"><summary class="meta" style="cursor:pointer">済んだ予定（直近30日・${done.length}件）</summary><div class="log" style="margin-top:6px">${done.map(s=>schedItem(s,true)).join("")}</div></details>`:""}`}
+
+/* ===== 📝 日報（11/11）：その日のアプリの記録から下書きを自動で作り、ひとこと・明日の予定を足して提出。社長は全員分を見てコメント
+   保存：caselog kind=日報、id="dr"+日付+"_"+メール、case="d:"+日付、text=JSON{date,email,name,auto,memo,next,at,cm:[{by,t,at}]} ===== */
+const npKey=(d,em)=>"dr"+String(d).replace(/-/g,"")+"_"+String(em||"").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,40);
+const npAll=d=>(DB.caselog||[]).filter(l=>l.kind==="日報"&&l.state!=="削除"&&(!d||l.case==="d:"+d)).map(l=>{try{return Object.assign(JSON.parse(l.text||"{}"),{_id:l.id})}catch(e){return null}}).filter(Boolean);
+const npGet=(d,em)=>npAll(d).find(x=>String(x.email||"").toLowerCase()===String(em||"").toLowerCase())||null;
+function npAuto(d,em,nm){const me=String(em||"").toLowerCase(),mine=x=>String(x||"").toLowerCase()===me,offN=id=>{const o=DB.offices.find(x=>x.id===id);return o?o.name:""};
+ const day=x=>String(x||"").slice(0,10)===d||(x&&new Date(x).toLocaleDateString("sv-SE")===d);
+ const vis=(DB.visits||[]).filter(v=>mine(v.staff)&&day(v.at)).sort((a,b)=>String(a.at).localeCompare(String(b.at)));
+ const recs=(DB.records||[]).filter(r=>r.kind!=="削除"&&r.date===d&&(r.staff===nm||mine(r.updatedBy))).sort((a,b)=>String(a.updatedAt||"").localeCompare(String(b.updatedAt||"")));
+ const sd=(DB.sched||[]).filter(x=>(mine(x.email)||MODE==="demo")&&x.state==="済"&&day(x.doneAt||x.date)&&x.date<=d);
+ const tg=(DB.caselog||[]).filter(l=>l.kind==="タグ"&&mine(l.by)&&day(l.at)).length;
+ const L=[];
+ if(vis.length)L.push("■ 訪問 "+[...new Set(vis.map(v=>offN(v.office)).filter(Boolean))].length+"件\n"+vis.map(v=>"・"+new Date(v.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+" "+offN(v.office)+(v.away==="1"?"（離れた場所から）":"")).join("\n"));
+ if(recs.length)L.push("■ 面談・電話 "+recs.length+"件\n"+recs.map(r=>"・"+(r.kind==="電話"?"📞":r.kind==="メモ"?"📝":"🗣")+" "+offN(r.office)+(r.party==="利用者"?"（"+recCliLabel(r)+"）":"")+"："+firstLine(r.text).slice(0,60)).join("\n"));
+ const cks=(DB.caselog||[]).filter(l=>l.kind==="利用者訪問"&&l.state!=="削除"&&mine(l.by)&&day(l.at)).sort((a,b)=>String(a.at).localeCompare(String(b.at)));
+ if(cks.length)L.push("■ 訪問した利用者 "+cks.length+"件\n"+cks.map(l=>{const j=lmRows().find(x=>"m:"+x.code===l.case);let t={};try{t=JSON.parse(l.text||"{}")}catch(e){}return "・"+new Date(l.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+" "+(j?lmName(j)+" 様":"利用者")+(t.away?"（離れた場所から）":"")}).join("\n"));
+ if(sd.length)L.push("■ 済ませた予定 "+sd.length+"件\n"+sd.map(x=>"・"+(x.time?x.time+" ":"")+String(x.text||x.kind||"").slice(0,50)).join("\n"));
+ if(tg)L.push("■ タグ読み取り "+tg+"件");
+ return L.join("\n\n")||"（この日のアプリの記録はありません）"}
+function npNext(d,em){const t=new Date(d);t.setDate(t.getDate()+1);const n=t.toLocaleDateString("sv-SE"),me=String(em||"").toLowerCase();
+ return (DB.sched||[]).filter(x=>(String(x.email||"").toLowerCase()===me||MODE==="demo")&&x.date===n&&x.state!=="済"&&x.state!=="削除").sort((a,b)=>String(a.time||"").localeCompare(String(b.time||""))).map(x=>"・"+(x.time?x.time+" ":"")+String(x.text||x.kind||"").slice(0,50)).join("\n")}
+/* 当面は社長だけで試験運用（11/11）。ほかの人を足すときは NP_USERS に名前を入れる */
+const NP_USERS=[];const npOn=()=>MODE==="demo"||canAdmin()||(!!USER&&NP_USERS.some(n=>String(USER.name||"").replace(/[\s　]/g,"").includes(n)));
+function viewNippo(){if(!npOn()){S.view="sched";return viewSched()}const d=S.npDate||today(),em=myId(),nm=USER?USER.name:"デモ",all=S.npAll&&canAdmin(),mine=npGet(d,em);
+ const shift=k=>{const t=new Date(d);t.setDate(t.getDate()+k);return t.toLocaleDateString("sv-SE")};
+ const head=`<div class="section-t"><h2>📝 日報</h2><button class="btn sm" type="button" onclick="S.view='sched';render()">← やること</button></div>
+ <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><button class="btn sm" type="button" onclick="S.npDate='${shift(-1)}';render()">◀</button><input type="date" class="sim" value="${d}" onchange="S.npDate=this.value;render()"><button class="btn sm" type="button" onclick="S.npDate='${shift(1)}';render()" ${d>=today()?"disabled":""}>▶</button>
+ ${canAdmin()?`<div class="seg" style="margin-left:auto"><button type="button" class="${all?"":"on"}" onclick="S.npAll=false;render()">自分の</button><button type="button" class="${all?"on":""}" onclick="S.npAll=true;render()">全員の</button></div>`:""}</div>`;
+ const cms=x=>(x.cm||[]).map(c=>`<div class="logi"><div class="meta">${esc(c.byName||"")} ・ ${esc(fmtAt(c.at))}</div>${esc(c.t)}</div>`).join("");
+ if(all){const L=npAll(d).sort((a,b)=>String(a.name).localeCompare(String(b.name)));const sub=new Set(L.map(x=>String(x.email).toLowerCase()));
+  const yet=salesList().filter(u=>u.email&&!sub.has(String(u.email).toLowerCase())).map(u=>u.name);
+  return head+`<div class="meta" style="margin-bottom:6px">提出 ${L.length}人${yet.length?" ・ まだ："+esc(yet.join("、")):""}</div>`+(L.map(x=>`<div class="form" style="margin-bottom:10px"><b style="font-size:17px">${esc(x.name||"")}</b> <span class="meta">提出 ${esc(fmtAt(x.at))}</span>
+  ${x.memo?`<div style="margin:6px 0;padding:8px 10px;background:#fff8e1;border-radius:8px;white-space:pre-wrap">${esc(x.memo)}</div>`:""}
+  <details ${L.length<=3?"open":""}><summary class="meta" style="cursor:pointer">今日の記録</summary><div style="white-space:pre-wrap;font-size:14px;margin-top:4px">${esc(x.auto||"")}</div></details>
+  ${x.next?`<div class="meta" style="margin-top:6px">明日：</div><div style="white-space:pre-wrap;font-size:14px">${esc(x.next)}</div>`:""}
+  ${(x.cm||[]).length?`<div class="log" style="margin-top:6px">${cms(x)}</div>`:""}
+  <div class="rbox" style="margin-top:6px"><textarea id="npc-${x._id}" rows="1" placeholder="コメントを書く"></textarea><button class="btn sm primary" type="button" onclick="npCm('${x._id}',this)">送る</button></div></div>`).join("")||'<div class="empty">この日の日報はまだありません</div>')}
+ const auto=npAuto(d,em,nm),r=mine||{};
+ return head+(mine?`<div class="notice" style="margin-bottom:8px">✓ ${esc(fmtAt(mine.at))} に提出済み。直して「もう一度提出」もできます。</div>`:"")+
+ `<div class="form"><b>今日の記録（アプリから自動）</b><div style="white-space:pre-wrap;font-size:14px;margin:6px 0;padding:8px 10px;background:var(--bg);border-radius:8px">${esc(auto)}</div>
+ <label>ひとこと（感想・反省・気づき・相談）<textarea id="np-memo" rows="3" placeholder="例：〇〇居宅の新任CMさんに挨拶できた。次は資料を持っていく">${esc(r.memo||"")}</textarea></label>
+ <label>明日やること<textarea id="np-next" rows="3">${esc(r.next!=null?r.next:npNext(d,em))}</textarea></label>
+ <button class="btn primary" type="button" onclick="npSubmit(this)">${mine?"もう一度提出":"📝 提出する"}</button></div>
+ ${(r.cm||[]).length?`<div class="form" style="margin-top:10px"><b>💬 社長からのコメント</b><div class="log">${cms(r)}</div></div>`:""}`}
+window.npSubmit=b=>{const d=S.npDate||today(),em=myId(),nm=USER?USER.name:"デモ",old=npGet(d,em)||{};
+ const j={date:d,email:em,name:nm,auto:npAuto(d,em,nm),memo:String($("#np-memo").value||"").trim(),next:String($("#np-next").value||"").trim(),at:new Date().toISOString(),cm:old.cm||[]};
+ saveFast([{table:"caselog",row:{id:npKey(d,em),case:"d:"+d,kind:"日報",text:JSON.stringify(j),rec:"",by:em,byName:nm,at:j.at}}],"日報を提出しました")};
+window.npCm=(id,b)=>{const el=document.getElementById("npc-"+id),t=String(el&&el.value||"").trim();if(!t){toast("コメントを入れてください");return}
+ const l=(DB.caselog||[]).find(x=>x.id===id);if(!l)return;let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}
+ j.cm=(j.cm||[]).concat([{by:myId(),byName:USER?USER.name:"デモ",t,at:new Date().toISOString()}]);saveFast([{table:"caselog",row:{id,text:JSON.stringify(j)}}],"コメントしました")};
 const viewSched=viewTodo;
 /* 居宅の画面に出す、その居宅のやること（予定・事務にお願い中） */
 function officeTodo(o){const t=today(),me=myId(),xs=schedMine().filter(s=>s.office===o.id&&s.state!=="済").sort(sortS).slice(0,6),
@@ -3452,7 +3545,7 @@ function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="
 /* 事務所の画面・管理者のパソコンは「全部を見る」使い方（自分の担当だけ・近い順は使わない） */
 const wideV=()=>MODE==="live"&&!!USER&&(jimuMode()||(USER.role==="admin"&&PP_PC()));
 const mineEff=()=>S.mine&&!wideV();
-const salesList=()=>(DB.users||[]).filter(u=>u.role!=="jimu"&&u.role!=="事務"&&String(u.active||"有")!=="無"&&!isRetired(u.name));
+const salesList=()=>(DB.users||[]).filter(u=>u.role!=="jimu"&&u.role!=="事務"&&String(u.active||"有")!=="無"&&!RETIRED_NM.some(n=>String(u.name||"").replace(/[\s　]/g,"").includes(n)));
 function listRows(){
  const q=(S.lq||"").trim();
  let rows=S.pos?nearest().concat(DB.offices.filter(o=>o.lat==null).map(o=>({o,d:null}))):DB.offices.map(o=>({o,d:null}));
@@ -3530,7 +3623,7 @@ function cst(c){return c.status||"在籍"}
 /* ===== 担当営業 ===== */
 function me(){return MODE==="live"?(USER&&USER.email):(DB.users[0]&&DB.users[0].email)}
 function isMine(o){const s=staffOf(o);if(!USER&&MODE==="demo")return s.includes(me());return !!USER&&(s.includes(USER.email)||s.includes(USER.name))}
-function staffOf(o){return String(o.staff||"").split(",").map(x=>x.trim()).filter(Boolean).filter(e=>{const x=(DB.users||[]).find(v=>v.email===e);return !x||(String(x.active||"有")!=="無"&&!isRetired(x.name))})}
+function staffOf(o){return String(o.staff||"").split(",").map(x=>x.trim()).filter(Boolean).filter(e=>{const x=(DB.users||[]).find(v=>String(v.email||"").toLowerCase()===e.toLowerCase());return !x||!RETIRED_NM.some(n=>String(x.name||"").replace(/[\s　]/g,"").includes(n))})}
 function uname(e){const u=DB.users.find(x=>x.email===e);return u?u.name:e}
 function staffNames(o){const s=staffOf(o);return s.length?s.map(uname).join("・"):"未設定"}
 function findUserByName(n){n=String(n||"").replace(/[\s　]/g,"");if(!n)return null;
@@ -3975,7 +4068,7 @@ ${tr.slice(0,20000)}`);
  if(btn)btn.disabled=false;};
 
 function viewSettings(){const imp=DB.importedAt;
- return `<div class="section-t"><h2>設定</h2></div>
+ return `<div class="section-t"><h2>設定</h2></div>${impAdminBox()}
  <div class="form"><b>📦 あんちょこ箱</b><div class="meta">CMに話すネタの資料（チラシ・制度の案内など）を入れる箱です。入れるとAIが一言ネタにして、居宅のCMカードに出します。</div><button class="btn" type="button" onclick="S.view='neta';render();scrollTo(0,0)">📦 あんちょこ箱を開く（${netaFor(null).length}件）</button></div>
  <div class="form"><b>💡 改善の声</b><div class="meta">使いにくい所・こうしてほしい所・おかしな動きを送ってください。画面の写真も付けられます。</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="fbOpen()">💡 改善の声を送る</button>${canAdmin()?`<button class="btn" type="button" onclick="S.view='fb';render();scrollTo(0,0)">一覧を見る（未対応 ${(DB.fb||[]).filter(x=>(x.state||"未対応")==="未対応").length}件）</button>`:""}</div></div>
@@ -4101,7 +4194,7 @@ function render(){
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));jimuTabsUpd();
  if(S.view==="case"&&!(DB.cases||[]).some(c=>c.id===S.caseId))S.view="log";
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===(S.view==="case"?"log":S.view)));jimuTabsUpd();
- const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog,sched:viewSched,settings:viewSettings,fb:viewFb,neta:viewNeta,umap:viewUmap,jimu:viewJimu,case:viewCase,chat:viewChat}[S.view]();
+ const v={visit:viewVisit,list:viewList,cards:viewCards,log:viewLog,sched:viewSched,nippo:viewNippo,settings:viewSettings,fb:viewFb,neta:viewNeta,umap:viewUmap,jimu:viewJimu,case:viewCase,chat:viewChat}[S.view]();
  if(MAP&&!(S.view==="list"&&S.listMode==="map")){try{MAP.remove()}catch(e){}MAP=null}
  $("#app").innerHTML=pushNag()+lmPopHtml()+lmDetHtml()+(S.view==="visit"||S.view==="log"?pendBox():"")+v+(MODE==="demo"?`<p class="demo">デモ：表示中の事業所・人物・利用者はすべて架空です。入力内容はこの端末のブラウザ内にだけ保存されます。</p>`:`<p class="demo">データは会社のスプレッドシートに保存されます。すぐ開けるよう前回の内容と保存前の録音をこの端末に覚えています（ログアウトで消えます）。</p>`);
 }
