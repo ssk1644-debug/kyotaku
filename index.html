@@ -1901,7 +1901,7 @@ function updBadges(){const set=(id,n)=>{const t=$("#"+id);if(!t)return;let b=t.q
  if(MODE==="live"&&!USER)return;
  set("t-log",0);set("t-sched",isJimu()?0:todoCount());
  const jn=seeJimu()?unreadFor("jimu").length+(DB.reqs||[]).filter(r=>!r.state||r.state==="未対応").length:0;set(jimuMode()?"t-jreq":"t-jimu",jn);if(jimuMode())set("t-jimu",0);
- try{if(jimuMode())set("t-jhosp",(DB.hosp||[]).filter(h=>hmLeft(h).length).length)}catch(e){}
+ try{if(jimuMode())set("t-jhosp",0)}catch(e){}   /* 入退院の件数バッジは出さない（11/12 社長） */
  try{const un=isJimu()||jimuMode()?unreadFor("jimu").length:unreadFor("sales").length;const cu=chatUnread();if((window._ppUn!=null&&un>window._ppUn)||(window._ppCu!=null&&cu>window._ppCu)){woof(2);if(window._ppCu!=null&&cu>window._ppCu)ppChatNote()}window._ppUn=un;window._ppCu=cu}catch(e){}}
 function ppChatNote(){try{const me=myId(),m=(DB.msgs||[]).filter(x=>x.from!==me).sort((a,b)=>String(b.at).localeCompare(String(a.at)))[0];
  ppMsg("wow",`<b>アスポッピー</b>　${esc(m?(m.fromName||uName(m.from)):"")}さんから連絡が来てます！<br><span style="text-decoration:underline">押すと連絡を開きます</span>`,6000);
@@ -2126,7 +2126,8 @@ const rtGoers=()=>[...new Set(rtStaffs().filter(x=>x!=="（担当なし）").con
 window.rtCtGo=(id,name)=>{const r=(DB.rentals||[]).find(x=>x.id===id);if(!r)return;const d=rtCtISO(r)||today(),st=rtCtStaff(r);rtPut(id,{ct_print:"済",ct_doc:"出 "+d+(name&&name!==st?" @"+name:"")});
  if(name&&name!==st){const me=myId();(DB.users||[]).filter(u=>stUni(u.name)===name&&u.email&&u.email!==me).forEach(u=>{persist([{table:"msgs",row:{id:newId("m"),req:dmKey(me,u.email),office:"",to:u.email,from:me,fromName:USER?USER.name:"デモ",text:"🚗 契約に行く依頼が1件あります（"+(st?"担当 "+st+" の分":"")+"）\n「やること」で確認できます。",at:new Date().toISOString(),read:""}}]).catch(()=>{})});toast(name+" さんに頼みました")}};
 function ctGoList(all){const me=USER?stUni(USER.name):"";return (DB.rentals||[]).filter(r=>r.state!=="削除"&&rtCtStage(r)===3&&(all?(rtCtDays(r)||0)>=3:(MODE==="demo"||(me&&rtCtGoer(r)===me))))}
-function rtLateBox(){if(!(isJimu()||(USER&&USER.role==="admin")||MODE==="demo"))return "";const c=rtLateSum(),red=RT_LATE.filter(L=>c[L[0]]&&c[L[0]].red);if(!red.length)return "";
+const RT_LATE_SHOW=false;   /* 台帳の要注意（赤）の知らせ：いったん出さない（11/12 社長） */
+function rtLateBox(){if(!RT_LATE_SHOW)return "";if(!(isJimu()||(USER&&USER.role==="admin")||MODE==="demo"))return "";const c=rtLateSum(),red=RT_LATE.filter(L=>c[L[0]]&&c[L[0]].red);if(!red.length)return "";
  return `<div class="notice" style="margin:8px 0;border:2px solid #c0392b;cursor:pointer" onclick="S.view='jimu';S.jt='ledger';S.rtOpen=null;S.rf='hot';S.rwK='';render()"><b style="color:#c0392b">⚠ レンタル台帳の要注意（赤）</b> ${red.map(L=>L[1]+" "+esc(L[2].replace(/！$/,""))+" "+c[L[0]].red+"件").join(" ・ ")} <span class="meta">→ 台帳を開く</span></div>`}
 /* やること：自分の担当のデモ中の品（タグの読み取り・地図）11/11 */
 function myDemoBox(){const L=(DB.rentals||[]).filter(r=>r.state!=="削除"&&!rtStop(r)&&rtDemoNow(r)&&mineRec(r)).sort((a,b)=>String(a.deliv).localeCompare(String(b.deliv)));if(!L.length)return "";
@@ -2728,7 +2729,7 @@ function todayRecs(){const d=S.trDay||today(),L=(DB.records||[]).filter(r=>r.kin
  <div style="margin:6px 0"><input type="date" class="sim" value="${esc(d)}" onchange="S.trDay=this.value;S.trOpen=true;render()"></div>
  <div class="log">${L.map(r=>{const o=DB.offices.find(x=>x.id===r.office),cm=DB.cms.find(c=>c.id===r.cm);return `<details class="logi"><summary style="cursor:pointer"><span class="meta">${r.kind==="電話"?"📞":r.kind==="SMS"?"✉️":r.kind==="メモ"?"🗒":"🗣"} ${esc(r.staff||"")} ・ ${esc(o?o.name:"")}${cm?" ・ "+esc(cm.name):""}</span><div>${esc(firstLine(r.text))}</div></summary><div style="white-space:pre-wrap;margin-top:4px">${esc(r.text||"")}</div>${r.next?`<div class="meta">次回：${esc(r.next)}</div>`:""}</details>`}).join("")||'<div class="meta">この日の記録はまだありません</div>'}</div></details>`}
 function viewJimuReq(){markRead("jimu");const f=S.jf||"open",st=S.jst||"",d=dism(),hpn=hospPend().length;
- const sales=(DB.users||[]).filter(u=>u.role!=="jimu"&&u.role!=="事務");
+ const sales=salesList();
  const its=[];
  (DB.reqs||[]).forEach(r=>{const l=lastOf(r.id),done=r.state==="済"&&!jKept(r.id),c=caseOfReq(r);its.push({at:(l&&l.at>(r.at||"")?l.at:r.at)||"",done,who:r.email||"",html:(c?`<button type="button" class="btn sm" style="margin-bottom:-6px" onclick="caseOpen('${c.id}')">🗂 タスクカードを開く（${esc(cStage(c))}）</button>`:"")+jReqItem(r)})});
  (DB.msgs||[]).filter(m=>m.req==="").forEach(m=>{const l=lastOf("m:"+m.id)||m,peer=peerOf(m),done=d.has("jd:"+l.id);
@@ -3168,8 +3169,10 @@ function jimuNews(){const me=myId(),d=dism(),out=[];
  try{roomsOf().forEach(r=>{const n=roomUnread(r);if(!n)return;const l=roomMsgs(r.k).filter(m=>m.from!==me).slice(-1)[0];if(!l||d.has("c:"+l.id))return;
   out.push({at:l.at,k:"c:"+l.id,html:`<div class="jreq st-doing ${isUrg(l)?"urgn":""}"><div class="meta"><b>💬 ${esc(l.fromName||uName(l.from))}から${n>1?"（"+n+"件）":""}</b> ・ ${esc(r.name.replace(/^\S+\s/,""))}</div>${msgBody(l.text)}<div><button type="button" class="btn sm" style="margin-top:4px" onclick="S.view='chat';S.room='${r.k}';render();scrollTo(0,0)">💬 開いて返事</button></div></div>`})})}catch(e){}
  return out.sort((x,y)=>String(y.at).localeCompare(String(x.at)))}
-function reqNews(r,head){const o=DB.offices.find(x=>x.id===r.office)||{name:""},c=caseOfReq(r);
- return `<div class="jreq st-doing"><div class="meta"><b>${head}</b> ・ ${esc(o.name)}</div>${c?`<div class="chead">🗂 ${esc(caseHead(c))}</div>`:""}${esc(r.text)}${c?`<div><button type="button" class="btn sm" style="margin-top:4px" onclick="caseOpen('${c.id}')">🗂 タスクカードを開く</button></div>`:""}<div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${r.state==="済"?"":replyBox(r.id,JIMU,r.office||"","事務に一言")}</div>`}
+/* 営業への知らせ（11/11 社長）：だれが・いつ対応したか、本文は自分のお願いだと分かるように */
+function reqNews(r,head){const o=DB.offices.find(x=>x.id===r.office)||{name:""},c=caseOfReq(r),dn=r.state==="済";
+ const who=dn&&(r.doneBy||r.doneAt)?` <span style="font-weight:700;color:var(--ink)">対応：${esc(r.doneBy||"事務")}${r.doneAt?" "+esc(fmtAt(r.doneAt)):""}</span>`:"";
+ return `<div class="jreq st-doing"><div class="meta"><b>${dn?"✅ ":""}${head}</b>${who} ・ ${esc(o.name)}</div>${c?`<div class="chead">🗂 ${esc(caseHead(c))}</div>`:""}<div class="meta" style="margin-top:2px">あなたのお願い${r.at?"（"+esc(fmtAt(r.at))+"）":""}：</div>${esc(r.text)}${c?`<div><button type="button" class="btn sm" style="margin-top:4px" onclick="caseOpen('${c.id}')">🗂 タスクカードを開く</button></div>`:""}<div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${r.state==="済"?"":replyBox(r.id,JIMU,r.office||"","事務に一言")}</div>`}
 function todoCount(){const t=today();let n=0;try{n=schedMine().filter(s=>s.state!=="済"&&s.date&&s.date<=t).length+jimuNews().length+(DB.cases||[]).filter(c=>cLive(c)&&c.staff===myId()&&cOver(c)).length+waitsDue(false).filter(x=>x.w.due<=t).length+ctGoList(false).length}catch(e){}return n}
 function viewTodo(){markRead("sales");const t=today(),list=schedMine(),open=list.filter(s=>s.state!=="済").sort(sortS),news=jimuNews(),me=myId();
  const grp=[["期限が過ぎています",s=>s.date&&s.date<t],["今日",s=>s.date===t],["明日",s=>s.date===addDays(t,1)],["今週（あさって〜7日後）",s=>s.date>addDays(t,1)&&s.date<=addDays(t,7)],["それ以降",s=>s.date>addDays(t,7)],["日付なし",s=>!s.date]];
@@ -3545,13 +3548,15 @@ function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="
 /* 事務所の画面・管理者のパソコンは「全部を見る」使い方（自分の担当だけ・近い順は使わない） */
 const wideV=()=>MODE==="live"&&!!USER&&(jimuMode()||(USER.role==="admin"&&PP_PC()));
 const mineEff=()=>S.mine&&!wideV();
-const salesList=()=>(DB.users||[]).filter(u=>u.role!=="jimu"&&u.role!=="事務"&&String(u.active||"有")!=="無"&&!RETIRED_NM.some(n=>String(u.name||"").replace(/[\s　]/g,"").includes(n)));
+/* 営業と事務の両方の人（小坂・吉岡など）は役割が事務でも営業に数える（11/12） */
+const bothU=u=>/^(both|両方|営業事務|営業・事務)$/i.test(String(u.role||""))||BOTH_NM.some(n=>String(u.name||"").replace(/[\s　]/g,"").includes(n));
+const salesList=()=>(DB.users||[]).filter(u=>(bothU(u)||(u.role!=="jimu"&&u.role!=="事務"))&&String(u.active||"有")!=="無"&&!RETIRED_NM.some(n=>String(u.name||"").replace(/[\s　]/g,"").includes(n)));
 function listRows(){
  const q=(S.lq||"").trim();
  let rows=S.pos?nearest().concat(DB.offices.filter(o=>o.lat==null).map(o=>({o,d:null}))):DB.offices.map(o=>({o,d:null}));
  if(q){const tk=qTokens(q);rows=rows.filter(r=>matchQ(r.o,tk)&&(ost(r.o)!=="非表示"||S.showAll==="all"))}   /* 検索中は「自分の担当だけ」などの絞り込みを外して全部から探す */
  else{if(mineEff())rows=rows.filter(r=>isMine(r.o));
- if(wideV()&&S.staffF)rows=rows.filter(r=>S.staffF==="none"?!staffOf(r.o).length:staffOf(r.o).includes(S.staffF));
+ if(wideV()&&S.staffF)rows=rows.filter(r=>S.staffF==="none"?!staffOf(r.o).length:staffHas(r.o,S.staffF));
  if(!S.showAll)rows=rows.filter(r=>ost(r.o)==="稼働");else rows=rows.filter(r=>!offGone(r.o)||S.showAll==="all");
  if(S.gap)rows=rows.filter(r=>{const l=lastVisit(r.o);return !l||daysSince(l)>=GAP_DAYS})}
  if(S.distf&&!q){const [st,id]=S.distf.split(":");const it=DB.items.find(i=>i.id===id);
@@ -3622,8 +3627,11 @@ const offGone=o=>{const s=ost(o);return s==="非表示"||s==="閉鎖"};
 function cst(c){return c.status||"在籍"}
 /* ===== 担当営業 ===== */
 function me(){return MODE==="live"?(USER&&USER.email):(DB.users[0]&&DB.users[0].email)}
-function isMine(o){const s=staffOf(o);if(!USER&&MODE==="demo")return s.includes(me());return !!USER&&(s.includes(USER.email)||s.includes(USER.name))}
+function isMine(o){const s=staffOf(o);if(!USER&&MODE==="demo")return s.includes(me());return !!USER&&staffHas(o,USER.email)}
 function staffOf(o){return String(o.staff||"").split(",").map(x=>x.trim()).filter(Boolean).filter(e=>{const x=(DB.users||[]).find(v=>String(v.email||"").toLowerCase()===e.toLowerCase());return !x||!RETIRED_NM.some(n=>String(x.name||"").replace(/[\s　]/g,"").includes(n))})}
+/* 担当の一致：メールの大文字小文字・名前で入っている場合も同じ人とみなす（11/12） */
+function staffHas(o,em){const k=String(em||"").toLowerCase(),u=(DB.users||[]).find(v=>String(v.email||"").toLowerCase()===k),nm=u?String(u.name||"").replace(/[\s　]/g,""):"";
+ return staffOf(o).some(x=>{const y=String(x).toLowerCase();return y===k||(nm&&String(x).replace(/[\s　]/g,"")===nm)})}
 function uname(e){const u=DB.users.find(x=>x.email===e);return u?u.name:e}
 function staffNames(o){const s=staffOf(o);return s.length?s.map(uname).join("・"):"未設定"}
 function findUserByName(n){n=String(n||"").replace(/[\s　]/g,"");if(!n)return null;
