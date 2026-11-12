@@ -223,12 +223,17 @@ button.rec{background:#c0392b!important;color:#fff!important}
 .hmg tbody tr:nth-child(odd) td{background:#fff}
 .hmg tbody tr:hover td{background:#e3f0ff}
 .hmg tbody tr.hmsel td{background:#fff3bf}
+.hmg tbody tr:not(.hmsel) td:not(:first-child) :is(input,select,button){pointer-events:none}
+.hmg tbody tr:not(.hmsel) td:not(:first-child){cursor:pointer}
 .hmg tbody tr.hmsel td:first-child{box-shadow:inset 4px 0 0 #f0a500}
 .hmg td.hmnm,.hmg th.hmnm{position:sticky;left:0;z-index:2;box-shadow:2px 0 0 #d9dee3}
 .hmg th.hmnm{z-index:4}
 #hmTop::-webkit-scrollbar,#hmw::-webkit-scrollbar{height:16px}#hmTop::-webkit-scrollbar-thumb,#hmw::-webkit-scrollbar-thumb{background:#8aa8a2;border-radius:8px;border:3px solid #eef3f2}#hmTop::-webkit-scrollbar-track,#hmw::-webkit-scrollbar-track{background:#eef3f2;border-radius:8px}#hmTop,#hmw{scrollbar-width:auto;scrollbar-color:#8aa8a2 #eef3f2}.hmg .hg-in{background:#e8f1fb}.hmg .hg-out{background:#eaf6ee}.hmg .hg-pk{background:#fbefe8}
 .hmck{width:26px;height:26px;border:1px solid #bbb;border-radius:6px;background:#fff;font-weight:800;color:#1e7a4c;cursor:pointer;padding:0}.hmck.on{background:#e3f4ea;border-color:#1e7a4c}
-.hmoon{font-size:15px;letter-spacing:1px;margin-right:4px}.hmd{width:112px;padding:2px 2px 2px 4px!important;font-size:12.5px!important}.hmd::-webkit-calendar-picker-indicator{width:11px;height:11px;margin:0 0 0 1px;padding:0;opacity:.55;cursor:pointer}.hmt2,.hms{padding:2px 4px!important;font-size:13px!important}.hms{width:auto}
+.hmoon{font-size:15px;letter-spacing:1px;margin-right:4px}.hmd{width:126px;height:26px!important;min-height:0!important;box-sizing:border-box!important;line-height:20px!important;padding:1px 2px 1px 4px!important;font-size:12.5px!important;vertical-align:middle;display:block;overflow:hidden}
+.hmg td{height:32px}
+.hmg td>input.hmd,.hmg td>select.hms{margin:0 auto}
+.hms{height:26px!important;min-height:0!important;box-sizing:border-box!important}.hmd::-webkit-calendar-picker-indicator{width:11px;height:11px;margin:0 0 0 1px;padding:0;opacity:.55;cursor:pointer}.hmt2,.hms{padding:2px 4px!important;font-size:13px!important}.hms{width:auto}
 .hmmemo{border:1px dashed #ccc;background:#fff;border-radius:6px;padding:2px 6px;font-size:13px;cursor:pointer;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 tr.hmgrey td{background:#eee!important;color:#888}tr.hmgrey input,tr.hmgrey select,tr.hmgrey button{opacity:.6}
 .form{padding:10px 12px}
@@ -959,6 +964,7 @@ function viewUmap(){const all=lmRows();const so=S.lmSo||(S.pos?"near":"staff"),f
  <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;overflow-x:auto;white-space:nowrap">${stRow}</div>
  <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;overflow-x:auto;white-space:nowrap">
   <div class="seg" style="flex:none">${[["todo","まだ"],["doc","用事"],["go","📌"],["done","済"],["all","全"]].map(([k,l])=>`<button type="button" class="${f===k&&!S.lmQ?"on":""}" style="padding:5px 6px" onclick="S.lmF='${k}';S.lmQ='';S.lmSheet=false;render()">${l} ${n(k)}</button>`).join("")}</div>
+  <div class="seg" style="flex:none" title="近くを通った時の知らせ"><button type="button" class="${nearAll()?"":"on"}" style="padding:5px 8px" onclick="nearAllSet(false)">🔔自分</button><button type="button" class="${nearAll()?"on":""}" style="padding:5px 8px" onclick="nearAllSet(true)">🔔全員</button></div>
   <div class="seg" style="flex:none">${[["w","⚠"],["p","🅿"],["b","📝"]].map(([k,l])=>`<button type="button" title="${{w:"注意事項",p:"駐車場",b:"備考"}[k]}をピンに出す" class="${lmShow(k)?"on":""}" style="padding:5px 8px" onclick="lmShowT('${k}')">${l}</button>`).join("")}</div>
   <button class="btn sm" type="button" style="padding:5px 8px;flex:none" onclick="S.lmOpt=!S.lmOpt;render()">⚙</button>
  </div>
@@ -1057,9 +1063,15 @@ async function drawUmap(){const el=$("#umap");if(!el)return;try{await loadLeafle
  if(S.lmFix){el.style.cursor="crosshair";UMAP.on("click",async e=>{const code=S.lmFix;if(!code)return;const j=lmRows().find(x=>x.code===code)||{};if(!await uiConfirm(lmName(j)+" 様の位置をここにしますか？"))return;S.lmFix=null;lmFixSet(code,e.latlng.lat,e.latlng.lng,null).then(()=>{S.lmDet=code;render()})})}}
 /* 近くに来たら知らせる（アプリを開いている間。同じ人は1日1回） */
 function lmSeen(){try{const o=JSON.parse(localStorage.getItem("kyotaku-lm-seen")||"{}");return o.d===today()?o:{d:today(),c:{}}}catch(e){return {d:today(),c:{}}}}
-function lmNear(lat,lng){if(MODE==="setup"||(MODE==="live"&&!USER))return;const sn=lmSeen();let best=null;
- lmRows().forEach(j=>{if(j.lat==null||sn.c[j.code])return;const d=dist(lat,lng,+j.lat,+j.lng);if(d<=LM_NEAR&&lmAlerts(j).length&&(!best||d<best.d))best={j,d}});
- loList().forEach(({o})=>{const k="o:"+o.id;if(o.lat==null||sn.c[k])return;const d=dist(lat,lng,+o.lat,+o.lng);if(d<=LM_NEAR&&(!best||d<best.d))best={j:{code:k},d}});
+/* 通りがかりの知らせの範囲（11/12 社長）：営業は自分の担当だけ、営業サポート（兼務含む）は全員分。地図の画面のボタンでだれでも切り替えられる */
+const SUP_NM=["郷坪","三井","沖藤","小坂","吉田","宮原"];
+const isSup=()=>!!USER&&SUP_NM.some(n=>String(USER.name||"").replace(/[\s　]/g,"").includes(n));
+const nearAll=()=>{if(MODE==="demo"||!USER)return true;try{const v=localStorage.getItem("kyotaku-near-all");if(v==="1")return true;if(v==="0")return false}catch(e){}return isSup()};
+window.nearAllSet=v=>{try{localStorage.setItem("kyotaku-near-all",v?"1":"0")}catch(e){}toast(v?"通りがかりの知らせ：全員の担当を出します":"通りがかりの知らせ：自分の担当だけ出します");render()};
+const nearMine=j=>{if(!USER)return true;const me=lmSN(stUni(USER.name)),st=lmSN(lmStaff(j));return !!me&&st.startsWith(me)};
+function lmNear(lat,lng){if(MODE==="setup"||(MODE==="live"&&!USER))return;const sn=lmSeen(),all=nearAll();let best=null;
+ lmRows().forEach(j=>{if(j.lat==null||sn.c[j.code])return;if(!all&&!nearMine(j))return;const d=dist(lat,lng,+j.lat,+j.lng);if(d<=LM_NEAR&&lmAlerts(j).length&&(!best||d<best.d))best={j,d}});
+ loList().forEach(({o})=>{const k="o:"+o.id;if(o.lat==null||sn.c[k])return;if(!all&&!isMine(o))return;const d=dist(lat,lng,+o.lat,+o.lng);if(d<=LM_NEAR&&(!best||d<best.d))best={j:{code:k},d}});
  if(!best||S.lmPop===best.j.code)return;sn.c[best.j.code]=1;try{localStorage.setItem("kyotaku-lm-seen",JSON.stringify(sn))}catch(e){}S.lmPop=best.j.code;buzz([200,100,200]);if(S.view==="umap"&&!String(best.j.code).startsWith("o:")&&!typing())S.lmGoto=best.j.code;render()}
 function lmPopHtml(){if(!S.lmPop)return "";if(String(S.lmPop).startsWith("o:")){const oid=S.lmPop.slice(2),o=DB.offices.find(x=>x.id===oid);if(!o){S.lmPop=null;return ""}const j=loGet(oid);
  return `<div style="position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:60;width:min(440px,94vw);background:#fffbe6;border:3px solid ${j.pri==="u"?"#e60000":"#e0a800"};border-radius:16px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:17px">🏢 近くです：${esc(o.name)}</b><button class="btn sm" type="button" onclick="S.lmPop=null;render()">✕</button></div>
@@ -1295,9 +1307,21 @@ function officeCands(v){const raw=String(v||"").trim();if(!raw)return [];
  const n=onorm(raw);if(n.length<2)return [];
  const eq=list.filter(x=>onorm(x.name)===n);if(eq.length)return eq;
  return list.filter(x=>{const a=onorm(x.name),k=pnorm(x.kana);return (a&&(a.includes(n)||(a.length>=2&&n.includes(a))))||(k&&k.includes(n))})}
+/* 電話帳の名前が「〇〇居宅 △△様」のように居宅と人が一緒のとき：分けて、居宅を先に決めてからその居宅のケアマネを探す（11/12） */
+function whoSplit(who){const raw=String(who||"").normalize("NFKC").trim();let off="",per="";
+ const tk=raw.split(/[\s　、,・\/]+/).filter(Boolean);
+ if(tk.length>=2){const pi=tk.findIndex(t=>/(様|さま|さん|氏|CM|ケアマネ.*)$/i.test(t));if(pi>=0){per=tk[pi];off=tk.filter((x,i)=>i!==pi).join("")}else{off=tk.slice(0,-1).join("");per=tk[tk.length-1]}}
+ else{const m=raw.match(/^(.+?(?:居宅介護支援センター|居宅介護支援|居宅|ケアプランセンター|ケアプラン|介護支援センター|支援センター|包括|事業所|センター))(.+?)$/);if(m){off=m[1];per=m[2]}}
+ if(!off||!pnorm(per))return null;
+ const oc=officeCands(off);if(!oc.length)return null;
+ let cc=[];oc.forEach(o=>{cc=cc.concat(cmCands(per,o.id))});
+ if(cc.length===1){const cm=cc[0];return {o:DB.offices.find(x=>x.id===cm.office)||(oc.length===1?oc[0]:null),cm,cc:[],oc:[]}}
+ if(oc.length===1)return {o:oc[0],cm:null,cc:cc.length>1?cc:[],oc:[]};
+ return {o:null,cm:null,cc:cc.length>1?cc:[],oc}}
 function matchCaller(who){const d=digits(who);let cm=null,o=null,cc=[],oc=[];
  if(d.length>=9){const t=d.slice(-9);o=DB.offices.find(x=>digits(x.tel).endsWith(t)||digits(x.fax).endsWith(t))||null;
   if(!o){const card=DB.cards.find(c=>digits(c.tel).endsWith(t));if(card){cm=DB.cms.find(c=>c.id===card.cm)||null;o=card.office?DB.offices.find(x=>x.id===card.office):null}}}
+ else if(pnorm(who)&&(r=>{if(!r)return false;o=r.o;cm=r.cm;cc=r.cc;oc=r.oc;return true})(whoSplit(who))){}
  else if(pnorm(who)){const w=pnorm(who);cc=cmCands(who);
   if(!cc.length){const ids=[...new Set(DB.cards.filter(c=>c.cm&&pnorm(c.name)===w).map(c=>c.cm))];cc=ids.map(id=>DB.cms.find(c=>c.id===id&&cst(c)==="在籍")).filter(Boolean)}
   if(cc.length===1){cm=cc[0];cc=[]}
@@ -1865,8 +1889,8 @@ window.fdSend=async(fi,b)=>{const f=FOUND[fi];if(!f)return;let list=f.reqs.filte
 /* ===== 事務の画面（依頼の受付・状態・返事、営業への連絡）とやりとり ===== */
 const JIMU="jimu";
 /* 営業と事務の両方を使う人（11/10 社長）：右上のボタンで切り替え。事務の画面のときは事務と同じ扱い */
-const BOTH_NM=["小坂","吉岡","難波"];
-const isBoth=()=>!!USER&&USER.role!=="admin"&&(/^(both|両方|営業事務|営業・事務)$/i.test(String(USER.role||""))||BOTH_NM.some(n=>String(USER.name||"").replace(/[\s　]/g,"").includes(n)||String(USER.email||"").toLowerCase().includes({"小坂":"kosaka","吉岡":"yoshioka","難波":"namba"}[n]||"@@")));
+const BOTH_NM=["小坂","吉田","難波"];   /* 吉田＝旧姓 難波（11/12 社長：吉岡ではなく吉田） */
+const isBoth=()=>!!USER&&USER.role!=="admin"&&(/^(both|両方|営業事務|営業・事務)$/i.test(String(USER.role||""))||BOTH_NM.some(n=>String(USER.name||"").replace(/[\s　]/g,"").includes(n)||String(USER.email||"").toLowerCase().includes({"小坂":"kosaka","吉田":"yoshida","難波":"namba"}[n]||"@@")));
 const isJimu=()=>!!USER&&(isBoth()?!!JIMU_URL:(USER.role==="jimu"||USER.role==="事務"));
 const JIMU_VK="kyotaku-jimu-view",JIMU_URL=/[?&#]jimu\b/.test(location.href)||(()=>{try{return localStorage.getItem(JIMU_VK)==="1"}catch(e){return false}})();
 /* 管理者の「営業｜事務所」切り替え（この端末に覚えて開き直す） */
@@ -2512,20 +2536,22 @@ window.clSave=async(id,b)=>{const town=$("#cl-town").value.trim(),nm=$("#cl-name
  if(!id){row.status="ok";row.recent="アプリで登録（"+today()+" "+(USER?USER.name:"デモ")+"）"}
  b.disabled=true;try{await persist([{table:"clients",row}]);toast(id?"保存しました":"利用者を登録しました");S.clOpen=null;render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
 /* ===== 入退院管理（紙の「入退院管理表」と同じ項目） ===== */
-const HM_KIND=["入院","入所","ショート","ロングショート"],HM_FAX=["","✓","自社","―"],HM_PICK=["","解約","死亡"];
+const HM_KIND=["入院","入所","ショート","ロングショート"],HM_FAX=["","済","自社"],HM_PICK=["","解約","死亡"];
 const hmName=h=>{const u=h.client?clientOf(h.client):null;return u?nmOnly(u.name):(h.clientName||"")};
 /* 最終結果（帰宅／帰宅困難）：GASを変えずに caselog kind=結果、id="hr"+入退院id、case="h:"+入退院id、text=帰宅|帰宅困難 */
 /* 退院・引上げの「予定／済」（11/11 社長）：今日より後の日付＝予定（outPlan・引上げ日）、今日以前を入れたら済。予定日が過ぎても自動で済にはしない（延期が多い）。
    引上げの済は caselog kind=引上済、id="hk"+入退院id、text=日付 */
 const hkDone=h=>{const l=(DB.caselog||[]).find(x=>x.id==="hk"+h.id&&x.state!=="削除");return l?String(l.text||""):""};
 const hmOutSt=h=>h.outDate?"done":isD(h.outPlan)?(h.outPlan<=today()?"late":"plan"):"none";
-const hmPkSt=h=>hkDone(h)||h.pickKind&&!isD(h.pickDate)?"done":isD(h.pickDate)?(h.pickDate<=today()?"late":"plan"):"none";
+/* 引上げ済は「✓ 引上げた」ボタンを押した時だけ（11/12 社長）。日付が過ぎても・死亡を選んでも勝手に済にしない（処理済✓の行と、日付なしで引上げデータ✓の古い行は済扱い） */
+const hmPkSt=h=>hkDone(h)||h.done==="✓"||(h.pickKind&&!isD(h.pickDate)&&h.pickData==="✓")?"done":isD(h.pickDate)?(h.pickDate<=today()?"late":"plan"):"none";
 const hkOp=(id,v)=>({table:"caselog",row:{id:"hk"+id,case:"h:"+id,kind:"引上済",text:v||"",rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString(),state:v?"":"削除"}});
 window.hmOutDone=id=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h||!isD(h.outPlan))return;uiConfirm(md(h.outPlan)+" に退院しましたか？").then(ok=>{if(ok)saveFast([{table:"hosp",row:{id,outDate:h.outPlan,state:h.state==="確認待ち"?h.state:h.pickKind?"引上げ":"退院"}}],"退院済にしました")})};
 window.hmPkDone=id=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h)return;uiConfirm((isD(h.pickDate)?md(h.pickDate)+" に":"")+"引上げは済みましたか？").then(ok=>{if(ok)saveFast([hkOp(id,isD(h.pickDate)?h.pickDate:today())],"引上げ済にしました")})};
 const hmOutMark=h=>{const st=hmOutSt(h);return st==="done"?`<div class="meta" style="font-size:11px;color:#1e7a4c;font-weight:700">✓ 退院済</div>`:st==="plan"?`<div class="meta" style="font-size:11px;color:#2e86de;font-weight:700">📅 退院予定</div>`:st==="late"?`<div class="meta" style="font-size:11px;color:#e53935;font-weight:700">予定日が過ぎました</div><button type="button" class="btn sm" style="padding:0 6px;font-size:11px" onclick="event.stopPropagation();hmOutDone('${h.id}')">✓ 退院した</button>`:""};
-const hmPkMark=h=>{const st=hmPkSt(h);return st==="done"?`<div class="meta" style="font-size:11px;color:#1e7a4c;font-weight:700">✓ 引上げ済</div>`:st==="plan"?`<div class="meta" style="font-size:11px;color:#2e86de;font-weight:700">📅 引上げ予定</div>`:st==="late"?`<div class="meta" style="font-size:11px;color:#e53935;font-weight:700">予定日が過ぎました</div><button type="button" class="btn sm" style="padding:0 6px;font-size:11px" onclick="event.stopPropagation();hmPkDone('${h.id}')">✓ 引上げた</button>`:""};
+const hmPkMark=h=>{const st=hmPkSt(h);return st==="done"?`<div class="meta" style="font-size:11px;color:#1e7a4c;font-weight:700">✓ 引上げ済</div>`:(st==="plan"?`<div class="meta" style="font-size:11px;color:#2e86de;font-weight:700">📅 引上げ予定</div>`:st==="late"?`<div class="meta" style="font-size:11px;color:#e53935;font-weight:700">予定日が過ぎました</div>`:h.pickKind?`<div class="meta" style="font-size:11px;color:#e53935;font-weight:700">引上げ待ち</div>`:"")+(st!=="none"||h.pickKind?`<button type="button" class="btn sm" style="padding:0 6px;font-size:11px" onclick="event.stopPropagation();hmPkDone('${h.id}')">✓ 引上げた</button>`:"")};
 const hmRes=h=>{let v="";(DB.caselog||[]).forEach(l=>{if(l.kind==="結果"&&l.case==="h:"+h.id&&l.state!=="削除")v=String(l.text||"")});return v};
+const hmResOp=(id,v)=>({table:"caselog",row:{id:"hr"+id,case:"h:"+id,kind:"結果",text:v,rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}});
 window.hmResSet=async(id,b)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h)return;const cur=hmRes(h),nx=cur===""?"帰宅":cur==="帰宅"?"帰宅困難":"";
  saveFast([{table:"caselog",row:{id:"hr"+id,case:"h:"+id,kind:"結果",text:nx,rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}])};
 const hmResCell=h=>{const r=hmRes(h),p=hLast(h),hint=!r&&p&&/在宅復帰困難|死亡・解約/.test(p.dir||"");
@@ -2556,19 +2582,35 @@ const offShort=n=>{n=String(n||"");const t=n.replace(/(指定)?居宅介護支�
 const hmTown=h=>{const u=h.client?clientOf(h.client):null;return u?(u.town||""):""};
 const hmNm=h=>{const u=h.client?clientOf(h.client):null;if(!u)return String(h.clientName||"").replace(/[\s　]*様$/,"");const n=nmOnly(u.name).replace(/[\s　]*様$/,"");return u.town&&n.startsWith(u.town)?n.slice(u.town.length).trim():n};
 /* 表で直接入力：1マスずつ保存 */
+/* 入れ間違い防止（11/12 社長）：①黄色に選んだ行だけ入力できる ②直前の操作を表示して「元に戻す」 ③表の上から新しい行を足せる */
+const HM_LBL=k=>({done:"処理済",inData:"休止データ",outData:"再開データ",pickData:"引上げデータ",outPlan:"退院予定日"})[k]||((HM_F.find(x=>x[0]===k)||[])[1])||k;
+const hmShowV=v=>isD(v)?md(v):v===""?"（空）":v;
+function hmUndoBar(){const u=S.hmUndo;if(!u)return "";const h=(DB.hosp||[]).find(x=>x.id===u.id);if(!h)return "";
+ return `<div style="position:sticky;top:0;z-index:6;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff8e1;border:2px solid #f0a500;border-radius:10px;padding:6px 10px;margin:6px 0"><span>↩ 直前：<b>${esc(hmNm(h))} 様</b> の ${esc(HM_LBL(u.k))} を「${esc(hmShowV(u.nv))}」にしました（前は「${esc(hmShowV(u.ov))}」）</span><button class="btn sm" type="button" onclick="hmUndo()">元に戻す</button><button class="btn sm" type="button" style="margin-left:auto" onclick="S.hmUndo=null;render()">✕</button></div>`}
+window.hmUndo=()=>{const u=S.hmUndo;if(!u)return;S.hmUndo=null;S.hmSel=u.id;saveFast([{table:"hosp",row:u.back}].concat(u.ops||[]),"元に戻しました")};
+function hmAddBar(){return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0;padding:6px 8px;border:1px dashed #8e44ad;border-radius:10px"><b style="color:#8e44ad">＋ 新しい行</b>
+ <input id="hma-n" list="hmCl" placeholder="利用者の名前" style="min-width:150px;padding:4px 6px" onchange="hmCliPick(this)" data-cid=""><datalist id="hmCl">${DB.clients.map(clOpt).join("")}</datalist>
+ <select id="hma-k" class="sim">${HM_KIND.map(k=>`<option>${k}</option>`).join("")}</select><label class="meta" style="display:flex;gap:4px;align-items:center">入院日<input id="hma-d" type="date" class="sim"></label>
+ <button class="btn sm primary" type="button" onclick="hmAddGo(this)">追加</button><span class="meta">ほかの項目は表のマスで入れられます</span></div>`}
+window.hmAddGo=async b=>{const el=$("#hma-n"),cv=String(el&&el.value||"").trim();if(!cv){toast("利用者の名前を入れてください");return}
+ const u=(el.dataset.cid&&clientOf(el.dataset.cid))||null,o=u?DB.offices.find(x=>x.id===clOffice(u)):null,cm=u?DB.cms.find(c=>c.id===u.cm):null;
+ const row={id:newId("h"),client:u?u.id:"",clientName:u?"":cv.replace(/[\s　]*様$/,""),kind:$("#hma-k").value,inDate:$("#hma-d").value||"",contactAt:today(),office:o?o.id:"",officeName:o?o.name:"",cmName:cm?cm.name:"",staffName:u?stUni(u.staff||""):"",state:"入院中",source:"事務所",by:myId(),byName:USER?USER.name:"デモ",createdAt:new Date().toISOString()};
+ b.disabled=true;try{await persist([{table:"hosp",row}]);S.hmSel=row.id;S.hmf="open";toast("追加しました（黄色の行）");render()}catch(e){b.disabled=false;toast("追加できませんでした："+errText(e))}};
 window.hmCell=async(id,k,el)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h)return;let v;
  if(el.tagName==="BUTTON"){v=h[k]==="✓"?"":"✓"}else v=String(el.value||"").trim();
  const row={id,[k]:v},ops=[];
  if(k==="outDate"){if(isD(v)&&v>today()){row.outPlan=v;row.outDate=""}else if(!v){row.outPlan=""}}
- if(k==="pickDate")ops.push(hkOp(id,isD(v)&&v<=today()?v:""));
+ if(k==="pickKind"&&v==="死亡"&&hmRes(h)!=="帰宅困難")ops.push(hmResOp(id,"帰宅困難"));   /* 死亡にしたら状況を帰宅困難に（11/12） */
  const nx=Object.assign({},h,row);if(h.state!=="確認待ち")row.state=nx.pickKind?"引上げ":nx.outDate?"退院":"入院中";
+ {const back={id};Object.keys(row).forEach(x=>{if(x!=="id")back[x]=h[x]==null?"":h[x]});S.hmUndo={id,k,ov:k==="outDate"?(h.outDate||h.outPlan||""):(h[k]||""),nv:v,back,ops:[]}}
  saveFast([{table:"hosp",row}].concat(ops))};
 window.hmMemo=async (id,k)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h)return;const v=await uiPrompt((k==="reason"?"入院理由・病院・備考":"期間の見込み")+"（"+hmNm(h)+" 様）",h[k]||"");if(v===null)return;hmCell(id,k,{tagName:"INPUT",value:v})};
 const hmCk=(h,k)=>`<button type="button" class="hmck ${h[k]==="✓"?"on":""}" onclick="event.stopPropagation();hmCell('${h.id}','${k}',this)" aria-label="${k}">${h[k]==="✓"?"✓":""}</button>`;
 const hmD=(h,k)=>{const v=k==="outDate"?(h.outDate||h.outPlan):h[k];return `<input type="date" class="hmd" value="${esc(isD(v)?v:"")}" onclick="event.stopPropagation()" onchange="hmCell('${h.id}','${k}',this)">`};
 const hmT=(h,k,w)=>`<input class="hmt2" ${/From$/.test(k)?`list="hmFrom-${h.id}"`:""} style="width:${w||70}px" value="${esc(h[k]||"")}" onchange="hmCell('${h.id}','${k}',this)">${/From$/.test(k)?hmFromList(h):""}`;
 const hmFromList=h=>{const i=hmInfo(h),L=[i.cm?String(i.cm).split(/[ 　]/)[0]+"CM":"",...String(i.staff||"").split("・").filter(Boolean),"ケアマネ","利用者","利用者家族","病院","施設","その他"].filter((x,j,a)=>x&&a.indexOf(x)===j);return `<datalist id="hmFrom-${h.id}">${L.map(x=>`<option value="${esc(x)}">`).join("")}</datalist>`};
-const hmS=(h,k,ops)=>{const v=h[k]||"";if(v&&!ops.includes(v))ops=ops.concat([v]);return `<select class="hms" onchange="hmCell('${h.id}','${k}',this)">${ops.map(o=>`<option value="${esc(o)}" ${o===v?"selected":""}>${esc(o||"―")}</option>`).join("")}</select>`};
+/* 休止FAX・再開FAX は「済／自社」で選ぶ（11/12 社長）。前に✓で入れた分は「済」と表示 */
+const hmS=(h,k,ops)=>{const v=(k==="inFax"||k==="outFax")&&h[k]==="✓"?"済":(h[k]||"");if(v&&!ops.includes(v))ops=ops.concat([v]);return `<select class="hms" onchange="hmCell('${h.id}','${k}',this)">${ops.map(o=>`<option value="${esc(o)}" ${o===v?"selected":""}>${esc(o||"―")}</option>`).join("")}</select>`};
 const hmGrey=h=>(!!h.outDate||!!h.pickKind||(hmRes(h)==="帰宅困難"&&h.pickData==="✓"))&&!hmLeft(h).length;
 function hmGrid(hs){setTimeout(hmTopBar,0);const sm=hmSimpleOn(),X=v=>sm?"":v,nIn=sm?4:6,nOut=sm?3:5,nPk=sm?1:3;
  return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px"><button type="button" class="btn sm" style="padding:6px 14px;font-size:16px" onclick="hmScr(-1)" aria-label="左へ">◀</button><div id="hmTop" style="flex:1;overflow-x:auto;overflow-y:hidden;height:22px"><div style="height:1px"></div></div><button type="button" class="btn sm" style="padding:6px 14px;font-size:16px" onclick="hmScr(1)" aria-label="右へ">▶</button></div><div class="rtw" id="hmw"><table class="rt hmg"><thead>
@@ -2577,9 +2619,9 @@ function hmGrid(hs){setTimeout(hmTopBar,0);const sm=hmSimpleOn(),X=v=>sm?"":v,nI
  ${hs.map(h=>{const i=hmInfo(h),g=hmGrey(h);return `<tr class="${g?"hmgrey":""}${S.hmSel===h.id?" hmsel":""}" onclick="hmPick(this,'${h.id}')">
   <td><button class="btn sm" type="button" style="padding:2px 6px;font-size:12px;white-space:nowrap" title="すべての項目を開いて直す" onclick="S.hmOpen='${h.id}';render()">✏ 詳細</button></td>
   <td>${hmCk(h,"done")}</td>${X(`<td class="meta" style="white-space:nowrap">${esc(hmTown(h))}</td>`)}<td class="hmnm" style="white-space:nowrap"><b>${esc(hmNm(h))}</b>${h.client?"":' <span class="meta">（未登録）</span>'}${hDirBadge(h)}</td><td style="white-space:nowrap;font-size:12px">${esc(i.staff||"―")}</td>
-  <td>${hmCk(h,"inData")}</td>${X(`<td>${hmD(h,"contactAt")}</td><td>${hmT(h,"contactFrom",70)}</td>`)}<td>${hmD(h,"inDate")}</td><td>${hmS(h,"inFax",["","✓","自社","―"])}</td><td>${hmS(h,"kind",["入院","入所","ショート","ロングショート"])}</td>
+  <td>${hmCk(h,"inData")}</td>${X(`<td>${hmD(h,"contactAt")}</td><td>${hmT(h,"contactFrom",70)}</td>`)}<td>${hmD(h,"inDate")}</td><td>${hmS(h,"inFax",["","済","自社"])}</td><td>${hmS(h,"kind",["入院","入所","ショート","ロングショート"])}</td>
   ${(rs=>{const na=rs==="帰宅困難"?HM_NA:"",os=hmOutSt(h),ps=hmPkSt(h),od=rs==="帰宅"&&(os==="none"||os==="late")?HM_RED:"",pk=rs==="帰宅困難"&&h.pickData!=="✓"?HM_RED:"",pd=rs==="帰宅困難"&&(ps==="none"||ps==="late")?HM_RED:"";return `<td>${hmResCell(h)}</td>
-  <td style="${na}">${hmCk(h,"outData")}</td>${X(`<td style="${na}">${hmD(h,"outContactAt")}</td><td style="${na}">${hmT(h,"outFrom",70)}</td>`)}<td style="${na}${od}">${hmD(h,"outDate")}${hmOutMark(h)}${od&&os==="none"?'<div class="meta" style="color:#e53935;font-size:11px">退院日を入れてね</div>':""}</td><td style="${na}">${hmS(h,"outFax",["","✓","自社","―"])}</td>
+  <td style="${na}">${hmCk(h,"outData")}</td>${X(`<td style="${na}">${hmD(h,"outContactAt")}</td><td style="${na}">${hmT(h,"outFrom",70)}</td>`)}<td style="${na}${od}">${hmD(h,"outDate")}${hmOutMark(h)}${od&&os==="none"?'<div class="meta" style="color:#e53935;font-size:11px">退院日を入れてね</div>':""}</td><td style="${na}">${hmS(h,"outFax",["","済","自社"])}</td>
   <td style="${pk}">${hmCk(h,"pickData")}</td>${X(`<td style="${pd}">${hmD(h,"pickDate")}${hmPkMark(h)}${pd&&ps==="none"?'<div class="meta" style="color:#e53935;font-size:11px">引上げ日を入れてね</div>':""}</td><td style="${pk}">${hmS(h,"pickKind",["","解約","死亡"])}</td>`)}`})(hmRes(h))}
   <td style="white-space:nowrap">${hMoon(h)}<button type="button" class="hmmemo" title="押すと入力" onclick="hmMemo('${h.id}','period')">${h.period?esc(h.period):'<span class="meta">入力</span>'}</button></td><td style="${sm?"width:60%;":""}"><button type="button" class="hmmemo" title="押すと入力" style="min-width:${sm?220:150}px;max-width:${sm?"none":"230px"};${sm?"width:100%;":""}text-align:left;white-space:normal" onclick="hmMemo('${h.id}','reason')">${h.reason?esc(h.reason):'<span class="meta">入力</span>'}</button></td><td style="${sm?"width:40%;min-width:160px;max-width:280px":"width:100%;min-width:200px"}">${hProgCell(h,sm)}</td>${X(`<td class="meta" style="white-space:nowrap" title="${esc(i.off)}">${esc(offShort(i.off))}</td><td class="meta" style="white-space:nowrap">${esc(String(i.cm||"").split(/[ 　]/)[0])}</td>`)}</tr>`}).join("")||'<tr><td colspan="24" class="meta">該当なし</td></tr>'}
  </tbody></table></div>`}
@@ -2617,33 +2659,33 @@ function hsBox(){return `<details class="form" style="margin-bottom:10px" ${(S.h
   ${(S.hsItems||[]).length?hsTable():""}</details>`}
 function jimuHosp(){let hs=hmRows().filter(h=>h.state!=="確認待ち");const hst=[...new Set(hs.map(h=>hmInfo(h).staff||"（担当なし）"))].sort();if(S.hmst)hs=hs.filter(h=>(hmInfo(h).staff||"（担当なし）")===S.hmst);if(S.hmSk){const c=HM_COLS.find(x=>x[0]===S.hmSk),d=S.hmSd||1;if(c)hs=hs.slice().sort((a,b)=>{const x=c[2](a),y=c[2](b);return (!x&&y?1:x&&!y?-1:String(x).localeCompare(String(y),"ja"))*(x&&y?d:1)})}const f=hmF(),allN=(DB.hosp||[]).filter(h=>h.state!=="削除").length;
  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-  ${tbar("h",[{id:"paste",label:"📋 貼り付け",html:()=>hospPasteBox(""),auto:!!(S.hpSt||{}).all},{id:"xl",label:"📊 Excel",html:krHospBox,auto:!!(S.krPlan||S.krSt)},{id:"scan",label:"📷 スキャン",html:hsBox,auto:!!((S.hsItems||[]).length||S.hsSt)}],`<button class="btn primary sm" type="button" onclick="S.hmOpen='new';render()">＋ 入院・入所の連絡</button>`)}
+  ${tbar("h",[{id:"paste",label:"📋 貼り付け",html:()=>hospPasteBox(""),auto:!!(S.hpSt||{}).all},{id:"xl",label:"📊 Excel",html:krHospBox,auto:!!(S.krPlan||S.krSt)},{id:"scan",label:"📷 スキャン",html:hsBox,auto:!!((S.hsItems||[]).length||S.hsSt)}],`<button class="btn primary sm" type="button" onclick="S.hmOpen='new';render()">＋ 入院・入所の連絡</button>${hmUnlinkedN()?` <button class="btn sm" type="button" onclick="hmLinkGo(this)">🔗 未登録をつなぐ（${hmUnlinkedN()}件）</button>`:""}`)}
   <div class="seg">${[["open","入院・入所中"],["left","処理が残っている"],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="hmSetF('${k}')">${l}</button>`).join("")}</div>
   <select class="sim" onchange="S.hmst=this.value;render()"><option value="">担当：全員</option>${hst.map(n=>`<option ${S.hmst===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
   <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="利用者・理由・居宅・CM・担当で探す" value="${esc(S.hmq||"")}" onchange="S.hmq=this.value;render()"><span class="meta">${hs.length}件${f!=="all"?`（全部で${allN}件。退院・引上げを入れた行は「すべて」に出ます）`:""}</span></div>
  ${S.hmOpen?fullBox(hmForm(),"S.hmOpen=null;render()"):""}
- ${hospPendBox()}
+ ${hospPendBox()}${hmLinkBox()}
  ${(S.hsItems||[]).length?`<div class="notice" style="margin-bottom:10px">⚠ スキャンで読み取った <b>${(S.hsItems||[]).length}件</b> がまだ登録されていません。下の表を確認して「登録」を押すまでは保存されず、ページを閉じると消えます。</div>`:""}
 
  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px"><div class="seg"><button type="button" class="${hmSimpleOn()?"on":""}" onclick="hmSimp(true)">簡易表示</button><button type="button" class="${hmSimpleOn()?"":"on"}" onclick="hmSimp(false)">すべての項目</button></div>
- <span class="meta">□ は押すと ✓（済）／日付・選択はその場で保存／「入力」は押すと書けます／期間（月ごとの請求）🌕＝影響なし・🌗🌓＝半月・🌑＝請求なし／ショートは半月にしない・ロングショートは要確認／✏ 詳細＝全部の項目を開く／グレー＝退院・引上げして処理が全部済んだ行</span></div>
- ${hmGrid(hs.slice(0,S.hmAll?3000:300).sort((a,b)=>hmGrey(a)-hmGrey(b)))}${hs.length>300&&!S.hmAll?`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.hmAll=true;render()">すべて表示（${hs.length}件）</button>`:""}`}
-const HM_F=[["contactAt","入院の連絡日","date"],["contactFrom","誰から","from"],["cmName","担当CM","text"],["staffName","担当営業","staff"],["kind","分類","sel:入院,入所,ショート,ロングショート"],["inDate","入院日","date"],["outPlan","退院予定日","date"],["inFax","休止FAX","sel:,✓,自社,―"],
- ["outContactAt","退院の連絡日","date"],["outFrom","誰から（退院）","from"],["outDate","退院日","date"],["outFax","再開FAX","sel:,✓,自社,―"],["pickDate","引上げ日","date"],["pickKind","引上げの内容","sel:,解約,死亡"],["period","期間の見込み","text"],["reason","入院理由・病院","text"],["officeName","居宅","office"]];
+ <span class="meta">□ は押すと ✓（済）／日付・選択はその場で保存／「入力」は押すと書けます／期間（月ごとの請求）🌕＝影響なし・🌗🌓＝半月・🌑＝請求なし／ショートは半月にしない・ロングショートは要確認／✏ 詳細＝全部の項目を開く／グレー＝退院・引上げして処理が全部済んだ行／<b>入力は、名前の行を1回押して黄色にしてから</b></span></div>
+ ${hmAddBar()}${hmUndoBar()}${hmGrid(hs.slice(0,S.hmAll?3000:300).sort((a,b)=>hmGrey(a)-hmGrey(b)))}${hs.length>300&&!S.hmAll?`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.hmAll=true;render()">すべて表示（${hs.length}件）</button>`:""}`}
+const HM_F=[["contactAt","入院の連絡日","date"],["contactFrom","誰から","from"],["cmName","担当CM","text"],["staffName","担当営業","staff"],["kind","分類","sel:入院,入所,ショート,ロングショート"],["inDate","入院日","date"],["outPlan","退院予定日","date"],["inFax","休止FAX","sel:,済,自社"],
+ ["outContactAt","退院の連絡日","date"],["outFrom","誰から（退院）","from"],["outDate","退院日","date"],["outFax","再開FAX","sel:,済,自社"],["pickDate","引上げ日","date"],["pickKind","引上げの内容","sel:,解約,死亡"],["period","期間の見込み","text"],["reason","入院理由・病院","text"],["officeName","居宅","office"]];
 const HM_T=[["inData","休止データ登録"],["outData","再開データ登録"],["pickData","引上げデータ"],["done","処理済"]];
 /* 入退院の詳細（11/10 作り直し）：表と同じ流れ・同じ色で段に分ける */
 function hmForm(){const isNew=S.hmOpen==="new",h=isNew?{kind:"入院",contactAt:today()}:(DB.hosp||[]).find(x=>x.id===S.hmOpen);if(!h)return "";const u=h.client?clientOf(h.client):null;
- const F=k=>{const f=HM_F.find(x=>x[0]===k);return f?rtInput(f,h[k]).replace(/id="rt-/g,'id="hm-'):""};
+ const F=k=>{const f=HM_F.find(x=>x[0]===k);return f?rtInput(f,(k==="inFax"||k==="outFax")&&h[k]==="✓"?"済":h[k]).replace(/id="rt-/g,'id="hm-'):""};
  const T=k=>{const t=HM_T.find(x=>x[0]===k);return `<button type="button" class="tgl hmt ${h[k]==="✓"?"on":""}" data-k="${k}" data-v="${h[k]==="✓"?"✓":""}" onclick="hmTg(this)">${h[k]==="✓"?"✓ ":""}${t[1]}</button>`};
  const res=isNew?"":hmRes(h),red=(on,x)=>on?`<div style="${HM_RED}padding:2px 4px">${x}</div>`:x;
  const days=h.inDate&&isD(h.inDate)?Math.max(0,Math.round((new Date(today())-new Date(h.inDate))/864e5)):null;
- const st=h.pickKind?"引上げ":h.outDate?"退院":h.kind==="入所"?"入所中":"入院中";
+ const st=h.pickKind?(hmPkSt(h)==="done"?"引上げ済（"+h.pickKind+"）":h.pickKind+"・引上げ待ち"):h.outDate?"退院":h.kind==="入所"?"入所中":"入院中";
  const next=isNew?"":h.inData!=="✓"?"休止データを登録":res==="帰宅"&&hmOutSt(h)==="none"?"退院日を入れる":res==="帰宅"&&hmOutSt(h)==="late"?"予定日が過ぎた・退院したか確認":h.outDate&&h.outData!=="✓"?"再開データを登録":res==="帰宅困難"&&h.pickData!=="✓"?"引上げデータを登録":res==="帰宅"&&hmOutSt(h)==="plan"?"退院予定（"+md(h.outPlan)+"）を待つ":res==="帰宅困難"&&hmPkSt(h)!=="done"?"引上げ日を入れる":res===""?"状況を決める":h.done!=="✓"?"処理済にできます":"";
  const sec=(ic,tt,col,body,dim)=>`<div style="border-radius:14px;margin-top:12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;${dim?"opacity:.45;":""}"><div style="background:${col};color:#fff;padding:8px 12px;font-weight:700">${ic} ${tt}${dim?' <span style="font-weight:400;font-size:12px;opacity:.9">（この結果ではいりません）</span>':""}</div><div style="padding:10px 12px">${body}</div></div>`;
  const g2=x=>`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">${x}</div>`;
  const resBtns=isNew?'<div class="meta">保存してから選べます</div>':`<div style="display:flex;gap:8px;flex-wrap:wrap">${[["","― 未定","#777"],["帰宅","🏠 退院","#2e9d5b"],["帰宅困難","⛔ 帰宅困難","#c62828"]].map(([v,l,c])=>`<button type="button" class="btn" style="flex:1;min-width:90px;padding:12px 6px;font-size:15px;white-space:nowrap;border-radius:12px;${res===v?`background:${c};color:#fff;border-color:${c};box-shadow:0 2px 6px ${c}66`:`border:2px solid ${c}55;color:${c}`}" onclick="hmResPick('${h.id}','${v}')">${l}</button>`).join("")}</div>`;
  const prog=isNew?"":`<div style="border-left:3px solid #c9d6d3;margin-left:6px;padding-left:12px">${hProg(h).slice().reverse().map(p=>`<div style="position:relative;margin-bottom:10px"><span style="position:absolute;left:-19px;top:4px;width:11px;height:11px;border-radius:50%;background:#2c6e63;border:2px solid #fff"></span><div class="meta">${esc(fmtAt(p.at))} ・ ${esc(p.byName||"")}${p.from?" ・ "+esc(p.from)+"から":""}</div>${p.dir?`<span class="status ${hDirCls(p.dir)}">${esc(p.dir)}</span> `:""}${esc(p.text||"")}${p.bill?" ・ 請求 <b>"+esc(p.bill)+"</b>"+(p.cmOk?"（CM OK）":""):""}</div>`).join("")||'<div class="meta">まだありません</div>'}</div>${S.hearId===h.id?hearForm(h):`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.hearId='${h.id}';render()">＋ 途中経過を入れる</button>`}`;
- const left=sec("👤","だれの件か","#8e44ad",`<label>利用者（登録の利用者から選ぶ。いなければ名前だけでも可）<input id="hm-client" list="hmCl" value="${esc(u?clientLabel(u):h.clientName||"")}"></label><datalist id="hmCl">${DB.clients.map(clOpt).join("")}</datalist>${g2(F("kind")+F("officeName")+F("cmName")+F("staffName"))}`)
+ const left=sec("👤","だれの件か","#8e44ad",`<label>利用者（登録の利用者から選ぶ。いなければ名前だけでも可）<input id="hm-client" list="hmCl" data-cid="${u?u.id:""}" value="${esc(u?cliBare(u):h.clientName||"")}" onchange="hmCliPick(this)" placeholder="名前を入れると候補が出ます"></label><datalist id="hmCl">${DB.clients.map(clOpt).join("")}</datalist>${g2(F("kind")+F("officeName")+F("cmName")+F("staffName"))}`)
   +sec("🏥","入院","#3b82c4",g2(F("contactAt")+F("contactFrom")+F("inDate"))+F("reason")+`<div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:6px">${red(!isNew&&h.inData!=="✓",T("inData"))}<div style="min-width:150px">${F("inFax")}</div></div>`)
   +sec("🎯","状況","#555",resBtns+`<div style="margin-top:8px">${g2(F("period"))}</div>`)
   +sec("🏠","退院","#2e9d5b",g2(F("outContactAt")+F("outFrom")+red(res==="帰宅"&&(hmOutSt(h)==="none"||hmOutSt(h)==="late"),F("outDate").replace(/value="[^"]*"/,'value="'+esc(h.outDate||h.outPlan||"")+'"')+(isNew?"":hmOutMark(h))))+`<div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:6px">${red(!!h.outDate&&h.outData!=="✓",T("outData"))}<div style="min-width:150px">${F("outFax")}</div></div>`,res==="帰宅困難")
@@ -2656,12 +2698,32 @@ function hmForm(){const isNew=S.hmOpen==="new",h=isNew?{kind:"入院",contactAt:
  <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center">${red(!isNew&&next.startsWith("処理済"),T("done"))}<button class="btn primary" type="button" onclick="hmSave('${isNew?"":h.id}',this)">保存</button><button class="btn" type="button" onclick="S.hmOpen=null;render()">閉じる</button>${isNew?"":`<button class="btn sm" type="button" style="color:var(--alert);margin-left:auto" onclick="hmDel('${h.id}',this)">削除</button>`}</div></div>`}
 window.hmResPick=(id,v)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h||hmRes(h)===v)return;const kp={},kt={};document.querySelectorAll('[id^="hm-"]').forEach(e=>kp[e.id]=e.value);document.querySelectorAll(".hmt").forEach(t=>kt[t.dataset.k]=t.dataset.v);setTimeout(()=>{Object.entries(kp).forEach(([i,v2])=>{const e=document.getElementById(i);if(e)e.value=v2});document.querySelectorAll(".hmt").forEach(t=>{if(t.dataset.k in kt&&t.dataset.v!==kt[t.dataset.k])hmTg(t)})},0);saveFast([{table:"caselog",row:{id:"hr"+id,case:"h:"+id,kind:"結果",text:v,rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}])};
 window.hmTg=b=>{b.dataset.v=b.dataset.v==="✓"?"":"✓";b.classList.toggle("on",b.dataset.v==="✓");b.textContent=(b.dataset.v==="✓"?"✓ ":"")+b.textContent.replace(/^✓ /,"")};
+/* 入退院の登録：候補を選んだら名前だけ残し、居宅・担当CM・担当営業はそれぞれの欄へ（11/12） */
+const cliBare=u=>{const n=String(u.name||"").replace(/[\s　]*様$/,"").trim();return u.town&&n.startsWith(u.town)?n.slice(u.town.length).trim():n};
+/* 「（未登録）」の行をまとめてつなぐ（11/12）：名前が利用者一覧の1人とだけ一致したらつなぐ。同名が複数・見つからない行は残して見せる */
+const hkNorm=x=>String(x||"").replace(/[\s　]/g,"").replace(/様$/,"");
+function hmLinkPlan(){const ops=[],left=[],cl=DB.clients||[];
+ (DB.hosp||[]).filter(h=>h.state!=="削除"&&!h.client&&h.clientName).forEach(h=>{const k=hkNorm(h.clientName);if(!k)return;
+  const c=cl.filter(u=>hkNorm(cliBare(u))===k||hkNorm(u.name)===k);
+  if(c.length===1){const u=c[0],row={id:h.id,client:u.id};if(!h.office&&clOffice(u))row.office=clOffice(u);ops.push({table:"hosp",row})}else left.push({id:h.id,why:c.length?"同じ名前が"+c.length+"人":"利用者一覧に見つからない"})});
+ return {ops,left}}
+const hmUnlinkedN=()=>(DB.hosp||[]).filter(h=>h.state!=="削除"&&!h.client).length;
+window.hmLinkGo=async b=>{const P=hmLinkPlan();if(!P.ops.length){S.hmLinkLeft=P.left;toast("自動でつなげる行はありませんでした");render();return}
+ if(!await uiConfirm("「（未登録）」の行のうち "+P.ops.length+"件 を、名前が一致した利用者につなぎます。\n同じ名前が複数・見つからない "+P.left.length+"件 はそのまま残して一覧に出します。"))return;
+ if(!await impPre("入退院の未登録つなぎ",P.ops,{any:true}))return;if(b)b.disabled=true;
+ try{await persist(P.ops);impLog("入退院の未登録つなぎ","");S.hmLinkLeft=P.left;toast(P.ops.length+"件 をつなぎました");render()}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
+function hmLinkBox(){const L=S.hmLinkLeft;if(!L||!L.length)return "";const H=id=>(DB.hosp||[]).find(x=>x.id===id);
+ return `<div class="notice" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;gap:8px"><b>🔗 自動でつなげなかった ${L.length}件</b><button class="btn sm" type="button" onclick="S.hmLinkLeft=null;render()">閉じる</button></div><div class="meta">「✏ 詳細」で利用者を候補から選び直して保存すると、つながります。新規の方は利用者一覧に登録されるまでこのままで大丈夫です。</div>
+ ${L.map(x=>{const h=H(x.id);if(!h||h.client)return "";return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--line)"><b>${esc(hmNm(h))}</b><span class="meta">${esc(x.why)}</span><button class="btn sm" type="button" style="margin-left:auto" onclick="S.hmOpen='${h.id}';render()">✏ 詳細</button></div>`}).join("")}</div>`}
+window.hmCliPick=el=>{const v=el.value.trim(),u=v?findClient(v):null;const nm=x=>String(x||"").replace(/[\s　]/g,"").replace(/様$/,"");if(!u||!(/（/.test(v)||nm(u.name)===nm(v))){el.dataset.cid="";return}
+ el.dataset.cid=u.id;el.value=cliBare(u);const o=DB.offices.find(x=>x.id===clOffice(u)),cm=DB.cms.find(c=>c.id===u.cm),set=(k,x)=>{const f=$("#hm-"+k);if(f&&x)f.value=x};
+ set("officeName",o?o.name:"");set("cmName",cm?cm.name:"");set("staffName",stUni(u.staff||""))};
 window.hmSave=async(id,b)=>{const row={id:id||newId("h")},h0=id?(DB.hosp||[]).find(x=>x.id===id):null;HM_F.forEach(([k])=>{const el=$("#hm-"+k);if(el)row[k]=el.value.trim()});
  document.querySelectorAll(".hmt").forEach(t=>row[t.dataset.k]=t.dataset.v);
- const cv=$("#hm-client").value.trim();if(!cv){toast("利用者を入れてください");return}const u=findClient(cv);row.client=u?u.id:"";row.clientName=u?"":cv.replace(/（.*$/,"");
+ const ce=$("#hm-client"),cv=ce.value.trim();if(!cv){toast("利用者を入れてください");return}const u=(ce.dataset.cid&&clientOf(ce.dataset.cid))||findClient(cv);row.client=u?u.id:"";row.clientName=u?"":cv.replace(/（.*$/,"");
  const o=DB.offices.find(x=>x.name===row.officeName);row.office=o?o.id:(u?clOffice(u):"");
  if(isD(row.outDate)&&row.outDate>today()){row.outPlan=row.outDate;row.outDate=""}else if(row.outDate===""&&h0&&!h0.outDate)row.outPlan=h0.outPlan||"";
- row.state=row.pickKind?"引上げ":row.outDate?"退院":"入院中";const hk=id&&row.pickDate!==undefined&&(!h0||row.pickDate!==h0.pickDate)?[hkOp(row.id,isD(row.pickDate)&&row.pickDate<=today()?row.pickDate:"")]:[];if(!id){row.source="事務所";row.by=myId();row.byName=USER?USER.name:"デモ";row.createdAt=new Date().toISOString()}
+ row.state=row.pickKind?"引上げ":row.outDate?"退院":"入院中";const hk=row.pickKind==="死亡"&&(!h0||hmRes(h0)!=="帰宅困難")?[hmResOp(row.id,"帰宅困難")]:[];if(!id){row.source="事務所";row.by=myId();row.byName=USER?USER.name:"デモ";row.createdAt=new Date().toISOString()}
  b.disabled=true;try{await persist([{table:"hosp",row}].concat(hk));S.hmOpen=null;buzz(60);toast("保存しました");render()}catch(e){b.disabled=false;toast("保存できませんでした："+errText(e))}};
 window.hmDel=async(id,b)=>{if(!await uiConfirm("この行を削除しますか？"))return;b.disabled=true;try{await persist([{table:"hosp",row:{id,state:"削除"}}]);S.hmOpen=null;render()}catch(e){b.disabled=false;toast("削除できませんでした："+errText(e))}};
 /* スキャンの読み取り（入退院管理表・連絡票） */
@@ -2690,7 +2752,7 @@ window.hsScan=async inp=>{const fs=[...inp.files];inp.value="";if(!fs.length)ret
    if(!items.length)S.hsItems.push({file:f.name,name:"（読み取れませんでした）",client:"",kind:"入院",on:false,unsure:true});
    items.forEach(x=>{const o={file:f.name};HS_KEYS.forEach(k=>o[k]=String(x[k]==null?"":x[k]).trim());
     ["contactAt","inDate","outContactAt","outDate","pickDate"].forEach(k=>o[k]=dt(o[k]));["inData","outData","done"].forEach(k=>o[k]=chk(o[k]));
-    o.kind=HM_KIND.find(k=>o.kind.includes(k))||"入院";o.pickKind=HM_PICK.find(k=>k&&o.pickKind.includes(k))||"";o.inFax=/自社/.test(o.inFax)?"自社":/✓|レ/.test(o.inFax)?"✓":/―|-|ー/.test(o.inFax)?"―":"";o.outFax=/自社/.test(o.outFax)?"自社":/✓|レ/.test(o.outFax)?"✓":/―|-|ー/.test(o.outFax)?"―":"";
+    o.kind=HM_KIND.find(k=>o.kind.includes(k))||"入院";o.pickKind=HM_PICK.find(k=>k&&o.pickKind.includes(k))||"";o.inFax=/自社/.test(o.inFax)?"自社":/✓|レ|済/.test(o.inFax)?"済":/―|-|ー/.test(o.inFax)?"―":"";o.outFax=/自社/.test(o.outFax)?"自社":/✓|レ|済/.test(o.outFax)?"済":/―|-|ー/.test(o.outFax)?"―":"";
     o.unsure=x.unsure===true||String(x.unsure)==="true";const u=matchClient(o.name,"");o.client=u?u.id:"";o.on=!!o.name&&!!(o.inDate||o.contactAt||o.outDate);S.hsItems.push(o)})}
   catch(e){S.hsItems.push({file:f.name,name:"（エラー："+errText(e)+"）",client:"",kind:"入院",on:false,unsure:true})}}
  S.hsSt=`${fs.length}ファイルを読み取りました（${S.hsItems.length}行）。確認して登録してください。`;render()};
@@ -3548,7 +3610,7 @@ function officeRow({o,d}){const cms=DB.cms.filter(c=>c.office===o.id&&cst(c)==="
 /* 事務所の画面・管理者のパソコンは「全部を見る」使い方（自分の担当だけ・近い順は使わない） */
 const wideV=()=>MODE==="live"&&!!USER&&(jimuMode()||(USER.role==="admin"&&PP_PC()));
 const mineEff=()=>S.mine&&!wideV();
-/* 営業と事務の両方の人（小坂・吉岡など）は役割が事務でも営業に数える（11/12） */
+/* 営業と事務の両方の人（小坂・吉田など）は役割が事務でも営業に数える（11/12） */
 const bothU=u=>/^(both|両方|営業事務|営業・事務)$/i.test(String(u.role||""))||BOTH_NM.some(n=>String(u.name||"").replace(/[\s　]/g,"").includes(n));
 const salesList=()=>(DB.users||[]).filter(u=>(bothU(u)||(u.role!=="jimu"&&u.role!=="事務"))&&String(u.active||"有")!=="無"&&!RETIRED_NM.some(n=>String(u.name||"").replace(/[\s　]/g,"").includes(n)));
 function listRows(){
