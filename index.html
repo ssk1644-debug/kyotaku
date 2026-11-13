@@ -2608,7 +2608,8 @@ function hmAddBar(){return `<div style="display:flex;gap:6px;align-items:center;
  <select id="hma-k" class="sim">${HM_KIND.map(k=>`<option>${k}</option>`).join("")}</select><label class="meta" style="display:flex;gap:4px;align-items:center">入院日<input id="hma-d" type="date" class="sim"></label>
  <button class="btn sm primary" type="button" onclick="hmAddGo(this)">追加</button>${S.hmUndo?"":`<span class="meta">ほかの項目は表のマスで入れられます</span>`}${hmUndoBar()}</div>`}
 window.hmAddGo=async b=>{const el=$("#hma-n"),cv=String(el&&el.value||"").trim();if(!cv){toast("利用者の名前を入れてください");return}
- const u=(el.dataset.cid&&clientOf(el.dataset.cid))||null,o=u?DB.offices.find(x=>x.id===clOffice(u)):null,cm=u?DB.cms.find(c=>c.id===u.cm):null;
+ /* 候補を選ばずに名前だけ入れても、登録の利用者と1人だけ一致すればつなぐ（11/14） */
+ const u=(el.dataset.cid&&clientOf(el.dataset.cid))||findClient(cv)||null,o=u?DB.offices.find(x=>x.id===clOffice(u)):null,cm=u?DB.cms.find(c=>c.id===u.cm):null;
  const row={id:newId("h"),client:u?u.id:"",clientName:u?"":cv.replace(/[\s　]*様$/,""),kind:$("#hma-k").value,inDate:$("#hma-d").value||"",contactAt:today(),office:o?o.id:"",officeName:o?o.name:"",cmName:cm?cm.name:"",staffName:u?stUni(u.staff||""):"",state:"入院中",source:"事務所",by:myId(),byName:USER?USER.name:"デモ",createdAt:new Date().toISOString()};
  b.disabled=true;try{await persist([{table:"hosp",row}]);S.hmSel=row.id;S.hmf="open";toast("追加しました（黄色の行）");render()}catch(e){b.disabled=false;toast("追加できませんでした："+errText(e))}};
 window.hmCell=async(id,k,el)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h)return;let v;
@@ -2716,7 +2717,7 @@ window.hmTg=b=>{b.dataset.v=b.dataset.v==="✓"?"":"✓";b.classList.toggle("on"
 /* 入退院の登録：候補を選んだら名前だけ残し、居宅・担当CM・担当営業はそれぞれの欄へ（11/12） */
 const cliBare=u=>{const n=String(u.name||"").replace(/[\s　]*様$/,"").trim();return u.town&&n.startsWith(u.town)?n.slice(u.town.length).trim():n};
 /* 「（未登録）」の行をまとめてつなぐ（11/12）：名前が利用者一覧の1人とだけ一致したらつなぐ。同名が複数・見つからない行は残して見せる */
-const hkNorm=x=>String(x||"").replace(/[\s　]/g,"").replace(/様$/,"");
+const hkNorm=x=>vfold(x).replace(/[\s　]/g,"").replace(/様$/,"");
 function hmLinkPlan(){const ops=[],left=[],cl=DB.clients||[];
  (DB.hosp||[]).filter(h=>h.state!=="削除"&&!h.client&&h.clientName).forEach(h=>{const k=hkNorm(h.clientName);if(!k)return;
   const c=cl.filter(u=>hkNorm(cliBare(u))===k||hkNorm(u.name)===k);
@@ -2730,7 +2731,7 @@ window.hmLinkGo=async b=>{const P=hmLinkPlan();if(!P.ops.length){S.hmLinkLeft=P.
 function hmLinkBox(){const L=S.hmLinkLeft;if(!L||!L.length)return "";const H=id=>(DB.hosp||[]).find(x=>x.id===id);
  return `<div class="notice" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;gap:8px"><b>🔗 自動でつなげなかった ${L.length}件</b><button class="btn sm" type="button" onclick="S.hmLinkLeft=null;render()">閉じる</button></div><div class="meta">「✏ 詳細」で利用者を候補から選び直して保存すると、つながります。新規の方は利用者一覧に登録されるまでこのままで大丈夫です。</div>
  ${L.map(x=>{const h=H(x.id);if(!h||h.client)return "";return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--line)"><b>${esc(hmNm(h))}</b><span class="meta">${esc(x.why)}</span><button class="btn sm" type="button" style="margin-left:auto" onclick="S.hmOpen='${h.id}';render()">✏ 詳細</button></div>`}).join("")}</div>`}
-window.hmCliPick=el=>{const v=el.value.trim(),u=v?findClient(v):null;const nm=x=>String(x||"").replace(/[\s　]/g,"").replace(/様$/,"");if(!u||!(/（/.test(v)||nm(u.name)===nm(v))){el.dataset.cid="";return}
+window.hmCliPick=el=>{const v=el.value.trim(),u=v?findClient(v):null;const nm=x=>vfold(x).replace(/[\s　]/g,"").replace(/様$/,"");if(!u||!(/（/.test(v)||nm(u.name)===nm(v))){el.dataset.cid="";return}
  el.dataset.cid=u.id;el.value=cliBare(u);const o=DB.offices.find(x=>x.id===clOffice(u)),cm=DB.cms.find(c=>c.id===u.cm),set=(k,x)=>{const f=$("#hm-"+k);if(f&&x)f.value=x};
  set("officeName",o?o.name:"");set("cmName",cm?cm.name:"");set("staffName",stUni(u.staff||""))};
 window.hmSave=async(id,b)=>{const row={id:id||newId("h")},h0=id?(DB.hosp||[]).find(x=>x.id===id):null;HM_F.forEach(([k])=>{const el=$("#hm-"+k);if(el)row[k]=el.value.trim()});
