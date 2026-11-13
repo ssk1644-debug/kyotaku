@@ -1294,7 +1294,11 @@ function parseCallName(n){const m=String(n||"").normalize("NFKC").match(/通話\
  return m?{who:m[1].trim(),date:"20"+m[2]+"-"+m[3]+"-"+m[4]}:{who:"",date:today()}}
 const digits=x=>String(x||"").replace(/[^0-9]/g,"");
 /* 名前の照合：「さん」「様」「CM」などを外し、ひらがなはカタカナにそろえてゆるく照らし合わせる */
-const kata=s=>String(s||"").replace(/[ぁ-ゖ]/g,ch=>String.fromCharCode(ch.charCodeAt(0)+0x60));
+/* 異体字をそろえる（11/14 社長：「山崎」で「山﨑」も当たるように）。名前の照合・検索はすべてこれを通る */
+const VAR_MAP={"﨑":"崎","嵜":"崎","髙":"高","邊":"辺","邉":"辺","濱":"浜","澤":"沢","齋":"斉","齊":"斉","斎":"斉","廣":"広","國":"国","櫻":"桜","眞":"真","德":"徳","惠":"恵","瀨":"瀬","淵":"渕","冨":"富","槇":"槙","藪":"薮","條":"条","龍":"竜","實":"実","德":"徳","榮":"栄","彌":"弥","壽":"寿","嶋":"島","嶌":"島","塚":"塚","﨔":"欅","晉":"晋","祐":"祐","禮":"礼","莊":"荘","與":"与","圓":"円","豐":"豊","萬":"万","藏":"蔵","戶":"戸","靜":"静","黑":"黒","惠":"恵","兒":"児","驛":"駅","鐵":"鉄","舘":"館","餘":"余","曾":"曽","瀧":"滝","籠":"篭","讚":"讃"};
+const VAR_RE=new RegExp("["+Object.keys(VAR_MAP).join("")+"]","g");
+const vfold=s=>String(s||"").normalize("NFKC").replace(VAR_RE,c=>VAR_MAP[c]||c);
+const kata=s=>vfold(s).replace(/[ぁ-ゖ]/g,ch=>String.fromCharCode(ch.charCodeAt(0)+0x60));
 const pnorm=s=>kata(String(s||"").normalize("NFKC").replace(/[\s　・]/g,"")).replace(/(サン|様|サマ|氏|先生|ケアマネージャー|ケアマネジャー|ケアマネ|CM)$/i,"");
 /* 居宅名の照合：「居宅介護支援事業所」「ケアプランセンター」などの決まり文句はどこにあっても外して、名前の芯だけで比べる（11/12） */
 const OFF_GEN=/(株式会社|有限会社|合同会社|社会福祉法人|医療法人|指定|居宅介護支援事業所|居宅介護支援センター|居宅介護支援|介護支援センター|ケアプランセンター|ケアプラン|支援センター|事業所|居宅|サン|様|\(株\)|\(有\))/g;
@@ -3993,7 +3997,7 @@ window.updMatch=()=>{const b=$("#matchBox");if(b)b.innerHTML=matchHtml(matchOffi
 window.scKeep=()=>{if(!SC.fields)return;const g=id=>{const e=$(id);return e?e.value:undefined};
  [["name","#c-name"],["kana","#c-kana"],["org","#c-org"],["title","#c-title"],["addr","#c-addr"],["tel","#c-tel"],["email","#c-email"],["memo","#c-memo"],["stype","#c-stype"]].forEach(([k,id])=>{const v=g(id);if(v!==undefined)SC.fields[k]=v});
  const pn=g("#c-pnote");if(pn!==undefined)SC.pnote=pn};
-const norm=s=>String(s||"").replace(/株式会社|有限会社|合同会社|医療法人(社団)?|社会福祉法人|一般社団法人|居宅介護支援事業所|[\s　・（）()]/g,"");
+const norm=s=>vfold(s).replace(/株式会社|有限会社|合同会社|医療法人(社団)?|社会福祉法人|一般社団法人|居宅介護支援事業所|[\s　・（）()]/g,"");
 function matchOffice(org){const n=norm(org);if(n.length<3)return null;
  return DB.offices.find(o=>{const a=norm(o.name);return a===n||a.includes(n)||n.includes(a)})||null}
 function cardGrid(list){if(S.cardView!=="list")return cardGrid0(list);return list.length?`<div class="log">${list.map(c=>`<div class="logi" style="cursor:pointer;display:flex;gap:8px;align-items:baseline" onclick="S.cardOne='${c.id}';render()"><b>${esc(c.name)}</b><span class="meta" style="flex:1">${esc(c.org||"")}</span>${c.cm?'<span class="chip">CM</span>':""}</div>`).join("")}</div>`:'<div class="empty">該当する名刺がありません</div>'}
@@ -4344,5 +4348,35 @@ if(MODE==="demo"){S.office=DB.offices.some(o=>o.id==="o1")?"o1":null;render()}
 else if(MODE==="live"){if(SESSION)boot();else{render();initGis()}}
 else render();
 setTimeout(()=>{if(S.gps==="wait"){S.gps="off";renderGps()}},6000);
+</script>
+<style>
+.sgbox{position:absolute;z-index:9999;background:#fff;border:1px solid #9bb;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.18);max-height:280px;overflow-y:auto;font-size:15px;min-width:200px}
+.sgbox div{padding:8px 12px;border-top:1px solid #eef;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sgbox div:first-child{border-top:none}.sgbox div.on,.sgbox div:hover{background:#e8f4f1}
+.sgbox .sgm{color:#888;font-size:12px;cursor:default;background:#fafafa}
+</style>
+<script>
+/* ===== 入力欄の候補（11/14 社長）：欄を押しただけでは候補を出さない。入れた文字を含む人だけ、先頭が一致する人を上に。異体字・ひらがな/カタカナ・スペースの違いも同じに扱う。
+   アプリ内の list="…"（datalist）の欄すべてに効く ===== */
+(function(){
+ let box=null,cur=null,items=[],act=-1;
+ const F=s=>{try{return (typeof kata==="function"?kata(s):String(s||"")).toLowerCase().replace(/[\s　・･,，、。.\-‐－（）()「」様]/g,"")}catch(e){return String(s||"")}};
+ const hide=()=>{if(box){box.remove();box=null}items=[];act=-1};
+ const opts=inp=>{const id=inp.dataset.sg,dl=id&&document.getElementById(id);return dl?[...dl.options].map(o=>({v:o.value,l:o.label&&o.label!==o.value?o.label:(o.textContent&&o.textContent!==o.value?o.textContent:"")})):[]};
+ function pick(i){const it=items[i];if(!it||!cur)return;const inp=cur;inp.value=it.v;hide();inp.dispatchEvent(new Event("input",{bubbles:true}));inp.dispatchEvent(new Event("change",{bubbles:true}))}
+ function show(inp){const q=F(inp.value);if(!q){hide();return}
+  const all=opts(inp),hit=[];for(const o of all){const k=F(o.v+" "+o.l);const i=k.indexOf(q);if(i<0)continue;const kv=F(o.v),st=kv.startsWith(q)?0:/[\s　]/.test(o.v)&&F(o.v.split(/[\s　]/).slice(1).join("")).startsWith(q)?1:2;hit.push({o,st,i})}
+  hit.sort((a,b)=>a.st-b.st||a.i-b.i);items=hit.slice(0,30).map(x=>x.o);act=-1;
+  if(!box){box=document.createElement("div");box.className="sgbox";document.body.appendChild(box);box.addEventListener("mousedown",e=>{e.preventDefault();const d=e.target.closest("[data-i]");if(d)pick(+d.dataset.i)})}
+  box.innerHTML=items.length?items.map((o,i)=>`<div data-i="${i}"></div>`).join("")+(hit.length>30?`<div class="sgm">ほか ${hit.length-30}件（もう少し入れてください）</div>`:""):`<div class="sgm">候補はありません（そのままの名前で入ります）</div>`;
+  [...box.querySelectorAll("[data-i]")].forEach((d,i)=>{d.textContent=items[i].v+(items[i].l?"　"+items[i].l:"")});
+  const r=inp.getBoundingClientRect();box.style.left=(r.left+scrollX)+"px";box.style.top=(r.bottom+scrollY+2)+"px";box.style.width=Math.max(r.width,220)+"px"}
+ function mark(){if(!box)return;[...box.querySelectorAll("[data-i]")].forEach((d,i)=>d.classList.toggle("on",i===act));const a=box.querySelector(".on");if(a)a.scrollIntoView({block:"nearest"})}
+ document.addEventListener("focusin",e=>{const t=e.target;if(!(t instanceof HTMLInputElement))return;const l=t.getAttribute("list");if(l){t.dataset.sg=l;t.removeAttribute("list");t.setAttribute("autocomplete","off")}if(t.dataset.sg){cur=t;if(t.value)show(t)}},true);
+ document.addEventListener("input",e=>{const t=e.target;if(t&&t.dataset&&t.dataset.sg&&t===cur&&e.isTrusted)show(t)},true);
+ document.addEventListener("focusout",e=>{if(e.target===cur)setTimeout(()=>{if(document.activeElement!==cur)hide()},150)},true);
+ document.addEventListener("keydown",e=>{if(!box||e.target!==cur)return;if(e.key==="ArrowDown"){act=Math.min(items.length-1,act+1);mark();e.preventDefault()}else if(e.key==="ArrowUp"){act=Math.max(0,act-1);mark();e.preventDefault()}else if(e.key==="Enter"&&act>=0){pick(act);e.preventDefault()}else if(e.key==="Escape")hide()},true);
+ addEventListener("scroll",e=>{if(box&&cur&&!box.contains(e.target))show(cur)},true);addEventListener("resize",hide);
+})();
 </script>
 </body></html>
