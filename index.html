@@ -2276,7 +2276,8 @@ const CL_COLS=[["town","町名",x=>x.town],["name","利用者",x=>x.name],["off"
 window.clSort=k=>{if(S.clSk===k)S.clSd=-(S.clSd||1);else{S.clSk=k;S.clSd=1}render()};
 function clList(){const a="",b=billSumBox(),n="";return `<button class="btn sm" type="button" style="margin-bottom:6px" onclick="S.view='umap';render()">🗺 利用者マップ（マイマップの取り込み・カレンダー配布）</button>`+(a||b||n?tbar("cl",[n?{id:"kn",label:"🆕 新規・解約",html:()=>n,auto:!!S.knPlan}:null,a?{id:"kc",label:"📥 ケアレンツから取り込む",html:()=>a,auto:!!(S.kcPlan||!DB.clients.some(u=>u.code))}:null,b?{id:"bs",label:"📊 居宅別の人数・売上",html:()=>b}:null]):"")+clList0()}
 function clList0(){const q=(S.clq||"").trim();let rs=DB.clients.map(clRow);
- if(S.clf==="end")rs=rs.filter(x=>x.end);else{rs=rs.filter(x=>!x.end);if(S.clf==="h")rs=rs.filter(x=>x.h);else if(S.clf==="app")rs=rs.filter(x=>x.app)}
+ /* 名前などで探す時は、利用中・入院中・終了の全部から探す（11/14 社長） */
+ if(!q){if(S.clf==="end")rs=rs.filter(x=>x.end);else{rs=rs.filter(x=>!x.end);if(S.clf==="h")rs=rs.filter(x=>x.h);else if(S.clf==="app")rs=rs.filter(x=>x.app)}}
  if(q){const tk=qTokens(q);rs=rs.filter(x=>{const t=snorm([x.u.name,x.u.kana,x.u.code,x.off,x.cm,x.staff,x.u.items,x.u.tel].join(" "));return tk.every(y=>t.includes(y))})}
  const c=CL_COLS.find(x=>x[0]===(S.clSk||"town")),d=S.clSk?(S.clSd||1):1;rs.sort((a,b)=>{const x=c[2](a),y=c[2](b);return (!x&&y?1:x&&!y?-1:String(x).localeCompare(String(y),"ja")*d)||a.name.localeCompare(b.name,"ja")});
  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
@@ -2284,7 +2285,7 @@ function clList0(){const q=(S.clq||"").trim();let rs=DB.clients.map(clRow);
   <div class="seg">${[["","利用中"],["h","入院・入所中"],["app","アプリで追加した人"],["end","終了した人"]].map(([k,l])=>`<button type="button" class="${(S.clf||"")===k?"on":""}" onclick="S.clf='${k}';render()">${l}</button>`).join("")}</div>
   <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="名前・町名・居宅・CM・担当で探す" value="${esc(S.clq||"")}" onchange="S.clq=this.value;render()"><span class="meta">${rs.length}人</span></div>
  <div class="rtw"><table class="rt"><thead><tr>${CL_COLS.map(([k,l])=>`<th style="cursor:pointer;white-space:nowrap" onclick="clSort('${k}')">${l}${(S.clSk||"town")===k?((S.clSk?(S.clSd||1):1)>0?" ▲":" ▼"):' <span class="meta">⇅</span>'}</th>`).join("")}</tr></thead><tbody>
- ${rs.slice(0,S.clAll?5000:300).map(x=>`<tr onclick="S.clOpen='${x.u.id}';render()"><td>${esc(x.town)}</td><td><b>${esc(x.name)}</b>${x.app?' <span class="ac w">アプリで追加</span>':""}</td><td>${esc(x.off)}</td><td>${esc(x.cm)}</td><td>${esc(x.staff)}</td><td>${esc(x.u.lv||"")}</td><td>${esc(x.u.items||"")}</td><td class="num" style="white-space:nowrap">${esc(x.u.tel||"")}</td><td>${x.h?`<span class="ac h">${esc(x.h.kind||"入院")}中</span>`:""}</td></tr>`).join("")||'<tr><td colspan="9" class="meta">該当なし</td></tr>'}
+ ${rs.slice(0,S.clAll?5000:300).map(x=>`<tr onclick="S.clOpen='${x.u.id}';render()"><td>${esc(x.town)}</td><td><b>${esc(x.name)}</b>${x.app?' <span class="ac w">アプリで追加</span>':""}${q&&x.end?' <span class="ac">終了</span>':""}</td><td>${esc(x.off)}</td><td>${esc(x.cm)}</td><td>${esc(x.staff)}</td><td>${esc(x.u.lv||"")}</td><td>${esc(x.u.items||"")}</td><td class="num" style="white-space:nowrap">${esc(x.u.tel||"")}</td><td>${x.h?`<span class="ac h">${esc(x.h.kind||"入院")}中</span>`:""}</td></tr>`).join("")||'<tr><td colspan="9" class="meta">該当なし</td></tr>'}
  </tbody></table></div>${rs.length>300&&!S.clAll?`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.clAll=true;render()">すべて表示（${rs.length}人）</button>`:""}`}
 function clForm(){const isNew=S.clOpen==="new",u=isNew?{name:"",lv:"",items:""}:clientOf(S.clOpen);if(!u)return "";const x=clRow(u),o=x.o,cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];
  return `<div class="form" style="max-width:640px"><b>${isNew?"新規利用者を登録":"🧑 "+esc(u.name)}</b>
@@ -2723,6 +2724,7 @@ function hmLinkPlan(){const ops=[],left=[],cl=DB.clients||[];
  (DB.hosp||[]).filter(h=>h.state!=="削除"&&!h.client&&h.clientName).forEach(h=>{const k=hkNorm(h.clientName);if(!k)return;
   let c=cl.filter(u=>hkNorm(cliBare(u))===k||hkNorm(u.name)===k);
   if(!c.length&&k.length>=3)c=cl.filter(u=>hkNorm(u.name).endsWith(k));   /* 町名つきの名前でも後ろが一致すれば */
+  if(!c.length){const mr=lmRows().filter(j=>{const n=hkNorm(j.nm||lmName(j));return n===k||(k.length>=3&&n.endsWith(k))});const us=[...new Set(mr.map(j=>lmClient(j.code)).filter(Boolean))];if(us.length===1)c=us}   /* 利用者マップの顧客コード経由でも探す */
   if(c.length===1){const u=c[0],row={id:h.id,client:u.id};if(!h.office&&clOffice(u))row.office=clOffice(u);ops.push({table:"hosp",row})}else left.push({id:h.id,why:c.length?"同じ名前が"+c.length+"人":"利用者一覧に見つからない"})});
  return {ops,left}}
 const hmUnlinkedN=()=>(DB.hosp||[]).filter(h=>h.state!=="削除"&&!h.client).length;
