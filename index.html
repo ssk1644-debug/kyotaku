@@ -2715,12 +2715,14 @@ function hmForm(){const isNew=S.hmOpen==="new",h=isNew?{kind:"入院",contactAt:
 window.hmResPick=(id,v)=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h||hmRes(h)===v)return;const kp={},kt={};document.querySelectorAll('[id^="hm-"]').forEach(e=>kp[e.id]=e.value);document.querySelectorAll(".hmt").forEach(t=>kt[t.dataset.k]=t.dataset.v);setTimeout(()=>{Object.entries(kp).forEach(([i,v2])=>{const e=document.getElementById(i);if(e)e.value=v2});document.querySelectorAll(".hmt").forEach(t=>{if(t.dataset.k in kt&&t.dataset.v!==kt[t.dataset.k])hmTg(t)})},0);saveFast([{table:"caselog",row:{id:"hr"+id,case:"h:"+id,kind:"結果",text:v,rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}])};
 window.hmTg=b=>{b.dataset.v=b.dataset.v==="✓"?"":"✓";b.classList.toggle("on",b.dataset.v==="✓");b.textContent=(b.dataset.v==="✓"?"✓ ":"")+b.textContent.replace(/^✓ /,"")};
 /* 入退院の登録：候補を選んだら名前だけ残し、居宅・担当CM・担当営業はそれぞれの欄へ（11/12） */
-const cliBare=u=>{const n=String(u.name||"").replace(/[\s　]*様$/,"").trim();return u.town&&n.startsWith(u.town)?n.slice(u.town.length).trim():n};
+/* 名前の頭の町名を外す（町名の欄が空でも「〇〇町 名前」の形なら外す）11/14 */
+const cliBare=u=>{const n=String(u.name||"").replace(/[\s　]*様$/,"").trim(),t=u.town||clTown(u);return t&&n.startsWith(t)?n.slice(t.length).trim():n};
 /* 「（未登録）」の行をまとめてつなぐ（11/12）：名前が利用者一覧の1人とだけ一致したらつなぐ。同名が複数・見つからない行は残して見せる */
 const hkNorm=x=>vfold(x).replace(/[\s　]/g,"").replace(/様$/,"");
 function hmLinkPlan(){const ops=[],left=[],cl=DB.clients||[];
  (DB.hosp||[]).filter(h=>h.state!=="削除"&&!h.client&&h.clientName).forEach(h=>{const k=hkNorm(h.clientName);if(!k)return;
-  const c=cl.filter(u=>hkNorm(cliBare(u))===k||hkNorm(u.name)===k);
+  let c=cl.filter(u=>hkNorm(cliBare(u))===k||hkNorm(u.name)===k);
+  if(!c.length&&k.length>=3)c=cl.filter(u=>hkNorm(u.name).endsWith(k));   /* 町名つきの名前でも後ろが一致すれば */
   if(c.length===1){const u=c[0],row={id:h.id,client:u.id};if(!h.office&&clOffice(u))row.office=clOffice(u);ops.push({table:"hosp",row})}else left.push({id:h.id,why:c.length?"同じ名前が"+c.length+"人":"利用者一覧に見つからない"})});
  return {ops,left}}
 const hmUnlinkedN=()=>(DB.hosp||[]).filter(h=>h.state!=="削除"&&!h.client).length;
