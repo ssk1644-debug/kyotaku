@@ -2910,12 +2910,14 @@ const cName=c=>{const u=c.client?clientOf(c.client):null;return u?nmOnly(u.name)
 const daysAgo=x=>{if(!x)return "";const d=Math.floor((Date.now()-new Date(x).getTime())/864e5);return isNaN(d)?"":d<=0?"今日":d+"日前"};
 const caseLogs=id=>(DB.caselog||[]).filter(l=>l.case===id&&l.kind!=="部品"&&l.state!=="削除").sort((a,b)=>String(b.at).localeCompare(String(a.at)));
 const openCasesOf=uid=>(DB.cases||[]).filter(c=>c.client===uid&&cLive(c)&&!cDone(c));
+/* 名前の照合は「町名を除いた名前」の頭から（11/15 社長：町名と名前がつながって「湯野 島山」が「野島」に当たっていた） */
+const clNameKey=u=>{let t=cliBare(u).split(/[\s　]+/).filter(Boolean);if(t.length>=3)t=t.slice(1);return {full:pnorm(t.join("")),sur:pnorm(t[0]||"")}};
 function matchClient(n,office){const w=pnorm(String(n||"").replace(/様$/,""));if(!w||w.length<2)return null;
- const hit=DB.clients.filter(u=>{const p=pnorm(nmBare(u.name).replace(/ 様$/,"")),pf=pnorm(nmOnly(u.name).replace(/ 様$/,""));return p&&(p.includes(w)||w.includes(p)||w.includes(pf))});
+ const hit=DB.clients.filter(u=>{const k=clNameKey(u);return k.full&&(k.full===w||k.full.startsWith(w)||(w.startsWith(k.full)&&k.full.length>=3)||(k.sur.length>=2&&w===k.sur))});
  if(hit.length===1)return hit[0];const ho=hit.filter(u=>clOffice(u)===office);return ho.length===1?ho[0]:null}
 function findClient(v){const raw=String(v||"").trim();if(!raw)return null;{const k=snorm(raw);const kh=DB.clients.filter(x=>x.kana&&snorm(x.kana)===k);if(kh.length===1)return kh[0]}
  let u=DB.clients.find(x=>clientLabel(x)===raw)||DB.clients.find(x=>String(x.name)===raw);if(u)return u;
- const w=pnorm(raw.replace(/（.*$/,"")),hit=DB.clients.filter(x=>pnorm(x.name).includes(w));return hit.length===1?hit[0]:null}
+ const w=pnorm(raw.replace(/（.*$/,""));let hit=DB.clients.filter(x=>{const k=clNameKey(x);return k.full===w||k.full.startsWith(w)});if(!hit.length)hit=DB.clients.filter(x=>pnorm(x.name).includes(w)&&w.length>=4);return hit.length===1?hit[0]:null}
 function caseTile(c){const st=ctSteps(c),i=Math.max(0,st.indexOf(cStage(c))),o=DB.offices.find(x=>x.id===c.office);
  return `<button type="button" class="ctile c-${cColor(c)} ${cOver(c)?"over":""}" onclick="caseOpen('${c.id}')">
  <div class="ct-h"><b>${esc(cFull(c))}</b><span class="ct-type">${esc(c.type||"その他")}</span></div>
@@ -3072,7 +3074,7 @@ window.caseSave=async(id,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c)return;c
  const type=$("#cs-type").value,st=CTYPES[type]||CTYPES["その他"],stage=st.includes(c.stage)?c.stage:(c.stage==="完了"?"完了":st[0]);
  const row={id,title:$("#cs-title").value.trim(),next:$("#cs-next").value.trim(),due:$("#cs-due").value,type,stage};
  if(u){row.client=u.id;row.clientName="";row.office=clOffice(u)||c.office;row.cm=u.cm||c.cm}else if(nv){row.client="";row.clientName=nv}
- return caseOps([{table:"cases",row}],b,"保存しました")};
+ return caseOps([{table:"cases",row}].concat(u?recSyncOps(id,c.client,u.id):[]),b,"保存しました")};
 window.caseMemo=(id,b)=>{const t=($("#cs-memo").value||"").trim();if(!t){toast("メモを入れてください");return}
  return caseOps([{table:"cases",row:{id}},clog(id,"メモ",t)],b,"")};
 window.caseMerge=(id,b)=>{const to=$("#cs-merge").value;if(!to){toast("まとめる先を選んでください");return}return caseMergeTo(id,to,b)};
@@ -3136,10 +3138,13 @@ function chipMenu(r,c){const k=r.id+"_"+c.id,miss=recCaseMiss(r,c),w=miss?recWho
  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="btn sm" type="button" onclick="caseOpen('${c.id}')">開く</button>
  <input id="cm-${k}" list="chipCl" placeholder="利用者を選ぶ（新規は名前を入れる）" style="flex:1;min-width:150px;margin:0"><datalist id="chipCl">${DB.clients.map(clOpt).join("")}</datalist><button class="btn sm primary" type="button" onclick="chipClient('${c.id}','cm-${k}',this)">利用者を変える</button>
  <button class="btn sm" type="button" onclick="S.chipM='';mgStart('${c.id}')">🔗 ほかのカードにまとめる</button> <button class="btn sm" type="button" onclick="chipUnlink('${r.id}','${c.id}',this)">この記録から外す</button><button class="btn sm" type="button" style="color:var(--alert)" onclick="caseDel('${c.id}',this)">カードを削除</button><button class="btn sm" type="button" onclick="S.chipM='';render()">閉じる</button></div></div>`}
+/* カードの利用者を直したら、そのカードにつながる記録の利用者も一緒に直す（直しても元の人に戻るのを防ぐ）11/15 */
+function recSyncOps(cid,oldId,newId){if(!newId||oldId===newId)return [];const rids=[...new Set((DB.caselog||[]).filter(l=>l.case===cid&&l.rec&&l.state!=="削除").map(l=>l.rec))];
+ return rids.map(id=>(DB.records||[]).find(r=>r.id===id)).filter(r=>r&&r.party==="利用者"&&(!r.client||r.client===oldId)).map(r=>({table:"records",row:{id:r.id,client:newId}}))}
 window.chipClient=async(cid,iid,b)=>{const c=(DB.cases||[]).find(x=>x.id===cid),v=String(($("#"+iid)||{}).value||"").trim(),u=findClient(v);if(!c)return;if(!v){toast("利用者の名前を入れてください");return}
  if(!u){const nm=v.replace(/（.*$/,"").replace(/[\s　]*様$/,"").trim();if(!await uiConfirm("「"+nm+" 様」は一覧にいません。\n新規の方として、この名前にしますか？"))return;
   S.chipM="";return caseOps([{table:"cases",row:{id:cid,client:"",clientName:nm}}],b,"新規の「"+nm+" 様」にしました")}
- S.chipM="";return caseOps([{table:"cases",row:{id:cid,client:u.id,clientName:"",office:clOffice(u)||c.office,cm:u.cm||c.cm}}],b,"利用者を変えました")};
+ S.chipM="";return caseOps([{table:"cases",row:{id:cid,client:u.id,clientName:"",office:clOffice(u)||c.office,cm:u.cm||c.cm}}].concat(recSyncOps(cid,c.client,u.id)),b,"利用者を変えました")};
 window.chipUnlink=async(rid,cid,b)=>{const ls=(DB.caselog||[]).filter(l=>l.rec===rid&&l.case===cid&&!isCont(l)&&l.state!=="削除");if(!ls.length)return;
  const rest=(DB.caselog||[]).filter(l=>l.case===cid&&l.kind!=="部品"&&l.state!=="削除"&&!ls.includes(l)).length;
  if(!rest&&!await uiConfirm("このカードには、この記録の内容しかありません。外すとカードは空になります。外しますか？（いらないカードなら「カードを削除」）"))return;
@@ -3159,7 +3164,10 @@ function fcHtml(f,fi){if(f.casesDone)return `<div style="margin-top:8px"><b>🗂
  <datalist id="fcCl">${DB.clients.map(clOpt).join("")}</datalist>
  <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="fcApply(${fi},this)">チェックした分をタスクカードに入れる</button><button class="btn sm" type="button" onclick="FOUND[${fi}].cases.push({cname:'',client:'',type:'その他',text:'',next:'',due:'',target:'new',on:true});render()">＋ カードを足す</button></div></div>`}
 window.fcClient=(fi,xi,v)=>{const x=FOUND[fi]&&FOUND[fi].cases[xi];if(!x)return;const u=findClient(v);if(!u){toast("一覧から選んでください");return}
- x.client=u.id;const same=openCasesOf(u.id).find(c=>c.type===x.type);x.target=same?same.id:"new";render()};
+ const old=x.client;x.client=u.id;x.cname=cliBare(u);const same=openCasesOf(u.id).find(c=>c.type===x.type);x.target=same?same.id:"new";
+ (x.people||[]).forEach(q=>{if(/本人/.test(q.rel||""))q.name=cliBare(u)});
+ const r=(DB.records||[]).find(y=>y.id===FOUND[fi].rec);if(r&&r.party==="利用者"&&r.client!==u.id&&(!r.client||r.client===old))saveFast([{table:"records",row:{id:r.id,client:u.id}}]);
+ render()};
 window.fcApply=async(fi,b)=>{const f=FOUND[fi];if(!f)return;const list=f.cases.filter(x=>x.on&&(x.text.trim()||x.client));if(!list.length){toast("チェックしたカードがありません");return}
  if(list.some(x=>!x.client)&&!await uiConfirm("登録の利用者が選ばれていないカードがあります。このまま入れますか？"))return;
  const ops=[];list.forEach(x=>{let id=x.target;
