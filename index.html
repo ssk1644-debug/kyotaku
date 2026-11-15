@@ -1737,7 +1737,7 @@ function addFound(d,rec,office,cm,date,who){d=d||{};
 /* 入院・退院の話は「確認待ち」で入退院表へ自動で入れる。利用者は名前だけなので候補を探し、1人にしぼれたときだけ仮に入れる */
 const clBare=u=>{const n=String(u.name||"");return u.town&&n.startsWith(u.town+" ")?n.slice(u.town.length+1):nmBare(n)};
 function hospCands(cname,office,cm){const w=pnorm(String(cname||"").replace(/様$/,""));if(!w)return [];
- return DB.clients.filter(u=>u.useState!=="終了").map(u=>{const p=pnorm(clBare(u).replace(/ 様$/,"")),pf=pnorm(nmOnly(u.name).replace(/ 様$/,""));if(!(p&&(p.includes(w)||w.includes(p)||(pf&&w.includes(pf)))))return null;
+ return DB.clients.filter(u=>u.useState!=="終了").map(u=>{const k=clNameKey(u),p=k.full,pf=p;if(!(p&&(p===w||p.startsWith(w)||(w.startsWith(p)&&p.length>=3)||(k.sur.length>=2&&w===k.sur))))return null;   /* 名前の頭から（11/15） */
   return {u,s:1+(cm&&u.cm===cm?4:0)+(office&&clOffice(u)===office?2:0)+(p===w||pf===w?1:0)}}).filter(Boolean).sort((a,b)=>b.s-a.s)}
 function hospBest(cname,office,cm){const cs=hospCands(cname,office,cm);return cs.length&&(!cs[1]||cs[0].s>cs[1].s)?cs[0].u:null}
 function hospAuto(hs,office,cm,date,rec,fe){const now=new Date().toISOString(),c=DB.cms.find(x=>x.id===cm),ops=[];
@@ -3373,7 +3373,8 @@ function partyHtml(st,k,officeId){const p=st.party||"ケアマネ",u=st.client?c
 window.partySet=(k,p)=>{const s=PST(k);if(!s)return;if(k==="ci")ciKeep();s.party=p;if(p!=="利用者"){s.client="";s.cname=""}render()};
 window.partyClient=(k,v)=>{const s=PST(k);if(!s)return;if(k==="ci")ciKeep();const raw=String(v||"").trim();
  let u=DB.clients.find(x=>clientLabel(x)===raw)||DB.clients.find(x=>String(x.name)===raw);
- if(!u&&raw){const w=pnorm(raw.replace(/（.*$/,"")),hit=DB.clients.filter(x=>pnorm(x.name).includes(w));if(hit.length===1)u=hit[0];else{s.client="";s.cname=raw.replace(/（.*$/,"");if(hit.length)toast("候補が"+hit.length+"人います。登録の方なら一覧から選んでください");render();return}}
+ if(!u&&raw){/* 名前の頭から合う人だけ（町名とつながった途中では当てない）11/15 */
+ const w=pnorm(raw.replace(/（.*$/,"").replace(/[\s　]*様$/,"")),hit=DB.clients.filter(x=>{const k=clNameKey(x);return k.full&&(k.full===w||k.full.startsWith(w)||(k.sur.length>=2&&w===k.sur))});if(hit.length===1)u=hit[0];else{s.client="";s.cname=raw.replace(/（.*$/,"");if(hit.length)toast("候補が"+hit.length+"人います。登録の方なら一覧から選んでください");render();return}}
  if(!u){s.client="";s.cname="";render();return}
  s.cname="";
  s.client=u.id;const uof=clOffice(u);
