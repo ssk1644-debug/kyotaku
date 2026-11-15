@@ -4383,7 +4383,11 @@ setTimeout(()=>{if(S.gps==="wait"){S.gps="off";renderGps()}},6000);
  const opts=inp=>{const id=inp.dataset.sg,dl=id&&document.getElementById(id);return dl?[...dl.options].map(o=>({v:o.value,l:o.label&&o.label!==o.value?o.label:(o.textContent&&o.textContent!==o.value?o.textContent:"")})):[]};
  function pick(i){const it=items[i];if(!it||!cur)return;const inp=cur;inp.value=it.v;hide();inp.dispatchEvent(new Event("input",{bubbles:true}));inp.dispatchEvent(new Event("change",{bubbles:true}))}
  function show(inp){const q=F(inp.value);if(!q){hide();return}
-  const all=opts(inp),hit=[];for(const o of all){const k=F(o.v+" "+o.l);const i=k.indexOf(q);if(i<0)continue;const kv=F(o.v),st=kv.startsWith(q)?0:/[\s　]/.test(o.v)&&F(o.v.split(/[\s　]/).slice(1).join("")).startsWith(q)?1:2;hit.push({o,st,i})}
+  /* 言葉の区切り（町名・名字・名前）の頭から合うものだけ。町名と名前をつないだ途中では当てない（11/15） */
+  const TK=t=>String(t||"").split(/[\s　（）()・,，、]+/).filter(Boolean);
+  const all=opts(inp),hit=[];for(const o of all){let st=-1,i=0;for(const src of [o.v,o.l]){const t=TK(src);for(let j=0;j<t.length;j++){if(F(t.slice(j).join("")).startsWith(q)){const r=j===0?0:1;if(st<0||r<st){st=r;i=j}break}}}
+   if(st<0&&q.length>=2){for(const src of [o.v,o.l]){if(TK(src).some(x=>F(x).includes(q))){st=2;break}}}
+   if(st>=0)hit.push({o,st,i})}
   hit.sort((a,b)=>a.st-b.st||a.i-b.i);items=hit.slice(0,30).map(x=>x.o);act=-1;
   if(!box){box=document.createElement("div");box.className="sgbox";document.body.appendChild(box);box.addEventListener("mousedown",e=>{e.preventDefault();const d=e.target.closest("[data-i]");if(d)pick(+d.dataset.i)})}
   box.innerHTML=items.length?items.map((o,i)=>`<div data-i="${i}"></div>`).join("")+(hit.length>30?`<div class="sgm">ほか ${hit.length-30}件（もう少し入れてください）</div>`:""):`<div class="sgm">候補はありません（そのままの名前で入ります）</div>`;
