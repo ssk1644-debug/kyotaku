@@ -2282,12 +2282,20 @@ function clList0(){const q=(S.clq||"").trim();let rs=DB.clients.map(clRow);
  if(q){const tk=qTokens(q);rs=rs.filter(x=>{const t=snorm([x.u.name,x.u.kana,x.u.code,x.off,x.cm,x.staff,x.u.items,x.u.tel].join(" "));return tk.every(y=>t.includes(y))})}
  const c=CL_COLS.find(x=>x[0]===(S.clSk||"town")),d=S.clSk?(S.clSd||1):1;rs.sort((a,b)=>{const x=c[2](a),y=c[2](b);return (!x&&y?1:x&&!y?-1:String(x).localeCompare(String(y),"ja")*d)||a.name.localeCompare(b.name,"ja")});
  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-  <button class="btn primary" type="button" onclick="S.clOpen='new';render()">＋ 新規利用者</button>
+  <button class="btn primary" type="button" onclick="S.clOpen='new';render()">＋ 新規利用者</button>${canImport()&&lmOnly().length?` <button class="btn sm" type="button" title="利用者マップにはいるのに、この一覧にいない人を足します" onclick="lmOnlyGo(this)">🗺 マップにだけいる人を足す（${lmOnly().length}人）</button>`:""}
   <div class="seg">${[["","利用中"],["h","入院・入所中"],["app","アプリで追加した人"],["end","終了した人"]].map(([k,l])=>`<button type="button" class="${(S.clf||"")===k?"on":""}" onclick="S.clf='${k}';render()">${l}</button>`).join("")}</div>
   <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="名前・町名・居宅・CM・担当で探す" value="${esc(S.clq||"")}" onchange="S.clq=this.value;render()"><span class="meta">${rs.length}人</span></div>
  <div class="rtw"><table class="rt"><thead><tr>${CL_COLS.map(([k,l])=>`<th style="cursor:pointer;white-space:nowrap" onclick="clSort('${k}')">${l}${(S.clSk||"town")===k?((S.clSk?(S.clSd||1):1)>0?" ▲":" ▼"):' <span class="meta">⇅</span>'}</th>`).join("")}</tr></thead><tbody>
  ${rs.slice(0,S.clAll?5000:300).map(x=>`<tr onclick="S.clOpen='${x.u.id}';render()"><td>${esc(x.town)}</td><td><b>${esc(x.name)}</b>${x.app?' <span class="ac w">アプリで追加</span>':""}${q&&x.end?' <span class="ac">終了</span>':""}</td><td>${esc(x.off)}</td><td>${esc(x.cm)}</td><td>${esc(x.staff)}</td><td>${esc(x.u.lv||"")}</td><td>${esc(x.u.items||"")}</td><td class="num" style="white-space:nowrap">${esc(x.u.tel||"")}</td><td>${x.h?`<span class="ac h">${esc(x.h.kind||"入院")}中</span>`:""}</td></tr>`).join("")||'<tr><td colspan="9" class="meta">該当なし</td></tr>'}
  </tbody></table></div>${rs.length>300&&!S.clAll?`<button class="btn sm" type="button" style="margin-top:6px" onclick="S.clAll=true;render()">すべて表示（${rs.length}人）</button>`:""}`}
+/* 利用者マップにだけいる人を利用者一覧に足す（11/16 社長）：請求のない月（入院中など）の人はケアレンツの請求データから入らないため */
+function lmOnly(){return lmRows().filter(j=>j.code&&!lmClient(j.code)&&!(j.gone))}
+window.lmOnlyGo=async b=>{const L=lmOnly();if(!L.length)return;
+ const ops=L.map(j=>{const t=String(j.nm||"").trim().split(/[\s　]+/).filter(Boolean),town=t.length>=3?t[0]:"",nm=(t.length>=3?t.slice(1):t).join(" ");
+  return {table:"clients",row:{id:"c"+j.code,code:j.code,name:(town?town+" ":"")+nm+" 様",kana:"",town,office:"",officeName:"",cm:"",cmName:"",staff:j.st||"",lv:"",useState:"利用中",items:"",addr:j.addr||"",status:"ok",recent:"マップから登録"}}});
+ if(!await uiConfirm("利用者マップにはいて、この一覧にいない "+L.length+"人 を足します。\n名前・顧客コード・担当・住所が入ります（居宅・ケアマネは空なので、分かる人は後で入れてください）。\n次にケアレンツの取り込みをした時、同じ顧客コードの人は正しい内容で上書きされます。"))return;
+ if(!await impPre("マップから利用者を足す",ops,{any:true}))return;if(b&&b.tagName)b.disabled=true;
+ try{for(let i=0;i<ops.length;i+=100)await persist(ops.slice(i,i+100));impLog("マップから利用者を足す","");toast(L.length+"人 を足しました。入退院の「⋯」→「未登録をつなぐ」も押してください");render()}catch(e){if(b&&b.tagName)b.disabled=false;toast("足せませんでした："+errText(e))}};
 function clForm(){const isNew=S.clOpen==="new",u=isNew?{name:"",lv:"",items:""}:clientOf(S.clOpen);if(!u)return "";const x=clRow(u),o=x.o,cms=o?DB.cms.filter(c=>c.office===o.id&&cst(c)==="在籍"):[];
  return `<div class="form" style="max-width:640px"><b>${isNew?"新規利用者を登録":"🧑 "+esc(u.name)}</b>
   <div class="row2"><label>町名<input id="cl-town" value="${esc(x.town)}" placeholder="例：横尾町"></label><label>氏名<input id="cl-name" value="${esc(isNew?"":x.name.replace(/ 様$/,""))}" placeholder="例：松井 太郎"></label></div>
@@ -2822,9 +2830,12 @@ function viewJimuReq(){markRead("jimu");const f=S.jf||"open",st=S.jst||"",d=dism
  (DB.msgs||[]).filter(m=>m.req==="").forEach(m=>{const l=lastOf("m:"+m.id)||m,peer=peerOf(m),done=d.has("jd:"+l.id);
   its.push({at:l.at||"",done,who:peer,html:`<div>${directItem(m,"jimu")}<div style="margin:-4px 0 8px"><button class="btn sm" type="button" onclick="dismiss('jd:${l.id}')">${done?"✓ 済":"済にする"}</button></div></div>`})});
  const cnt=k=>its.filter(x=>k==="done"?x.done:!x.done).length;
- const xs=its.filter(x=>(f==="all"||(f==="done"?x.done:!x.done))&&(!st||x.who===st)).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
- return `${hpn?`<div class="notice" style="margin-bottom:8px">🏥 確認待ちの入院・退院が <b>${hpn}件</b> あります。<button class="btn sm" type="button" onclick="S.jt='hosp';render()">入退院表で確認する</button></div>`:""}<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><div class="seg">${[["open","まだ "+cnt("open")],["done","済 "+cnt("done")],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="S.jf='${k}';render()">${l}</button>`).join("")}</div>
- <select class="sim" onchange="S.jst=this.value;render()"><option value="">営業：全員</option>${sales.map(u=>`<option value="${esc(u.email)}" ${st===u.email?"selected":""}>${esc(u.name)}</option>`).join("")}</select></div>
+ const xs=its.filter(x=>(f==="all"||(f==="done"?x.done:!x.done))&&(!st||String(x.who).toLowerCase()===String(st).toLowerCase())).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+ return `${hpn?`<div class="notice" style="margin-bottom:8px">🏥 確認待ちの入院・退院が <b>${hpn}件</b> あります。<button class="btn sm" type="button" onclick="S.jt='hosp';render()">入退院表で確認する</button></div>`:""}<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><div class="seg">${[["open","まだ "+cnt("open")],["done","済 "+cnt("done")],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="S.jf='${k}';render()">${l}</button>`).join("")}</div></div>
+ ${(()=>{/* 営業さんごとのタブ（11/16 社長：佐々木・荒木・福田・三井・郷坪の順。ほかの人はその後ろ）。数字はまだの件数 */
+  const ORD=["佐々木","荒木","福田","三井","郷坪"],rk=u=>{const n=String(u.name||"").replace(/[\s　]/g,"");const i=ORD.findIndex(o=>n.includes(o));return i<0?99:i};
+  const us=sales.slice().sort((a,b)=>rk(a)-rk(b)),lc=x=>String(x||"").toLowerCase(),n=em=>its.filter(x=>!x.done&&lc(x.who)===lc(em)).length;
+  return `<div class="seg" style="margin-bottom:8px;flex-wrap:wrap"><button type="button" class="${st?"":"on"}" onclick="S.jst='';render()">全員</button>${us.map(u=>`<button type="button" class="${lc(st)===lc(u.email)?"on":""}" onclick="S.jst='${esc(u.email)}';render()">${esc(String(u.name||"").split(/[\s　]/)[0])}${n(u.email)?` <b style="color:#c0392b">${n(u.email)}</b>`:""}</button>`).join("")}</div>`})()}
  ${todayRecs()}
  ${tbar("jr",[{id:"msg",label:"✉ 営業さんに連絡",html:()=>jMsgBox(sales)}],S.caseNew&&S.caseNew.office===""?"":`<button class="btn sm" type="button" onclick="S.caseNew={office:''};render()">＋ タスクカード</button>`)}
  ${S.caseNew&&S.caseNew.office===""?caseNewForm(""):""}
