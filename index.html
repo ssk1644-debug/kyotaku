@@ -2005,11 +2005,27 @@ function directItem(root,side){const peer=peerOf(root),key="m:"+root.id;
  <div class="thread">${[root].concat(msgsOf(key)).map(msgHtml).join("")}</div>${replyBox(key,side==="jimu"?peer:JIMU,root.office||"")}</div>`}
 function salesMsgs(){const me=myId();const ds=(DB.msgs||[]).filter(m=>m.req===""&&(m.to===me||m.from===me||MODE==="demo")).sort((a,b)=>{const la=msgsOf("m:"+a.id).concat([a]).map(x=>x.at).sort().pop(),lb=msgsOf("m:"+b.id).concat([b]).map(x=>x.at).sort().pop();return String(lb).localeCompare(String(la))}).slice(0,5);
  if(!ds.length)return "";return `<div class="section-t"><h2>事務からの連絡</h2></div><div class="log" style="margin-bottom:8px">${ds.map(m=>directItem(m,"sales")).join("")}</div>`}
+/* 依頼BOX→レンタル台帳（11/17 社長）：依頼の利用者を探して、台帳の「＋ 新しい行」に入れた状態で開く。過去のレンタルも依頼カードに出す（事務だけ） */
+const RQ_ITEM=[[/ベッド|ベット/,"ベット"],[/車いす|車イス|車椅子/,"車椅子"],[/歩行器|歩行車|カウサポ|シルバーカー/,"歩行器"],[/手すり|手摺/,"手すり"],[/杖|つえ/,"杖"],[/スロープ/,"スロープ"],[/マット|床ずれ|褥瘡/,"床ずれ予防"],[/リフト/,"リフト"],[/吸引/,"吸引器"]];
+function reqCli(r){const c=caseOfReq(r),rec=r.rec?DB.records.find(x=>x.id===r.rec):null;
+ const id=(c&&c.client)||(rec&&rec.client)||r.client||"";if(id&&clientOf(id))return clientOf(id);
+ const m=String(r.text||"").match(/([^\s　、。・「」()（）]{1,8})[\s　]*様/);if(!m)return null;const L=(q=>DB.clients.filter(u=>(k=>k.full===q||k.sur===q)(clNameKey(u))))(pnorm(m[1]));
+ if(L.length===1)return L[0];const f=findClient(m[1]);return f||null}
+const reqName=r=>{const m=String(r.text||"").match(/([^\s　、。・「」()（）]{1,8})[\s　]*様/);return m?m[1]:""};
+const reqItem=r=>{const t=String(r.text||"");const x=RQ_ITEM.find(([re])=>re.test(t));return x?x[1]:""};
+function reqRentals(r){const u=reqCli(r),n=u?"":reqName(r);if(!u&&!n)return [];
+ return (DB.rentals||[]).filter(x=>x.state!=="削除"&&(u?(x.client===u.id||rtCliId(x)===u.id):String(x.cname||"").replace(/[\s　]/g,"").startsWith(n))).sort((a,b)=>String(b.deliv||"").localeCompare(String(a.deliv||"")))}
+function reqRtBox(r){if(!seeJimu())return "";const rs=reqRentals(r);
+ return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0"><button class="btn sm" type="button" onclick="reqToRt('${r.id}')">📦 台帳に行を作る</button>${rs.length?`<details style="flex:1 1 100%"><summary class="meta" style="cursor:pointer">この人の過去のレンタル（${rs.length}件）</summary><div class="meta" style="margin:4px 0 0 8px">${rs.slice(0,10).map(x=>`<div>${esc(isD(x.deliv)?x.deliv.slice(2).replace(/-/g,"/"):x.deliv||"")} ${esc(x.item||"")}${x.jflag?` <span class="ac o">${esc(x.jflag)}</span>`:""}${x.biko||x.memo?` <span>${esc(String(x.biko||x.memo).slice(0,30))}</span>`:""}</div>`).join("")}</div></details>`:`<span class="meta">過去のレンタルなし</span>`}</div>`}
+window.reqToRt=id=>{const r=(DB.reqs||[]).find(x=>x.id===id);if(!r)return;const u=reqCli(r),c=caseOfReq(r);
+ const o=u?DB.offices.find(x=>x.id===clOffice(u)):DB.offices.find(x=>x.id===r.office),cm=u?DB.cms.find(x=>x.id===u.cm):DB.cms.find(x=>x.id===r.cm);
+ S.rtPre={req:id,cid:u?u.id:"",name:u?cliBare(u):reqName(r),item:reqItem(r),kubun:/再デモ|再選定/.test(String(r.text||""))?"再新規":"新規",o:o?o.name:"",c:cm?cm.name:"",s:stUni((u&&u.staff)||r.staff||(r.email?uName(r.email):"")||"")};
+ S.view="jimu";S.jt="ledger";render();scrollTo(0,0);if(!u)toast("利用者一覧で見つからなかったので、名前を選び直してください")};
 function jReqItem(r){const o=DB.offices.find(x=>x.id===r.office)||{name:""},cm=DB.cms.find(c=>c.id===r.cm),rec=r.rec?DB.records.find(x=>x.id===r.rec):null;
  const stt=r.state==="済"?"済":r.state==="対応中"?"対応中":"未対応",cls={"未対応":"","対応中":"st-doing","済":"st-done"}[stt];
  return `<div class="jreq ${cls}"><div class="meta">${fmtAt(r.at)} ・ ${esc(r.staff||uName(r.email))}${o.name?" ・ "+esc(o.name):""}${cm?" ・ CM "+esc(cm.name):""}</div>
  ${(c=>c?`<div class="chead">🗂 ${esc(caseHead(c))}</div>`:"")(caseOfReq(r))}<div style="font-size:17px;font-weight:700;margin:2px 0;white-space:pre-wrap">${esc(r.text)}</div>${reqPhotos(r)}
- ${rec?`<details><summary class="meta" style="cursor:pointer">${rec.kind==="電話"?"電話":"面談"}の内容を見る（${esc(rec.date)}）</summary><div style="white-space:pre-wrap;font-size:16px">${esc(rec.text)}</div>${rec.next?`<div class="meta">次回：${esc(rec.next)}</div>`:""}</details>`:""}
+ ${rec?`<details><summary class="meta" style="cursor:pointer">${rec.kind==="電話"?"電話":"面談"}の内容を見る（${esc(rec.date)}）</summary><div style="white-space:pre-wrap;font-size:16px">${esc(rec.text)}</div>${rec.next?`<div class="meta">次回：${esc(rec.next)}</div>`:""}</details>`:""}${reqRtBox(r)}
  ${stt==="済"&&jKept(r.id)?`<div class="jdone">✓ 済にしました <button class="btn sm" type="button" onclick="jState('${r.id}','未対応',this)">元に戻す</button></div>`:""}
 
  <div class="seg" style="margin:8px 0 2px">${["未対応","対応中","済"].map(x=>`<button type="button" class="${stt===x?"on":""}" onclick="jState('${r.id}','${x}',this)">${x}</button>`).join("")}</div>
@@ -2124,6 +2140,7 @@ function rtLedger(){const rs=rtList(),st=rtStaffs();
   ${canImport()&&(S.rtImpShow||S.rtImp)?`<label class="meta" style="display:flex;gap:4px;align-items:center">取り込む期間：納品日<input type="date" class="sim" id="rt-since" value="${rtSinceDef()}">以降</label>
   <label class="btn" for="rtx" style="display:inline-flex">Excel を取り込む</label><input type="file" id="rtx" accept=".xlsx,.xlsm,.xls" onchange="S.rtSince=($('#rt-since')||{}).value;rtImport(this)" style="position:absolute;opacity:0;width:1px;height:1px"><button class="btn sm" type="button" onclick="S.rtImpShow=false;S.rtImp='';render()">取り込みを閉じる</button>`:""}</div>
  <div id="rtImp">${S.rtImp||""}</div>
+ ${rtAddBar()}
  ${(S.rf||"hot")==="hot"?(c=>`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="btn sm ${S.rwK?"":"primary"}" type="button" onclick="S.rwK='';render()">すべて</button>${RT_LATE.map(L=>{const v=c[L[0]];return v?`<button class="btn sm ${S.rwK===L[0]?"primary":""}" type="button" style="${v.red&&S.rwK!==L[0]?"border-color:#c0392b;color:#c0392b":""}" onclick="S.rwK='${L[0]}';render()">${L[1]} ${esc(L[2].replace(/！$/,""))} ${v.n}${v.red?`（赤 ${v.red}）`:""}</button>`:""}).join("")}</div>`)(rtLateSum()):""}
  <div class="rtw"><table class="rt"><thead><tr><th>納品日</th><th>利用者</th><th>品目</th><th>居宅</th><th>担当</th><th>進み具合</th><th>要注意</th></tr></thead><tbody>
  ${rs.slice(0,S.rtAll?5000:300).map(r=>{const a=rtAlerts(r);return `<tr onclick="S.rtOpen='${r.id}';render()" style="${rtStop(r)?"opacity:.5;background:#f2f2f2":""}"><td class="num">${rtStop(r)?`<span class="ac o">${esc(r.jflag)}</span> `:""}${esc(isD(r.deliv)?r.deliv.slice(2).replace(/-/g,"/"):r.deliv||"")}</td><td><b>${esc(r.cname||"")}</b></td><td>${esc(r.item||"")}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.officeName||"")}">${esc(String(r.officeName||"").replace(/居宅介護支援事業所|居宅介護支援センター|介護支援センター|ケアプランセンター/g,"").trim()||r.officeName||"")}</td><td>${esc(r.staff||"")}</td><td>${rtProgHtml(r)}</td><td>${rtLateHtml(r)||rtWarn(a)}</td></tr>`}).join("")}
@@ -2329,6 +2346,23 @@ function rtDetail(){const isNew=S.rtOpen==="new",r=isNew?{id:"",deliv:"",input:"
  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${back}
   ${isNew?"":`<button class="btn" type="button" onclick="rtMsg('${r.id}')">📨 この件で営業さんに連絡</button><button class="btn sm" type="button" style="color:var(--alert)" onclick="rtDel('${r.id}',this)">削除</button>`}</div>
  ${isNew?"":`<div id="rtMsgBox">${S.rtMsg===r.id?`<div class="form" style="margin-top:10px"><b>${esc(r.staff||"")}さんに連絡</b><textarea id="mr-new" rows="2">${esc((r.cname||"")+"様・"+(r.item||"")+"："+(a?RT_KEYS.filter(([k])=>a[k].k==="r"||a[k].k==="o").map(([k,l])=>l+" "+a[k].t).join("、"):""))}</textarea><select id="jto" class="sim"><option value="${esc(staffEmail(r.staff))}">${esc(r.staff||"選ぶ")}</option>${(DB.users||[]).map(x=>`<option value="${esc(x.email)}">${esc(x.name)}</option>`).join("")}</select><div><button class="btn primary" type="button" onclick="msgSend('new','','${esc(r.office||"")}',this)">送る</button></div></div>`:""}</div>`}</div>`}
+/* レンタル台帳も表の上から「＋ 新しい行」（11/17 社長）：名前→候補（マップの人も）。選ぶと居宅・CM・担当が自動で入り、直せる */
+function rtAddBar(){const P=S.rtPre||{},opt=k=>rtOpts(k).map(v=>`<option ${(k==="item"?P.item===v:(P.kubun||"新規")===v)?"selected":""}>${esc(v)}</option>`).join("");
+ return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0;padding:6px 8px;border:1px dashed #8e44ad;border-radius:10px"><b style="color:#8e44ad">＋ 新しい行</b>
+ <input id="rta-n" list="rtaCl" placeholder="利用者の名前" style="min-width:150px;padding:4px 6px" onchange="rtaPick(this)" data-cid="${esc(P.cid||"")}" value="${esc(P.name||"")}"><datalist id="rtaCl">${DB.clients.map(clOpt).join("")}${hmMapOpts()}</datalist>
+ <select id="rta-i" class="sim"><option value="">品目</option>${opt("item")}</select><select id="rta-k" class="sim">${opt("kubun")}</select>
+ <label class="meta" style="display:flex;gap:4px;align-items:center">納品日<input id="rta-d" type="date" class="sim" value="${today()}"></label>
+ <input id="rta-o" list="rtaOf" placeholder="居宅" class="sim" style="width:170px" value="${esc(P.o||"")}"><datalist id="rtaOf">${DB.offices.map(o=>`<option value="${esc(o.name)}">`).join("")}</datalist>
+ <input id="rta-c" placeholder="担当CM" class="sim" style="width:100px" value="${esc(P.c||"")}"><input id="rta-s" list="rtaSt" placeholder="担当営業" class="sim" style="width:90px" value="${esc(P.s||"")}"><datalist id="rtaSt">${rtStaffs().filter(x=>x!=="（担当なし）").concat((DB.users||[]).map(x=>stUni(x.name))).filter((x,i,a)=>x&&a.indexOf(x)===i).map(n=>`<option value="${esc(n)}">`).join("")}</datalist>
+ <button class="btn sm primary" type="button" onclick="rtAddGo(this)">追加</button>${S.rtPre?`<span class="meta" style="background:#fff8e1;border-radius:8px;padding:2px 8px">📨 依頼BOXから入れました・確認して「追加」</span><button class="btn sm" type="button" onclick="S.rtPre=null;render()">✕</button>`:`<span class="meta">ほかの項目は行を開いて入れられます</span>`}</div>`}
+window.rtaPick=async el=>{await hmCliPick(el);const u=el.dataset.cid?clientOf(el.dataset.cid):null;if(!u)return;
+ const o=DB.offices.find(x=>x.id===clOffice(u)),cm=DB.cms.find(c=>c.id===u.cm),set=(k,x)=>{const f=$("#rta-"+k);if(f&&x)f.value=x};
+ set("o",o?o.name:"");set("c",cm?cm.name:"");set("s",stUni(u.staff||""))};
+window.rtAddGo=async b=>{const g=k=>String(($("#rta-"+k)||{}).value||"").trim(),el=$("#rta-n"),cv=g("n");if(!cv){toast("利用者の名前を入れてください");return}
+ const u=(el.dataset.cid&&clientOf(el.dataset.cid))||findClient(cv)||null,on=g("o"),o=DB.offices.find(x=>x.name===on);
+ const row={id:newId("x"),cname:u?cliBare(u):cv.replace(/[\s　]*様$/,""),client:u?u.id:"",item:g("i"),kubun:g("k"),deliv:g("d"),officeName:on,office:o?o.id:"",cmName:g("c"),staff:g("s"),createdAt:new Date().toISOString(),state:""};
+ const pr=S.rtPre&&S.rtPre.req;if(pr)row.memo="依頼BOX "+md(today())+" から";
+ b.disabled=true;try{await persist([{table:"rentals",row}]);buzz(60);S.rtPre=null;S.rf="all";S.rq2="";toast("追加しました（ほかの項目は行を開いて）");render()}catch(e){b.disabled=false;toast("追加できませんでした："+errText(e))}};
 window.rtTg=b=>{const v=b.dataset.v;b.dataset.v=v==="済"?"":"済";b.classList.toggle("on",b.dataset.v==="済");b.textContent=(b.dataset.v==="済"?"✓ ":"")+b.textContent.replace(/^✓ /,"").replace(/：.*$/,"")};
 window.rtMsg=id=>{S.rtMsg=S.rtMsg===id?null:id;render()};
 window.rtSave=async(id,b)=>{const row={id:id||newId("x")},g=k=>{const el=$("#rt-"+k);return el?el.value.trim():undefined};
