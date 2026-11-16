@@ -1747,9 +1747,41 @@ function addFound(d,rec,office,cm,date,who){d=d||{};
  /* 新規の方の入院・退院：入退院表には入れず、請求開始の参考として事務へ知らせる（11/11 社長） */
  if(who&&who.nw)(Array.isArray(d.hosp)?d.hosp:[]).filter(x=>x&&(x.date||x.outPlan||x.note||x.kind)).forEach(x=>{const dt=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||""))?String(v):"",od=dt(x.date),op=dt(x.outPlan),out=x.kind==="退院";
   items.push({t:"【新規 "+who.nw+"様・請求開始の参考】"+(out?"退院"+(od?" "+md(od):"（日にち未定）"):"入院中"+(op?"・退院予定 "+md(op):"")+(od?"（入院 "+md(od)+"）":""))+(x.note?" ・"+String(x.note).trim():""),date:out?od:op,def:"jimu",st:""})});
- const nx=String(d.next||"").trim();if(nx&&!items.some(x=>x.t===nx))items.push({t:nx,date:"",def:/事務|FAX|ＦＡＸ|書類を送|手配/.test(nx)?"jimu":"sched",st:""});
+ /* 「次回」の一文に日時があれば読み取る（11/16 社長：日時が決まった用事は必ずカレンダーへ）。同じ日時の予定がもう見つかっていれば重ねない */
+ const nx=String(d.next||"").trim(),nd=nxDate(nx,date);
+ if(nx&&!items.some(x=>x.t===nx)&&!(nd.date&&items.some(x=>x.date===nd.date&&(!nd.time||!x.time||x.time===nd.time))))items.push({t:nx,date:nd.date,time:nd.time,def:/事務|FAX|ＦＡＸ|書類を送|手配/.test(nx)&&!nd.date?"jimu":"sched",st:""});
  const fe={id:newId("f"),rec,office,cm,date,events:[],reqs:[],cases:cs,hosp:[],hospAuto:hs.length,items,sent:false};
- if(items.length||hs.length||cs.length)FOUND.push(fe);if(hs.length)hospAuto(hs,office,cm,date,rec,fe)}
+ if(items.length||hs.length||cs.length){FOUND.push(fe);fdAuto(fe)}if(hs.length)hospAuto(hs,office,cm,date,rec,fe)}
+/* 文の中の日時を読む：「11/16(月)16:30〜」「11月20日 14時」など。年は記録の日付から決める */
+function nxDate(t,base){t=String(t||"").normalize("NFKC");const m=t.match(/(\d{1,2})\s*[\/月]\s*(\d{1,2})\s*日?/);if(!m)return {date:"",time:""};
+ const b=new Date(String(base||today())+"T00:00:00"),mo=+m[1],dy=+m[2];if(mo<1||mo>12||dy<1||dy>31)return {date:"",time:""};
+ let y=b.getFullYear();if(mo<b.getMonth()+1-6)y++;const date=y+"-"+String(mo).padStart(2,"0")+"-"+String(dy).padStart(2,"0");
+ const rest=t.slice(m.index+m[0].length),tm=rest.match(/(?:^|[^\d])(\d{1,2})\s*(?::|時)\s*(\d{2})?/);
+ const time=tm&&+tm[1]<24?String(+tm[1]).padStart(2,"0")+":"+(tm[2]||(/時\s*半/.test(rest)?"30":"00")):"";return {date,time}}
+const schedDup=(office,date,time)=>(DB.sched||[]).some(s=>s.state!=="削除"&&s.date===date&&(s.office||"")===(office||"")&&(!time||!s.time||s.time===time));
+/* 日時が決まった用事は、押さなくても自動で予定（やること・カレンダー）に入れる。時間変更らしい時だけ、前の予定を直すか聞く */
+function fdAuto(fe){const rows=[],xs=[];(fe.items||[]).forEach(x=>{if(x.st||x.def!=="sched"||!x.date||!String(x.t||"").trim())return;
+  if(x.fix&&fxCands(fe,x).length)return;
+  if(schedDup(fe.office,x.date,x.time)){x.st="sched";x.dup=true;return}
+  const row=fdSchedRow(fe,x);rows.push({table:"sched",row});x.st="sched";x.auto=true;x.sid=row.id;xs.push(x)});
+ if(!rows.length)return;
+ persist(rows).then(()=>{toast("📅 日時の決まった用事 "+rows.length+"件 を予定に入れました");try{render()}catch(e){}}).catch(e=>{xs.forEach(x=>{x.st="";x.auto=false;x.sid=""});toast("予定に入れられませんでした："+errText(e));try{render()}catch(_){}})}
+window.fdUndo=async(fi,i,b)=>{const f=FOUND[fi],x=f&&f.items&&f.items[i];if(!x||!x.sid)return;if(b)b.disabled=true;
+ try{await persist([{table:"sched",row:{id:x.sid,state:"削除"}}]);x.st="";x.auto=false;x.sid="";x.def="";toast("予定から外しました");render()}catch(e){if(b)b.disabled=false;toast("外せませんでした："+errText(e))}};
+/* まだ決めていない用事は、読み込み直しても残す（この端末に覚える。7日で消える） */
+const FD_K="kyotaku-found";let FD_LD=false;
+function fdStash(){if(!FD_LD)return;try{localStorage.setItem(FD_K,JSON.stringify({me:myId(),mode:MODE,f:FOUND.filter(f=>f.items).map(f=>Object.assign({},f,{hospOps:null}))}))}catch(e){}}
+function fdLoad(){if(FD_LD)return;FD_LD=true;try{const j=JSON.parse(localStorage.getItem(FD_K)||"null");if(j&&j.me===myId()&&j.mode===MODE&&Array.isArray(j.f))j.f.forEach(f=>{if(f&&f.id&&f.items&&daysFrom(f.date)<=7&&!FOUND.some(x=>x.id===f.id)){if(f.hospSt==="busy")f.hospSt="ok";FOUND.push(f)}})}catch(e){}}
+/* 今ある記録の「次回」に日時があるのに、予定に入っていないもの（やることの上に出す） */
+function nxMiss(){const t=today(),nm=USER?USER.name:"";return (DB.records||[]).filter(r=>r.kind!=="削除"&&r.kind!=="ネタ"&&r.next&&(MODE==="demo"||r.staff===nm)&&daysFrom(r.date)<=60).map(r=>({r,d:nxDate(r.next,r.date)})).filter(x=>x.d.date&&x.d.date>=t&&!schedDup(x.r.office,x.d.date,x.d.time)&&!lsSet("kyotaku-nx-skip").has(x.r.id)).sort((a,b)=>a.d.date.localeCompare(b.d.date))}
+function nxMissBox(){const L=nxMiss();if(!L.length)return "";
+ return `<div class="form" style="margin-bottom:10px;border-color:#2e86de"><b>📅 記録の「次回」にあるのに、予定に入っていない ${L.length}件</b>
+ ${L.slice(0,8).map(({r,d})=>{const o=DB.offices.find(x=>x.id===r.office);return `<div style="border-top:1px solid var(--line);padding:5px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="flex:1;min-width:180px"><b>${esc(fxDt(d.date,d.time))}</b> ${esc(String(r.next).slice(0,50))} <span class="meta">${esc(o?o.name:"")}</span></span><button class="btn sm primary" type="button" onclick="nxAdd('${r.id}',this)">予定に入れる</button><button class="btn sm" type="button" onclick="nxSkip('${r.id}')">いらない</button></div>`}).join("")}
+ ${L.length>1?`<div><button class="btn sm" type="button" onclick="nxAdd('',this)">${L.length}件まとめて予定に入れる</button></div>`:""}</div>`}
+window.nxAdd=async(id,b)=>{const L=nxMiss().filter(x=>!id||x.r.id===id);if(!L.length)return;if(b)b.disabled=true;
+ const rows=L.map(({r,d})=>({table:"sched",row:fdSchedRow({office:r.office,cm:r.cm||""},{t:r.next,date:d.date,time:d.time})}));
+ try{await persist(rows);toast(rows.length+"件を予定に入れました");render()}catch(e){if(b)b.disabled=false;toast("入れられませんでした："+errText(e))}};
+window.nxSkip=id=>{const k="kyotaku-nx-skip",s=lsSet(k);s.add(id);try{localStorage.setItem(k,JSON.stringify([...s].slice(-300)))}catch(e){}render()};
 /* 入院・退院の話は「確認待ち」で入退院表へ自動で入れる。利用者は名前だけなので候補を探し、1人にしぼれたときだけ仮に入れる */
 const clBare=u=>{const n=String(u.name||"");return u.town&&n.startsWith(u.town+" ")?n.slice(u.town.length+1):nmBare(n)};
 function hospCands(cname,office,cm){const w=pnorm(String(cname||"").replace(/様$/,""));if(!w)return [];
@@ -1847,23 +1879,27 @@ window.fdFix=async(fi,i,sid,b)=>{const f=FOUND[fi],x=f&&f.items&&f.items[i],s=(D
  catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e))}};
 /* 記録を保存した直後のカード：見つかったやることを1件ずつ「予定に入れる／事務に連絡／いらない」で振り分ける */
 function fcardsHtml(f,fi){const o=DB.offices.find(x=>x.id===f.office),cm=DB.cms.find(c=>c.id===f.cm),its=f.items||[],left=its.filter(x=>!x.st).length;
- const lbl={sched:"✓ 予定に入れました",jimu:"✓ 事務にお願いしました",drop:"いらない",fix:"✓ 前の予定を直しました"};
+ const lbl={sched:"📅 予定に入れました",jimu:"📨 事務にお願いしました",drop:"✔ 記録だけ",fix:"✓ 前の予定を直しました",case:"🗂 案件（タスクカード）にしました"};
  return `<div class="form found" style="border-color:var(--accent);margin:8px 0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>記録を保存しました。${its.length?"会話から "+its.length+"件 見つかりました":""}</b></div>
  <div class="meta">${esc(o?o.name:"")}${cm?" ・ "+esc(cm.name):""} ・ ${esc(f.date)} の記録から ・ AIのおすすめに色が付いています</div>
  ${(f.cases||[]).length?fcHtml(f,fi):""}
  ${(f.hosp||[]).length?fhHtml(f,fi):""}${f.hospAuto?`<div style="margin-top:8px"><b>🏥 入院・退院の知らせ</b>${f.hospSt==="err"?`<div class="meta" style="color:var(--alert);font-weight:700">⚠ ${f.hospAuto}件を入退院表に入れられませんでした（${esc(f.hospErr||"")}）</div><button class="btn sm" type="button" onclick="haRetry('${f.id}')">もう一度入れる</button>`:f.hospSt==="busy"?`<div class="meta">⏳ ${f.hospAuto}件を入退院表に入れています…</div>`:`<div class="meta">✅ ${f.hospAuto}件を「確認待ち」で入退院表に入れました。利用者が合っているかは、入退院表（事務所）で確認します。</div>`}</div>`:""}
- ${its.map((x,i)=>{if(x.st)return `<div class="logi"><span class="meta">${lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}${x.st==="fix"&&x.fixFrom?` <span class="meta">（${esc(x.fixFrom)} → ${esc(fxDt(x.date,x.time))}）</span>`:""}</div>`;const fx=fxCands(f,x);return `<div class="fcard">
+ ${its.map((x,i)=>{if(x.st)return `<div class="logi"><span class="meta">${x.dup?"📅 もう予定に入っています":x.auto?"📅 自動で予定に入れました（"+esc(fxDt(x.date,x.time))+"）":lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}${x.auto&&x.sid?` <button class="btn sm" type="button" style="padding:1px 8px" onclick="fdUndo(${fi},${i},this)">取り消す</button>`:""}${x.st==="fix"&&x.fixFrom?` <span class="meta">（${esc(x.fixFrom)} → ${esc(fxDt(x.date,x.time))}）</span>`:""}</div>`;const fx=fxCands(f,x);return `<div class="fcard">
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="date" value="${esc(x.date||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].date=this.value;render()" aria-label="日付"><input type="time" value="${esc(x.time||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].time=this.value;render()" aria-label="時間"><span class="meta">${x.date?"":"日付なしでも入れられます"}</span></div>
   <textarea rows="2" oninput="FOUND[${fi}].items[${i}].t=this.value">${esc(x.t)}</textarea>
   ${fx.length?`<div style="margin:4px 0 6px;padding:6px 8px;border-radius:8px;background:#fff6d6;border:1px solid #f0a500"><div class="meta" style="font-weight:700">🔁 ${x.fix?"時間の変更・確定の連絡のようです。":"同じ件の予定がもう入っているかも。"}前の予定を直しますか？</div>
    ${fx.map(s=>`<div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap"><span class="meta" style="flex:1;min-width:150px">${esc(fxDt(s.date,s.time))} ${esc(String(s.text||"").slice(0,28))}</span><button class="btn sm ${x.fix?"primary":""}" type="button" onclick="fdFix(${fi},${i},'${s.id}',this)">→ ${esc(fxDt(x.date,x.time))} に直す</button></div>`).join("")}
    <div class="meta" style="margin-top:2px">新しい別の予定なら「予定に入れる」を押してください。</div></div>`:""}
-  <div style="display:flex;gap:6px"><button class="btn sm ${x.def==="sched"&&!(x.fix&&fx.length)?"primary":""}" type="button" style="flex:1" onclick="fdDo(${fi},${i},'sched',this)">予定に入れる</button><button class="btn sm ${x.def==="jimu"?"primary":""}" type="button" style="flex:1" onclick="fdDo(${fi},${i},'jimu',this)">事務にお願い</button><button class="btn sm" type="button" onclick="fdDo(${fi},${i},'drop',this)">いらない</button></div></div>`}).join("")}
+  <div class="meta" style="font-weight:700;margin-top:2px">この用事はどうする？ <span style="font-weight:400">（色付きがおすすめ）</span></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><button class="btn sm ${x.def==="sched"&&!(x.fix&&fx.length)?"primary":""}" type="button" onclick="fdDo(${fi},${i},'sched',this)">📅 ${x.date?"予定に入れる":"やることに入れる"}</button><button class="btn sm" type="button" onclick="fdDo(${fi},${i},'case',this)">🗂 続きがある案件</button><button class="btn sm ${x.def==="jimu"?"primary":""}" type="button" onclick="fdDo(${fi},${i},'jimu',this)">📨 事務にお願い</button><button class="btn sm" type="button" onclick="fdDo(${fi},${i},'drop',this)">✔ 記録だけ</button></div></div>`}).join("")}
  <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" type="button" onclick="fdClose(${fi})">閉じる</button>${left?`<span class="meta">押していない${left}件は「やること（日付なし）」に入ります</span>`:""}</div></div>`}
 window.fdDo=async(fi,i,act,b)=>{const f=FOUND[fi],x=f&&f.items&&f.items[i];if(!x)return;
  if(act==="drop"){x.st="drop";fdTidy(fi);render();return}
  if(!String(x.t||"").trim()){toast("内容を入れてください");return}if(b)b.disabled=true;
  try{if(act==="sched")await persist([{table:"sched",row:fdSchedRow(f,x)}]);
+  else if(act==="case"){const r=(DB.records||[]).find(y=>y.id===f.rec),cl=r&&r.party==="利用者"&&r.client&&clientOf(r.client)?r.client:"";
+   const row=newCaseRow({client:cl,clientName:cl?"":(r?recNewName(r)||"":""),office:f.office,cm:f.cm&&f.cm!=="none"?f.cm:"",type:"その他",title:firstLine(x.t).slice(0,40),due:x.date||"",next:String(x.t).trim()});
+   await persist([{table:"cases",row},clog(row.id,"会話",String(x.t).trim(),f.rec)])}
   else{if(!DB.offices.some(o=>o.id===f.office)){toast("居宅を選んでください");if(b)b.disabled=false;return}
    await persist([{table:"reqs",row:{id:newId("q"),office:f.office,cm:f.cm&&f.cm!=="none"?f.cm:"",rec:f.rec||"",text:String(x.t).trim(),staff:USER?USER.name:"デモ",state:"未対応",at:new Date().toISOString()}}])}
   x.st=act;buzz(40);fdTidy(fi);render()}
@@ -3334,7 +3370,7 @@ function viewTodo(){markRead("sales");const t=today(),list=schedMine(),open=list
  ${users.length?`<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:8px">担当者 <select class="sim" onchange="S.schedWho=this.value;render()"><option value="">全員</option>${users.map(([e,n])=>`<option value="${esc(e)}" ${S.schedWho===e?"selected":""}>${esc(n)}</option>`).join("")}</select></label>`:""}
  ${S.schedEdit?schedForm():""}
  ${news.length?`<div class="section-t"><h2 style="font-size:16px;color:var(--accent)">連絡（事務・営業から）</h2><span class="meta">${news.length}件</span></div><div class="log">${news.map(x=>`<div>${x.html}<div style="margin:-4px 0 8px"><button class="btn sm" type="button" onclick="dismiss('${x.k}')">✓ 確認した</button></div></div>`).join("")}</div>`:""}
- ${rtLateBox()}${ctGoBox()}${myDemoBox()}${waitsBox(false)}${seeAllRec()&&MODE==="live"?waitsBox(true,"⚠ 全員の待ち（期限切れ・明日まで）").replace(/^/,""):""}
+ ${S.view==="sched"?foundBox()+nxMissBox():""}${rtLateBox()}${ctGoBox()}${myDemoBox()}${waitsBox(false)}${seeAllRec()&&MODE==="live"?waitsBox(true,"⚠ 全員の待ち（期限切れ・明日まで）").replace(/^/,""):""}
  ${casesSection("")}
  ${grp.map(([h,f])=>{const xs=open.filter(f);return xs.length?`<div class="section-t"><h2 style="font-size:16px${h.startsWith("期限")?";color:#c0392b":""}">${h}</h2><span class="meta">${xs.length}件</span></div><div class="log">${xs.map(s=>schedItem(s,true)).join("")}</div>`:""}).join("")}
  ${open.length||news.length?"":`<div class="empty">今やることはありません。「＋ 予定を入れる」か、記録を保存したあとのカードから入れられます。</div>`}
@@ -4340,6 +4376,7 @@ function viewLogin(){
  </div>`}
 function render(){
  if(S.view!=="umap")window.__lmAway=true;
+ try{fdStash()}catch(e){}
  renderGps();
  const gated=MODE==="setup"||(MODE==="live"&&(!USER||S.loading));
  document.querySelector(".tabs").hidden=gated;sim.hidden=gated||MODE==="live";
@@ -4347,6 +4384,7 @@ function render(){
   const mb=$("#modeBtn");if(mb){mb.hidden=!(MODE==="live"&&USER&&(USER.role==="admin"||isBoth())&&!S.loading);mb.innerHTML=jm?"🚗 営業<span class=\"ml\">の画面へ</span>":"🏢 事務<span class=\"ml\">所の画面へ</span>"}document.body.classList.toggle("jmm",!!jm)}
  if(MODE==="setup"){$("#app").innerHTML=viewSetup();return}
  if(gated){$("#app").innerHTML=viewLogin();renderGisButton();return}
+ try{fdLoad()}catch(e){}
  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.v===S.view));jimuTabsUpd();
  if((isJimu()||(JIMU_URL&&seeJimu()&&!S.jimuInit))&&["visit","cards","sched"].includes(S.view)){S.view="jimu";S.jimuInit=true}
  document.body.classList.toggle("wide",S.view==="jimu"||S.view==="umap");
