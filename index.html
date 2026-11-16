@@ -243,7 +243,9 @@ tr.hmgrey td{background:#eee!important;color:#888}tr.hmgrey input,tr.hmgrey sele
 .ct-st{font-weight:700;color:var(--c);font-size:15px}.ct-next{font-size:15px}
 .c-new{--c:#7f8c8d}.c-go{--c:#2e86de}.c-wait{--c:#c89200}.c-done{--c:#1e8449}
 .ctile.over{border-color:var(--alert);box-shadow:inset 0 0 0 2px var(--alert)}.ovt{color:var(--alert);font-weight:700}
-.steps{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.steps button{border:2px solid var(--c);background:var(--surface);color:var(--c);border-radius:999px;padding:8px 14px;font-weight:700;font-size:15px}.steps button.past{background:var(--bg);opacity:.75}.steps button.on{background:var(--c);color:#fff}
+.steps{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.cvsteps button{padding:4px 12px;font-size:14px}
+@media(min-width:900px){.cvgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}}.steps button{border:2px solid var(--c);background:var(--surface);color:var(--c);border-radius:999px;padding:8px 14px;font-weight:700;font-size:15px}.steps button.past{background:var(--bg);opacity:.75}.steps button.on{background:var(--c);color:#fff}
 .log>*{min-width:0}.rrow{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:6px 9px}.rrow>summary{cursor:pointer;list-style:none}.rrow>summary::-webkit-details-marker{display:none}
 .rr1{font-size:16px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rrow[open] .rr1{display:none}.rrow[open]>summary{margin-bottom:6px}
 .cchip{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px;margin-left:4px;color:#fff;background:var(--c)}
@@ -553,7 +555,7 @@ function onPos(lat,lng,src){
  if(n && n.d>ARRIVE_M*2 && S.autoOpened===n.o.id) S.autoOpened=null;
  renderGps();
  if(src==="sim"){render();return}
- if(typing()||SC.stage!=="idle"||RC.on)return;
+ if(editingNow()||SC.stage!=="idle"||RC.on)return;
  if(S.view==="list"&&S.listMode==="map"&&!opened)return;
  if(S.view==="umap"&&!opened)return;
  let moved=true;if(S.view==="list"&&!opened&&!first){const lp=S.lastListPos;moved=!lp||dist(lp.lat,lp.lng,lat,lng)>50}
@@ -622,7 +624,7 @@ function viewVisit(){
  const allCms=DB.cms.filter(c=>c.office===o.id),cms=allCms.filter(c=>cst(c)==="在籍"),gone=allCms.filter(c=>cst(c)==="退職"||cst(c)==="異動");
  const d=S.pos&&o.lat!=null?dist(S.pos.lat,S.pos.lng,o.lat,o.lng):null;
  const here=d!==null&&d<=ARRIVE_M;
- const recs=DB.records.filter(r=>r.office===o.id).sort((a,b)=>b.date.localeCompare(a.date));
+ const recs=DB.records.filter(r=>r.office===o.id).sort(recNew);
  const cmIds=cms.map(c=>c.id);
  const scN=S.selCm?((DB.cms.find(c=>c.id===S.selCm)||{}).name||""):"";
  const clients=DB.clients.filter(u=>u.useState!=="終了"&&(cmIds.includes(u.cm)||u.office===o.id)&&(!S.selCm||u.cm===S.selCm||(!u.cm&&scN&&pnorm(u.cmName)===pnorm(scN)))).sort((a,b)=>(!!hospOf(b.id))-(!!hospOf(a.id))||String(a.name).localeCompare(String(b.name),"ja"));
@@ -1084,7 +1086,9 @@ const nearMine=j=>{if(!USER)return true;const me=lmSN(stUni(USER.name)),st=lmSN(
 function lmNear(lat,lng){if(MODE==="setup"||(MODE==="live"&&!USER))return;const sn=lmSeen(),all=nearAll();let best=null;
  lmRows().forEach(j=>{if(j.lat==null||sn.c[j.code])return;if(!all&&!nearMine(j))return;const d=dist(lat,lng,+j.lat,+j.lng);if(d<=LM_NEAR&&lmAlerts(j).length&&(!best||d<best.d))best={j,d}});
  loList().forEach(({o})=>{const k="o:"+o.id;if(o.lat==null||sn.c[k])return;if(!all&&!isMine(o))return;const d=dist(lat,lng,+o.lat,+o.lng);if(d<=LM_NEAR&&(!best||d<best.d))best={j:{code:k},d}});
- if(!best||S.lmPop===best.j.code)return;sn.c[best.j.code]=1;try{localStorage.setItem("kyotaku-lm-seen",JSON.stringify(sn))}catch(e){}S.lmPop=best.j.code;buzz([200,100,200]);if(S.view==="umap"&&!String(best.j.code).startsWith("o:")&&!typing())S.lmGoto=best.j.code;render()}
+ if(!best||S.lmPop===best.j.code)return;sn.c[best.j.code]=1;try{localStorage.setItem("kyotaku-lm-seen",JSON.stringify(sn))}catch(e){}S.lmPop=best.j.code;buzz([200,100,200]);
+ if(editingNow()){toast("近くに用事のある家・居宅があります（入力が終わったら表示します）");return}   /* 入力中は画面を作り直さない（11/16） */
+ if(S.view==="umap"&&!String(best.j.code).startsWith("o:"))S.lmGoto=best.j.code;render()}
 function lmPopHtml(){if(!S.lmPop)return "";if(String(S.lmPop).startsWith("o:")){const oid=S.lmPop.slice(2),o=DB.offices.find(x=>x.id===oid);if(!o){S.lmPop=null;return ""}const j=loGet(oid);
  return `<div style="position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:60;width:min(440px,94vw);background:#fffbe6;border:3px solid ${j.pri==="u"?"#e60000":"#e0a800"};border-radius:16px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:17px">🏢 近くです：${esc(o.name)}</b><button class="btn sm" type="button" onclick="S.lmPop=null;render()">✕</button></div>
  <div style="font-size:16px;margin:6px 0;line-height:1.6">${[j.pri?(j.pri==="u"?"🚨 至急":"📌 優先")+(j.priT?"："+esc(j.priT):""):""].concat(j.er.map(e=>"📋 "+esc(e.t))).filter(Boolean).join("<br>")}</div><button class="btn primary" type="button" onclick="S.lmPop=null;S.view='visit';S.office='${o.id}';S.autoOpened='${o.id}';render()">居宅を開く</button></div>`}
@@ -1108,7 +1112,7 @@ function offDemoBox(o){const sc=S.selCm?DB.cms.find(c=>c.id===S.selCm):null,L=de
  <div class="log" style="margin-top:6px">${L.map(({r,k,d})=>{const p=rtProg(r);return `<div class="logi"><b>${esc(r.cname||"")}</b> <span class="meta">${esc(r.item||"")}${k==="demo"?" ・ デモ <b>"+d+"日目</b>":" ・ 開始 "+esc(md(r.start||r.confDate))}${!sc&&r.cmName?" ・ CM "+esc(r.cmName):""}${p.next&&RF_STEPS[p.next]&&k==="new"?" ・ 次："+esc(RF_STEPS[p.next].l):""}</span>${k==="demo"?(d>7?`<span class="status st-warn" style="margin-left:4px">⏳ 確認まだ</span>`:""):`<span class="status st-ok" style="margin-left:4px">🆕 開始直後</span>`}${rtCtStage(r)===3?`<span class="status st-alert" style="margin-left:4px">🚗 契約に行ってね</span>`:""}${k==="demo"?` <button class="btn sm" type="button" style="padding:2px 8px" onclick="demoEnd('${r.id}')">📷 デモ終了・管理表を送る</button>`:""} <button class="btn sm" type="button" style="padding:2px 8px" onclick="tagScan('${r.id}')">🏷 タグ${tagOf(r.id)?"（読み取り済）":"を読む"}</button>${tagOf(r.id)?`<div class="meta">${esc(tagLine(r.id))}</div>`:""}${attOf("rt:"+r.id).length?' <span class="meta">📷送信済</span>':""}</div>`}).join("")}</div></div>`}
 function cmHosp(c){return (DB.hosp||[]).filter(h=>{if(h.state==="削除"||h.state==="確認待ち")return false;const i=hmInfo(h);if(!(i.o&&i.o.id===c.office))return false;return i.u&&i.u.cm?i.u.cm===c.id:pnorm(i.cm)===pnorm(c.name)})}
 function cmTips(c){const T=[],add=(pri,t,tag,neta)=>T.push({pri,t,tag,neta}),nm=x=>String(x||"").replace(/\s*様$/,"")+"様";
- const recs=DB.records.filter(r=>r.cm===c.id&&r.kind!=="ネタ"&&r.kind!=="削除").sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+ const recs=DB.records.filter(r=>r.cm===c.id&&r.kind!=="ネタ"&&r.kind!=="削除").sort(recNew);
  const last=recs[0];if(last&&String(last.next||"").trim())add(1,"前回の約束：「"+String(last.next).trim()+"」の件、どうなりましたか","約束");
  const rs=cmRentals(c);
  rs.forEach(r=>{if(rtDemoNow(r))return;const a=rtAlerts(r);if(a.ct&&!["ok","na"].includes(a.ct.k)&&confDone(r))add(2,nm(r.cname)+"の"+(/確認/.test(a.ct.t)&&!/契約書/.test(a.ct.t)?"確認書":"契約書")+"、ご協力をお願いできますか","書類")});
@@ -2046,7 +2050,7 @@ function viewJimu(){const t=S.jt||"board",jm=jimuMode();
  const flt=t==="board"||t==="ledger"?`<label class="meta" style="display:flex;gap:6px;align-items:center">要注意にするのは納品日 <input type="date" class="sim" value="${RT_FROM}" onchange="rtFromSet(this.value)"> 以降</label>`:"";
  /* 入退院は見出しを表の操作の行に入れて、縦の余白を詰める（11/14 社長） */
  return `${t==="hosp"&&jm?"":`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 12px">${t==="hosp"?"":`<h2 style="margin-right:auto">${jm?JT_L[t]:"事務所"}</h2>`}${flt}${jm?"":`<div class="seg">${tabs.map(([k,l])=>`<button type="button" class="${t===k?"on":""}" onclick="S.jt='${k}';S.rtOpen=null;render()">${l}${k==="req"&&unread?" ("+unread+")":""}</button>`).join("")}</div>`}</div>`}
- ${t!=="ledger"?rtLateBox():""}${t==="ledger"?rtLedger():t==="hosp"?jimuHosp():t==="cl"?clList():t==="req"?viewJimuReq():rtBoard()}${S.rtOpen?fullBox(rtDetail(),"S.rtOpen=null;render()"):""}${S.clOpen?fullBox(clForm(),"S.clOpen=null;render()"):""}`}
+ ${t!=="ledger"?rtLateBox():""}${t==="board"||t==="req"?prepAskBox():""}${t==="ledger"?rtLedger():t==="hosp"?jimuHosp():t==="cl"?clList():t==="req"?viewJimuReq():rtBoard()}${S.rtOpen?fullBox(rtDetail(),"S.rtOpen=null;render()"):""}${S.clOpen?fullBox(clForm(),"S.clOpen=null;render()"):""}`}
 function rtBoard(){const rs=(DB.rentals||[]).filter(r=>r.state!=="削除"),cases=(DB.cases||[]).filter(c=>cLive(c)&&!cDone(c));
  if(!rs.length&&!cases.length)return `<button class="btn primary" type="button" onclick="S.jt='cl';S.clOpen='new';render()">＋ 新規利用者</button><div class="empty">タスクカードも台帳もまだありません。</div>`;
  const st=[...new Set(rtStaffs().concat(cases.map(c=>c.staffName||"（担当なし）")))];
@@ -2916,6 +2920,8 @@ const CTYPES={"レンタル新規":["紹介","訪問","デモ","契約","納品"
 const STAGE_WAIT={"デモ":["デモの感想を聞く",7],"見積":["見積の返事",7],"申請":["申請の結果",14]};   /* この段階に入ったら自動で「待ち」を足す */
 const WPRE=[["CMの了承",3],["家族の返事",3],["本人の返事",3],["デモの感想を聞く",7],["見積の返事",7],["退院日の連絡",7],["申請の結果",14],["理由書を作る",5],["その他",3]];
 const PROLES=["CM","家族","本人","病院","業者","その他"];
+/* 記録は新しい順：同じ日の中も、あとから入れたものが上（11/16 社長） */
+const recNew=(a,b)=>String(b.date||"").localeCompare(String(a.date||""))||String(b.id||"").localeCompare(String(a.id||""));
 function cParts(c){const id=c&&c.id?c.id:c;const l=(DB.caselog||[]).filter(x=>x.case===id&&x.kind==="部品").sort((a,b)=>String(b.at).localeCompare(String(a.at)))[0];let p={};try{p=l?JSON.parse(l.text||"{}"):{}}catch(e){p={}}
  const A=v=>Array.isArray(v)?v:[];return {people:A(p.people),cond:String(p.cond||""),prep:A(p.prep),waits:A(p.waits)}}
 const partOp=(id,p)=>clog(id,"部品",JSON.stringify(p));
@@ -3044,54 +3050,72 @@ window.cpAddPerson=(id,b)=>{const c=DB.cases.find(x=>x.id===id);if(!c)return;con
  if(!name&&!rel){toast("名前か続柄を入れてください");return}const p=cParts(c);p.people.push({role,name,rel,go});return cpSave(id,p,[clog(id,"関係者",role+"："+(name||rel)+(go?"（同行）":""))],b,"")};
 window.cpCond=(id,b)=>{const c=DB.cases.find(x=>x.id===id);if(!c)return;const p=cParts(c);p.cond=($("#cpc").value||"").trim();return cpSave(id,p,[],b,"保存しました")};
 window.cpAddPrep=(id,b)=>{const c=DB.cases.find(x=>x.id===id);if(!c)return;const t=($("#cpr").value||"").trim();if(!t){toast("入れるものを書いてください");return}const p=cParts(c);p.prep.push({t,ok:false});return cpSave(id,p,[],b,"")};
-window.cpPrep=(id,i,el)=>{const c=DB.cases.find(x=>x.id===id);if(!c)return;const p=cParts(c);if(!p.prep[i])return;p.prep[i].ok=el.checked;return cpSave(id,p,[],null,"")};
+window.cpPrep=(id,i,el)=>{const c=DB.cases.find(x=>x.id===id);if(!c)return;const p=cParts(c);if(!p.prep[i])return;p.prep[i].ok=el.checked;if(el.checked)p.prep[i].by=USER?String(USER.name||"").split(/[\s　]/)[0]:"デモ";else delete p.prep[i].by;return cpSave(id,p,[],null,"")};
+/* 準備の「事務さんへ」の印（11/16 社長：送るのではなく、事務が見て気づくように目立たせる） */
+window.cpPrepJ=(id,i,b)=>{const c=DB.cases.find(x=>x.id===id);if(!c)return;const p=cParts(c);if(!p.prep[i])return;p.prep[i].j=p.prep[i].j?0:1;return cpSave(id,p,[],b,p.prep[i].j?"「事務さんへ」の印を付けました":"")};
+function prepAsks(){const out=[];(DB.cases||[]).filter(c=>cLive(c)&&!cDone(c)).forEach(c=>cParts(c).prep.forEach(x=>{if(x.j&&!x.ok)out.push({c,x})}));return out.sort((a,b)=>String(a.c.due||"9").localeCompare(String(b.c.due||"9")))}
+function prepAskBox(){const L=prepAsks();if(!L.length)return "";
+ return `<details class="form" style="margin-bottom:8px;background:#fff3bf;border-color:#f0a500" ${L.length<=5?"open":""}><summary style="cursor:pointer"><b>🟨 用意お願い ${L.length}件</b> <span class="meta">営業さんが「事務さんへ」の印を付けた準備物</span></summary>
+ ${L.map(({c,x})=>`<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid #f0d58a;flex-wrap:wrap"><b>${esc(x.t||"")}</b><span class="meta">${esc(cFull(c))}・${esc(cTopic(c))}${c.staffName?"・"+esc(c.staffName):""}${c.due?"・期限 "+esc(md(c.due)):""}</span><button class="btn sm" type="button" style="margin-left:auto" onclick="caseOpen('${c.id}')">カードを開く</button></div>`).join("")}</details>`}
 /* 期限が来た待ち（やること・事務所に出す） */
 function waitsDue(all){const t=today(),me=myId(),out=[];(DB.cases||[]).filter(c=>cLive(c)&&!cDone(c)&&(all||c.staff===me||MODE==="demo")).forEach(c=>cParts(c).waits.forEach((w,i)=>{if(!w.done&&(!w.due||w.due<=addDays(t,1)))out.push({c,w,i})}));
  return out.sort((a,b)=>String(a.w.due||"").localeCompare(String(b.w.due||"")))}
 function waitsBox(all,title){const xs=waitsDue(all);if(!xs.length)return "";
  return `<div class="section-t"><h2 style="font-size:16px;color:#c0392b">${title||"⏳ 待ちの期限"}</h2><span class="meta">${xs.length}件</span></div><div class="log">${xs.map(({c,w,i})=>`<div class="logi ${wOver(w)?"over":""}"><div class="meta">${esc(caseHead(c))}${c.staffName?" ・ 担当 "+esc(c.staffName):""}</div><b>${esc(w.what||"")}</b>${w.who?"（"+esc(w.who)+"）":""} <span class="${wOver(w)?"ovt":"meta"}">期限 ${esc(md(w.due))}${wOver(w)?"（過ぎています）":""}</span>
  <div style="display:flex;gap:6px;margin-top:4px"><button class="btn sm primary" type="button" onclick="cpWait('${c.id}',${i},'done',this)">✓ 済んだ</button><button class="btn sm" type="button" onclick="caseOpen('${c.id}')">🗂 カードを開く</button></div></div>`).join("")}</div>`}
+/* タスクカードの画面を1画面に（11/16 社長：長すぎ・複雑）。いつも見せるのは 次にやること・準備・ひとこと・経過。
+   待ち・関係者の入力はなくす（前に入っている分だけ小さく出す）。確認/知らせる/まとめる/直す/削除は「⋯」の中 */
 function viewCase(){const c=(DB.cases||[]).find(x=>x.id===S.caseId);if(!c)return '<div class="empty">カードが見つかりません</div>';
- const st=ctSteps(c),cur=cStage(c),ci=st.indexOf(cur),o=DB.offices.find(x=>x.id===c.office),cm=DB.cms.find(x=>x.id===c.cm),u=c.client?clientOf(c.client):null;
+ const st=ctSteps(c),cur=cStage(c),ci=st.indexOf(cur),o=DB.offices.find(x=>x.id===c.office),cm=DB.cms.find(x=>x.id===c.cm),u=c.client?clientOf(c.client):null,id=c.id;
  const others=(DB.cases||[]).filter(x=>x.id!==c.id&&cLive(x)&&!cDone(x)&&!!c.client&&x.client===c.client);
- return `<div class="ctile c-${cColor(c)} ${cOver(c)?"over":""}" style="cursor:default;margin-top:8px">
-  <div class="ct-h"><b style="font-size:21px">${esc(cFull(c))}</b><span class="ct-type">${esc(c.type||"その他")}</span></div><div class="ct-topic" style="font-size:20px">${esc(cTopic(c))}</div>
+ const p=cParts(c),more=S.caseMore===id,logs=caseLogs(id),reqs=caseReqs(c),wo=p.waits.filter(w=>!w.done);
+ const logH=l=>`<div class="logi"><div class="meta">${fmtAt(l.at)} ・ ${esc(l.byName||"")} ・ ${esc(l.kind||"")}${l.rec&&DB.records.some(r=>r.id===l.rec)?` ・ <a href="#" onclick="recShow('${l.rec}');return false">元の会話を見る</a>`:""}</div>${esc(l.text)}</div>`;
+ return `<div class="ctile c-${cColor(c)} ${cOver(c)?"over":""}" style="cursor:default;margin-top:8px;padding-bottom:8px">
+  <div class="ct-h"><b style="font-size:19px">${esc(cFull(c))}　${esc(cTopic(c))}</b><span style="display:flex;gap:6px;align-items:center"><span class="ct-type">${esc(c.type||"その他")}</span><button class="btn sm" type="button" title="確認・知らせる・まとめる・直す・削除" onclick="S.caseMore=${more?"null":"'"+id+"'"};render()">${more?"✕":"⋯"}</button></span></div>
   <div class="meta">${o?`<a href="#" onclick="openOffice('${o.id}');return false">${esc(o.name)}</a>`:"居宅未設定"}${cm?" ・ CM "+esc(cm.name):""}${u&&u.lv?" ・ "+esc(u.lv):""}${c.staffName?" ・ 担当 "+esc(c.staffName):""}</div>
-  ${c.due?`<div class="ct-st">期限 <span class="${cOver(c)?"ovt":""}">${esc(c.due)}${cOver(c)?"（過ぎています）":""}</span></div>`:""}
-  <div class="meta" style="margin-top:4px">進み具合（押すと変わります）</div>
-  <div class="steps">${st.map((x,k)=>`<button type="button" class="${k===ci?"on":k<ci?"past":""}" onclick="caseStage('${c.id}','${x}',this)">${k<ci?"✓ ":""}${x}</button>`).join("")}</div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">${(cc=>`<button class="btn sm" type="button" onclick="caseCheck('${c.id}',this)">${cc.some(l=>l.by===myId())?"✓ 確認済み":"✓ 確認した"}</button>${cc.length?`<span class="meta">確認：${cc.map(l=>esc(l.byName||"")+" "+esc(fmtAt(l.at))).join("、")}</span>`:`<span class="meta">まだだれも確認していません</span>`}`)(caseChecks(c.id))}
-   <select class="sim" onchange="if(this.value)caseShare('${c.id}',this.value);this.value=''"><option value="">💬 このカードをだれかに知らせる</option>${(DB.users||[]).filter(u=>u.email&&u.email!==myId()).map(u=>`<option value="${esc(u.email)}">${esc(u.name)}</option>`).join("")}<option value="all">全員の部屋</option></select></div></div>
- ${c.next||c.title?`<div class="form" style="margin-top:10px;gap:2px"><div class="meta">次にやること</div><b style="font-size:17px">${esc(c.next||c.title)}</b>${c.due?`<div class="meta">期限 ${esc(c.due.slice(5).replace("-","/"))}</div>`:""}</div>`:""}
- <details class="form" style="margin-top:10px"><summary style="cursor:pointer"><b>用件・次にやること・期限を直す</b></summary>
-  <label>見出し（用件をひとこと。例：車いす引上げ）<input id="cs-title" maxlength="40" value="${esc(c.title||"")}"></label>
+  <div class="steps cvsteps">${st.map((x,k)=>`<button type="button" class="${k===ci?"on":k<ci?"past":""}" onclick="caseStage('${id}','${x}',this)">${k<ci?"✓ ":""}${x}</button>`).join("")}</div>
+  ${more?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)">${(cc=>`<button class="btn sm" type="button" onclick="caseCheck('${id}',this)">${cc.some(l=>l.by===myId())?"✓ 確認済み":"✓ 確認した"}</button>${cc.length?`<span class="meta">確認：${cc.map(l=>esc(l.byName||"")+" "+esc(fmtAt(l.at))).join("、")}</span>`:""}`)(caseChecks(id))}
+   <select class="sim" onchange="if(this.value)caseShare('${id}',this.value);this.value=''"><option value="">💬 だれかに知らせる</option>${(DB.users||[]).filter(u=>u.email&&u.email!==myId()).map(u=>`<option value="${esc(u.email)}">${esc(u.name)}</option>`).join("")}<option value="all">全員の部屋</option></select>
+   <button class="btn sm" type="button" onclick="mgStart('${id}')">🔗 ほかのカードとまとめる</button>
+   ${others.length?`<select id="cs-merge" class="sim"><option value="">同じ利用者のカードへ</option>${others.map(x=>`<option value="${x.id}">${esc(x.type)}（${esc(x.stage||"受付")}）${esc((x.title||x.next||"").slice(0,20))}</option>`).join("")}</select><button class="btn sm" type="button" onclick="caseMerge('${id}',this)">まとめる</button>`:""}
+   <button class="btn sm" type="button" style="color:var(--alert)" onclick="caseDel('${id}',this)">このカードを削除</button></div>`:""}</div>
+ <div class="cvgrid"><div>
+ <div class="form" style="margin-top:8px;gap:2px"><div style="display:flex;justify-content:space-between;align-items:center"><span class="meta">次にやること${c.due?` ・ 期限 <span class="${cOver(c)?"ovt":""}">${esc(c.due.slice(5).replace("-","/"))}${cOver(c)?"（過ぎています）":""}</span>`:""}</span><button class="btn sm" type="button" onclick="S.caseEd=${S.caseEd===id?"null":"'"+id+"'"};render()">${S.caseEd===id?"閉じる":"✏ 直す"}</button></div>
+  <b style="font-size:17px">${esc(c.next||c.title||"（まだ決まっていません）")}</b>
+  ${S.caseEd===id?`<div style="margin-top:6px;display:grid;gap:6px"><label>見出し（用件をひとこと）<input id="cs-title" maxlength="40" value="${esc(c.title||"")}"></label>
   <div class="row2"><label>次にやること<input id="cs-next" value="${esc(c.next||"")}"></label><label>期限<input type="date" id="cs-due" value="${esc(c.due||"")}"></label></div>
   <div class="row2"><label>種類<select id="cs-type">${Object.keys(CTYPES).map(k=>`<option ${k===c.type?"selected":""}>${k}</option>`).join("")}</select></label>
   <label>利用者<input id="cs-client" list="csClients" value="${esc(u?clientLabel(u):c.clientName||"")}" placeholder="名前の一部で候補から選ぶ"></label></div>
   <datalist id="csClients">${DB.clients.map(clOpt).join("")}</datalist>
-  <div><button class="btn primary" type="button" onclick="caseSave('${c.id}',this)">保存</button></div></details>
- <div style="margin:2px 0 6px;text-align:right"><button class="btn sm" type="button" onclick="mgStart('${c.id}')">🔗 ほかのカードとまとめる</button></div> ${caseFirst(c)}${casePartsHtml(c)}
- ${ci<st.length-1?`<button class="btn primary" type="button" style="width:100%;margin-top:8px" onclick="caseStage('${c.id}','${st[ci+1]}',this)">次の段階へ：${esc(st[ci+1])}</button>`:""}
- ${caseRentals(c)}
- <div class="section-t"><h2>事務とのやりとり</h2></div>
- <div class="rbox"><textarea id="cs-jimu" rows="1" placeholder="${S.view==="case"&&jimuMode()?"営業さんへの連絡は、下の依頼に返事してください":"事務に一言（例：契約書の準備をお願いします）"}"></textarea><button class="btn sm primary" type="button" style="padding:10px 14px" onclick="caseAsk('${c.id}',this)">事務にお願い</button></div>
- <div class="log" style="margin-top:8px">${caseReqs(c).map(r=>`<div class="logi" style="${r.state==="済"?"opacity:.7":""}"><div class="meta">${fmtAt(r.at)} ・ ${esc(r.staff||"")} → 事務 ・ <b>${esc(r.state||"未対応")}</b>${r.state==="済"&&r.doneBy?"（"+esc(r.doneBy)+"）":""}</div>${esc(r.text)}${reqPhotos(r)}
+  <div><button class="btn primary" type="button" onclick="S.caseEd=null;caseSave('${id}',this)">保存</button></div></div>`:""}</div>
+ <div class="form" style="margin-top:8px;gap:4px"><div><b>☑ 準備</b> <span class="meta">${p.prep.length?p.prep.filter(x=>x.ok).length+"/"+p.prep.length+" 済 ・ 事務に用意してほしい物は「事務さんへ」":"持っていく物・書類など"}</span></div>
+ ${p.prep.map((x,i)=>`<div class="cpw" style="${x.j&&!x.ok?"background:#fff3bf;border-color:#f0a500":x.ok&&x.j?"background:#e6f4ea":""}"><label style="display:flex;gap:8px;align-items:center;font-size:16px;color:var(--ink);flex:1"><input type="checkbox" style="width:auto" ${x.ok?"checked":""} onchange="cpPrep('${id}',${i},this)"> <span style="${x.ok?"text-decoration:line-through;opacity:.6":""}">${esc(x.t||"")}</span>${x.ok&&x.by?`<span class="meta">✓ ${esc(x.by)}</span>`:""}</label><button class="btn sm" type="button" style="${x.j?"background:#f0a500;color:#fff;border-color:#f0a500":""}" onclick="cpPrepJ('${id}',${i},this)">${x.j?"🟨 事務さんへ":"事務さんへ"}</button><button class="btn sm" type="button" onclick="cpDel('${id}','prep',${i},this)">×</button></div>`).join("")}
+ <div class="rbox"><input id="cpr" placeholder="例：歩行車（デモ）・カタログ・契約書"><button class="btn sm" type="button" onclick="cpAddPrep('${id}',this)">＋ 足す</button></div></div>
+ <details class="form" style="margin-top:8px" ${S.caseCondOpen===id?"open":""}><summary style="cursor:pointer"><b>📝 条件・メモ</b>${p.cond?` <span class="meta">${esc(firstLine(p.cond).slice(0,30))}</span>`:' <span class="meta">（なし）</span>'}</summary>
+ <div class="rbox" style="margin-top:6px"><textarea id="cpc" rows="2" placeholder="用途・体の状態・希望など（例：買い物用・途中で座りたい・車に積む）">${esc(p.cond)}</textarea><button class="btn sm" type="button" onclick="cpCond('${id}',this)">保存</button></div></details>
+ ${wo.length||p.people.length?`<details class="form" style="margin-top:8px"><summary style="cursor:pointer" class="meta">前に入っている分：${wo.length?"⏳ 待ち "+wo.length+"件":""}${wo.length&&p.people.length?" ・ ":""}${p.people.length?"👥 関係者 "+p.people.length+"人":""}</summary>
+ ${p.waits.map((w,i)=>w.done?"":`<div class="cpw ${wOver(w)?"over":""}"><span>${wOver(w)?"⚠ ":"⏳ "}<b>${esc(w.what||"")}</b>${w.who?"（"+esc(w.who)+"）":""} <span class="${wOver(w)?"ovt":"meta"}">期限 ${esc(md(w.due))}</span></span><button class="btn sm primary" type="button" onclick="cpWait('${id}',${i},'done',this)">✓ 済んだ</button><button class="btn sm" type="button" onclick="cpDel('${id}','waits',${i},this)">×</button></div>`).join("")}
+ ${p.people.map((x,i)=>`<div class="cpw"><span><span class="cprole">${esc(x.role||"")}</span> <b>${esc(x.name||"")}</b>${x.rel?"（"+esc(x.rel)+"）":""}${x.go?" ・ 同行する":""}</span><button class="btn sm" type="button" onclick="cpDel('${id}','people',${i},this)">×</button></div>`).join("")}</details>`:""}
+ ${ci<st.length-1?`<button class="btn primary" type="button" style="width:100%;margin-top:8px" onclick="caseStage('${id}','${st[ci+1]}',this)">次の段階へ：${esc(st[ci+1])}</button>`:""}
+ </div><div>
+ <div class="form" style="margin-top:8px;gap:6px"><div class="rbox"><textarea id="cs-memo" rows="1" placeholder="ひとこと足す（経過のメモ／事務へのお願い）"></textarea></div>
+ <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap"><button class="btn sm primary" type="button" onclick="caseMemo('${id}',this)">経過に足す</button><button class="btn sm" type="button" onclick="caseAsk('${id}',this)">📨 事務にお願い</button></div>
+ ${reqs.length?`<div class="log">${reqs.map(r=>`<div class="logi" style="${r.state==="済"?"opacity:.7":"background:#fff8e1"}"><div class="meta">📨 ${fmtAt(r.at)} ・ ${esc(r.staff||"")} → 事務 ・ <b>${esc(r.state||"未対応")}</b>${r.state==="済"&&r.doneBy?"（"+esc(r.doneBy)+"）":""}</div>${esc(r.text)}${reqPhotos(r)}
   <div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${replyBox(r.id,seeJimu()&&jimuMode()?(r.email||""):JIMU,r.office||"",seeJimu()&&jimuMode()?"営業さんに返事":"事務に一言")}
-  ${seeJimu()?`<div style="margin-top:4px"><button class="btn sm" type="button" onclick="reqState('${r.id}',${r.state==="済"?"false":"true"},this)">${r.state==="済"?"未対応に戻す":"済にする"}</button></div>`:""}</div>`).join("")||'<div class="meta">まだありません</div>'}</div>
- <div class="section-t"><h2>経過</h2></div>
- <div class="rbox"><textarea id="cs-memo" rows="1" placeholder="メモを足す（例：ケアマネに日程を確認中）"></textarea><button class="btn sm primary" type="button" style="padding:10px 14px" onclick="caseMemo('${c.id}',this)">足す</button></div>
- <div class="log" style="margin-top:8px">${caseLogs(c.id).map(l=>`<div class="logi"><div class="meta">${fmtAt(l.at)} ・ ${esc(l.byName||"")} ・ ${esc(l.kind||"")}${l.rec&&DB.records.some(r=>r.id===l.rec)?` ・ <a href="#" onclick="recShow('${l.rec}');return false">元の会話を見る</a>`:""}</div>${esc(l.text)}</div>`).join("")||'<div class="meta">まだ経過がありません</div>'}</div>
- <details class="form" style="margin-top:14px"><summary class="meta" style="cursor:pointer">まとめる・削除</summary>
-  <div style="margin:4px 0 8px"><button class="btn sm primary" type="button" onclick="mgStart('${c.id}')">🔗 画面からまとめ先を選ぶ</button> <span class="meta">押したあと、まとめたいカードをタップ</span></div>
-  ${others.length?`<label>または、同じ利用者の別のカードから選ぶ<select id="cs-merge"><option value="">選ぶ</option>${others.map(x=>`<option value="${x.id}">${esc(x.type)}（${esc(x.stage||"受付")}）${esc((x.title||x.next||"").slice(0,20))}</option>`).join("")}</select></label><div><button class="btn sm" type="button" onclick="caseMerge('${c.id}',this)">まとめる</button></div>`:'<div class="meta">同じ利用者のほかのカードはありません</div>'}
-  <div><button class="btn sm" type="button" style="color:var(--alert)" onclick="caseDel('${c.id}',this)">このカードを削除</button></div></details>`}
+  ${seeJimu()?`<div style="margin-top:4px"><button class="btn sm" type="button" onclick="reqState('${r.id}',${r.state==="済"?"false":"true"},this)">${r.state==="済"?"未対応に戻す":"済にする"}</button></div>`:""}</div>`).join("")}</div>`:""}
+ <div><b>経過</b> <span class="meta">${logs.length}件（新しい順）</span></div>
+ <div class="log">${logs.slice(0,3).map(logH).join("")||'<div class="meta">まだ経過がありません</div>'}</div>
+ ${logs.length>3?`<details><summary class="meta" style="cursor:pointer">前の経過 ${logs.length-3}件を見る</summary><div class="log" style="margin-top:6px">${logs.slice(3).map(logH).join("")}</div></details>`:""}</div>
+ ${(h=>h?`<details class="form" style="margin-top:8px"><summary class="meta" style="cursor:pointer">レンタル台帳を見る</summary>${h}</details>`:"")(caseRentals(c))}
+ </div></div>`}
+
 /* タスクカードにつながる事務への依頼：カードから送ったもの（rec=c:案件ID）と、カードに入れた会話から送ったもの */
 function caseReqs(c){const recs=new Set((DB.caselog||[]).filter(l=>l.case===c.id&&l.rec).map(l=>l.rec));
  return (DB.reqs||[]).filter(r=>r.rec==="c:"+c.id||(r.rec&&recs.has(r.rec))).sort((a,b)=>String(b.at||"").localeCompare(String(a.at||"")))}
 const caseOfReq=r=>{if(!r||!r.rec)return null;if(String(r.rec).startsWith("c:"))return (DB.cases||[]).find(c=>c.id===r.rec.slice(2))||null;const l=(DB.caselog||[]).find(x=>x.rec===r.rec&&!isCont(x)&&x.kind!=="続き解除");return l?(DB.cases||[]).find(c=>c.id===l.case)||null:null};
 function caseRentals(c){const rs=c.client?(DB.rentals||[]).filter(r=>r.state!=="削除"&&r.client===c.client):[];if(!rs.length)return "";
  return `<div class="section-t"><h2>レンタル台帳</h2><span class="meta">${rs.length}件</span></div><div class="log">${rs.map(r=>`<div class="logi"><b>${esc(r.item||"")}</b> <span class="meta">納品 ${md(r.deliv)}</span><div>${rtWarn(rtAlerts(r))}</div></div>`).join("")}</div>`}
-window.caseAsk=async(id,b)=>{const c=DB.cases.find(y=>y.id===id),t=($("#cs-jimu").value||"").trim();if(!c)return;if(!t){toast("文を入れてください");return}
+window.caseAsk=async(id,b)=>{const c=DB.cases.find(y=>y.id===id),t=(($("#cs-jimu")||$("#cs-memo")).value||"").trim();if(!c)return;if(!t){toast("事務へのお願いを書いてください");return}
  b.disabled=true;const row={id:newId("q"),office:c.office||"",cm:c.cm||"",rec:"c:"+id,text:caseHead(c)+"："+t,staff:USER?USER.name:"デモ",state:"未対応",at:new Date().toISOString()};
  try{await persist([{table:"reqs",row},{table:"cases",row:{id}}]);buzz(40);toast("事務に送りました");render()}catch(e){b.disabled=false;toast("送れませんでした："+errText(e))}};
 async function caseOps(ops,b,msg){if(b)b.disabled=true;try{await persist(ops);buzz(40);if(msg)toast(msg);render();return true}catch(e){if(b)b.disabled=false;toast("保存できませんでした："+errText(e));return false}}
@@ -3427,7 +3451,9 @@ window.fdQuick=async(id,b)=>{const r=DB.records.find(x=>x.id===id);if(!r)return;
  catch(e){if(b)b.disabled=false;toast("送れませんでした："+errText(e))}};
 /* ===== ほかの端末・ほかの人の変更を取り込む（変わった分だけ） ===== */
 let SYNC_TS="",SYNC_BUSY=false;
-const editingNow=()=>typing()||!!(S.lmDet||S.cmEdit||S.recEdit||S.schedEdit||S.recOpen||S.bulk||RC.on||(CI.stage&&CI.stage!=="idle")||CB.items.length);
+/* 書きかけの文字が画面にあるあいだは、裏の更新で画面を作り直さない（11/16 社長：お客さん宅でメモ中に画面が消えた） */
+const hasDraft=()=>[...document.querySelectorAll("#app textarea, #app input[type=text], #app input:not([type])")].some(e=>String(e.value||"").trim().length>=2&&!e.readOnly&&!e.disabled&&e.offsetParent!==null&&!e.closest(".sgbox")&&!/検索|探す|名前の一部/.test(e.placeholder||""));
+const editingNow=()=>typing()||hasDraft()||!!(S.lmDet||S.cmEdit||S.recEdit||S.schedEdit||S.recOpen||S.bulk||RC.on||(CI.stage&&CI.stage!=="idle")||CB.items.length);
 async function syncNow(manual){if(MODE!=="live"||!USER||SYNC_BUSY||!SYNC_TS||S.bgLoad)return;
  if(!manual&&(document.hidden||editingNow()))return;
  SYNC_BUSY=true;const sb=$("#syncBtn");if(sb)sb.textContent="…";let n=0;
@@ -4279,7 +4305,7 @@ function viewSettings(){const imp=DB.importedAt;
  </div>`:""}`;
 }
 function viewLog(){
- const recs=[...DB.records].sort((a,b)=>b.date.localeCompare(a.date));
+ const recs=[...DB.records].sort(recNew);
 const top=quickRec()+`<div style="margin:8px 0 4px">${foundBox()}${cbBox()}${CB.items.length?"":CI.stage!=="idle"&&!CI.office?callBox():callPickBtn()}</div>`;
  const todo=recs.filter(r=>r.next);
  return top+`<div class="section-t"><h2>会話の記録</h2><span class="meta">全${recs.length}件 ・ タップで全文</span></div>${MODE==="live"&&DB.recCutoff?`<div class="meta" style="margin:-4px 0 6px">直近6か月分を表示しています。それより前の記録は、各居宅の画面で見られます。</div>`:""}
