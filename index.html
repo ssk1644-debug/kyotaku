@@ -72,7 +72,11 @@ select.sim{padding:5px 8px;border-radius:8px;border:1px solid var(--line);backgr
 .bkrow{display:flex;gap:10px;align-items:center;color:var(--ink);font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 .bkrow.on{background:var(--alert-soft);border-color:var(--alert);color:var(--alert);font-weight:700}
 .bkrow input{width:22px!important;height:22px}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}.seg button{border:0;background:var(--surface);padding:7px 14px;font-weight:700}.seg button.on{background:var(--accent);color:var(--surface)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+/* 入退院の上の操作：高さを揃えて押しやすく（11/17 社長） */
+.hmtool{height:40px!important;min-height:40px;box-sizing:border-box;font-size:15px!important;padding:0 12px!important;border-radius:10px!important;font-weight:700}
+select.hmtool{min-width:130px;padding-right:28px!important}
+input.hmtool{font-weight:400}.seg button{border:0;background:var(--surface);padding:7px 14px;font-weight:700}.seg button.on{background:var(--accent);color:var(--surface)}
 .flash{white-space:pre-line;position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:30;background:var(--accent);color:#fff;font-size:26px;font-weight:700;padding:22px 30px;border-radius:18px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.35);pointer-events:none;max-width:90vw}
 .flash.rec{background:#c0392b}.flash.stop{background:#34495e}
 #map{height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--line);z-index:1}
@@ -2659,7 +2663,8 @@ const hmName=h=>{const u=h.client?clientOf(h.client):null;return u?nmOnly(u.name
 const hkDone=h=>{const l=(DB.caselog||[]).find(x=>x.id==="hk"+h.id&&x.state!=="削除");return l?String(l.text||""):""};
 const hmOutSt=h=>h.outDate?"done":isD(h.outPlan)?(h.outPlan<=today()?"late":"plan"):"none";
 /* 引上げ済は「✓ 引上げた」ボタンを押した時だけ（11/12 社長）。日付が過ぎても・死亡を選んでも勝手に済にしない（処理済✓の行と、日付なしで引上げデータ✓の古い行は済扱い） */
-const hmPkSt=h=>hkDone(h)||h.done==="✓"||(h.pickKind&&!isD(h.pickDate)&&h.pickData==="✓")?"done":isD(h.pickDate)?(h.pickDate<=today()?"late":"plan"):"none";
+/* 11/17：引上げ日が入っている行は、「処理済✓」だけでは引上げ済にしない（日付を入れたら予定／予定日が過ぎました、になる） */
+const hmPkSt=h=>hkDone(h)||(!isD(h.pickDate)&&(h.done==="✓"||(h.pickKind&&h.pickData==="✓")))?"done":isD(h.pickDate)?(h.pickDate<=today()?"late":"plan"):"none";
 const hkOp=(id,v)=>({table:"caselog",row:{id:"hk"+id,case:"h:"+id,kind:"引上済",text:v||"",rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString(),state:v?"":"削除"}});
 window.hmOutDone=id=>{const h=(DB.hosp||[]).find(x=>x.id===id);if(!h||!isD(h.outPlan))return;uiConfirm(md(h.outPlan)+" に退院しましたか？").then(ok=>{if(ok)saveFast([{table:"hosp",row:{id,outDate:h.outPlan,state:h.state==="確認待ち"?h.state:h.pickKind?"引上げ":"退院"}}].concat(hmRes(h)===""||hmRes(h)==="見込み"?[hmResOp(id,"帰宅")]:[]),"退院済にしました")})};
 /* 「引上げ済」の取り消し（11/17 社長：前の版で自動で付いた分を外せるように） */
@@ -2789,8 +2794,8 @@ function jimuHosp(){let hs=hmRows().filter(h=>h.state!=="確認待ち");const hs
    const add=`<button class="btn primary sm" type="button" onclick="S.hmOpen='new';render()">＋ 入院・入所の連絡</button> <button class="btn sm" type="button" title="貼り付け・Excel・スキャン・未登録をつなぐ" onclick="S.hmTools=!S.hmTools;render()">${S.hmTools||busy?"✕ 閉じる":"⋯"}</button>`;
    return S.hmTools||busy?tbar("h",[{id:"paste",label:"📋 貼り付け",html:()=>hospPasteBox(""),auto:!!(S.hpSt||{}).all},{id:"xl",label:"📊 Excel",html:krHospBox,auto:!!(S.krPlan||S.krSt)},{id:"scan",label:"📷 スキャン",html:hsBox,auto:!!((S.hsItems||[]).length||S.hsSt)}],add+(hmUnlinkedN()?` <button class="btn sm" type="button" onclick="hmLinkGo(this)">🔗 未登録をつなぐ（${hmUnlinkedN()}件）</button>`:"")):add})()}
   <div class="seg">${[["open","入院・入所中"],["left","処理が残っている"],["all","すべて"]].map(([k,l])=>`<button type="button" class="${f===k?"on":""}" onclick="hmSetF('${k}')">${l}</button>`).join("")}</div>
-  <select class="sim" onchange="S.hmst=this.value;render()"><option value="">担当：全員</option>${hst.map(n=>`<option ${S.hmst===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
-  <input class="search" style="flex:1;min-width:180px;margin:0" placeholder="利用者・理由・居宅・CM・担当で探す" value="${esc(S.hmq||"")}" onchange="S.hmq=this.value;render()"><span class="meta">${hs.length}件${f!=="all"?`（全部で${allN}件。退院・引上げを入れた行は「すべて」に出ます）`:""}</span></div>
+  <select class="sim hmtool" onchange="S.hmst=this.value;render()"><option value="">担当：全員</option>${hst.map(n=>`<option ${S.hmst===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
+  <input class="search hmtool" style="flex:1;min-width:180px;margin:0" placeholder="利用者・理由・居宅・CM・担当で探す" value="${esc(S.hmq||"")}" onchange="S.hmq=this.value;render()"><span class="meta">${hs.length}件${f!=="all"?`（全部で${allN}件。退院・引上げを入れた行は「すべて」に出ます）`:""}</span></div>
  ${S.hmOpen?fullBox(hmForm(),"S.hmOpen=null;render()"):""}
  ${hospPendBox()}${hmLinkBox()}
  ${(S.hsItems||[]).length?`<div class="notice" style="margin-bottom:10px">⚠ スキャンで読み取った <b>${(S.hsItems||[]).length}件</b> がまだ登録されていません。下の表を確認して「登録」を押すまでは保存されず、ページを閉じると消えます。</div>`:""}
