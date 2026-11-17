@@ -2115,10 +2115,38 @@ function viewJimu(){const t=S.jt||"board",jm=jimuMode();
  /* 入退院は見出しを表の操作の行に入れて、縦の余白を詰める（11/14 社長） */
  return `${t==="hosp"&&jm?"":`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 12px">${t==="hosp"?"":`<h2 style="margin-right:auto">${jm?JT_L[t]:"事務所"}</h2>`}${flt}${jm?"":`<div class="seg">${tabs.map(([k,l])=>`<button type="button" class="${t===k?"on":""}" onclick="S.jt='${k}';S.rtOpen=null;render()">${l}${k==="req"&&unread?" ("+unread+")":""}</button>`).join("")}</div>`}</div>`}
  ${t!=="ledger"?rtLateBox():""}${dkJimuBox()}${t==="board"||t==="req"?prepAskBox():""}${t==="ledger"?rtLedger():t==="hosp"?jimuHosp():t==="cl"?clList():t==="req"?viewJimuReq():rtBoard()}${S.rtOpen?fullBox(rtDetail(),"S.rtOpen=null;render()"):""}${S.clOpen?fullBox(clForm(),"S.clOpen=null;render()"):""}`}
+/* ===== 📡 営業の現在地（11/17 社長：緊急時のフォローのため。会社のスマホ・iPadだけで使う決まり）
+   営業さんの端末は、アプリを開いている間（画面がついている間）だけ、勤務時間（7〜20時）に数分おきに位置を送る。
+   caselog に1人1行（id="gp"+メール, kind="位置", text=JSON{lat,lng,acc}）を上書き。事務・社長の「営業別ボード」で見る ===== */
+const GP_MIN=3,GP_H=[7,20],GP_OLD=15;
+let GP_LAST=null,GP_T=null;
+const gpOn=()=>MODE==="live"&&!!USER&&!jimuMode()&&!!navigator.geolocation;
+const gpHour=()=>{const h=new Date().getHours();return h>=GP_H[0]&&h<GP_H[1]};
+function gpTick(force){if(!gpOn()||!gpHour()||document.visibilityState!=="visible")return;
+ navigator.geolocation.getCurrentPosition(async p=>{const c=p.coords,now=Date.now();
+  if(!force&&GP_LAST&&now-GP_LAST.t<10*60000&&dist(GP_LAST.lat,GP_LAST.lng,c.latitude,c.longitude)<40)return;   /* 動いていなければ10分に1回だけ */
+  const row={id:"gp"+myId(),case:"gp",kind:"位置",text:JSON.stringify({lat:+c.latitude.toFixed(6),lng:+c.longitude.toFixed(6),acc:Math.round(c.accuracy||0)}),rec:"",by:myId(),byName:USER.name||"",at:new Date().toISOString()};
+  try{const d=await api("batch",{ops:[{table:"caselog",row:toServer("caselog",row)}]});(d.rows||[]).forEach(r=>applyOp("caselog",fromServer("caselog",r)));GP_LAST={t:now,lat:c.latitude,lng:c.longitude}}catch(e){}
+ },()=>{},{enableHighAccuracy:true,maximumAge:60000,timeout:20000})}
+function gpStart(){if(GP_T)return;GP_T=setInterval(()=>gpTick(false),GP_MIN*60000);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")gpTick(false)});setTimeout(()=>gpTick(true),4000)}
+const gpRows=()=>(DB.caselog||[]).filter(l=>l.kind==="位置"&&l.state!=="削除").map(l=>{let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}return Object.assign({name:String(l.byName||uName(l.by)||""),at:l.at,by:l.by},j)}).filter(x=>isFinite(x.lat)&&isFinite(x.lng)).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+const gpAgo=at=>{const m=Math.round((Date.now()-new Date(at))/60000);return m<1?"今":m<60?m+"分前":m<1440?Math.floor(m/60)+"時間前":Math.floor(m/1440)+"日前"};
+function gpNear(x){let best=null;const add=(n,la,ln,k)=>{if(!isFinite(la)||!isFinite(ln))return;const d=dist(x.lat,x.lng,+la,+ln);if(!best||d<best.d)best={n,d,k}};
+ DB.offices.forEach(o=>add(o.name,o.lat,o.lng,"居宅"));try{lmRows().forEach(j=>add(lmName(j)+" 様宅",j.lat,j.lng,"利用者"))}catch(e){}
+ return best&&best.d<=400?`${esc(best.n)} 付近（${Math.round(best.d)}m）`:""}
+function gpBox(){if(!canAdmin())return "";   /* 11/17 社長：見られるのは社長（管理者）だけ。事務も見られない */const L=gpRows(),open=S.gpOpen;
+ const now=L.filter(x=>Date.now()-new Date(x.at)<GP_OLD*60000).length;
+ return `<details class="form" style="margin-bottom:8px" ${open?"open":""} ontoggle="S.gpOpen=this.open;if(this.open)setTimeout(gpMap,30)"><summary style="cursor:pointer"><b>📡 営業の現在地</b> <span class="meta">${L.length?`${now}人が${GP_OLD}分以内に更新`:"まだ届いていません（営業さんがアプリを開くと届きます）"}</span></summary>
+ ${L.length?`<div id="gpMap" style="height:300px;border-radius:10px;margin:6px 0"></div>${L.map(x=>{const old=Date.now()-new Date(x.at)>=GP_OLD*60000;return `<div class="logi" style="${old?"opacity:.55":""}"><b>${esc(x.name)}</b> <span class="meta">${gpAgo(x.at)}（${esc(fmtAt(x.at))}）${x.acc?" ・ 誤差 約"+x.acc+"m":""}${old?" ・ アプリを閉じているか圏外":""}</span><div>${gpNear(x)||'<span class="meta">近くに登録の居宅・利用者宅なし</span>'} <a href="https://www.google.com/maps?q=${x.lat},${x.lng}" target="_blank" rel="noopener">Googleマップで開く</a></div></div>`}).join("")}`:""}
+ <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px"><button class="btn sm" type="button" onclick="syncNow(true).then(()=>{S.gpOpen=true;render()})">↻ 最新にする</button><span class="meta">アプリを開いている間（勤務時間 ${GP_H[0]}〜${GP_H[1]}時）だけ、${GP_MIN}分おきに届きます。閉じている間は最後の場所のままです。</span></div></details>`}
+window.gpMap=async()=>{const el=$("#gpMap");if(!el)return;try{await loadLeaflet()}catch(e){el.textContent="地図を読み込めませんでした";return}
+ const L0=gpRows();if(!L0.length)return;if(el._m){try{el._m.remove()}catch(e){}}const m=L.map(el);el._m=m;L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(m);
+ const b=[];L0.forEach(x=>{const old=Date.now()-new Date(x.at)>=GP_OLD*60000;L.circleMarker([x.lat,x.lng],{radius:9,color:old?"#999":"#c0392b",fillColor:old?"#bbb":"#e74c3c",fillOpacity:.9}).addTo(m).bindTooltip(esc(x.name)+" "+gpAgo(x.at),{permanent:true,direction:"top"});b.push([x.lat,x.lng])});
+ if(b.length===1)m.setView(b[0],15);else m.fitBounds(b,{padding:[30,30]})};
 function rtBoard(){const rs=(DB.rentals||[]).filter(r=>r.state!=="削除"),cases=(DB.cases||[]).filter(c=>cLive(c)&&!cDone(c));
- if(!rs.length&&!cases.length)return `<button class="btn primary" type="button" onclick="S.jt='cl';S.clOpen='new';render()">＋ 新規利用者</button><div class="empty">タスクカードも台帳もまだありません。</div>`;
+ if(!rs.length&&!cases.length)return `${gpBox()}<button class="btn primary" type="button" onclick="S.jt='cl';S.clOpen='new';render()">＋ 新規利用者</button><div class="empty">タスクカードも台帳もまだありません。</div>`;
  const st=[...new Set(rtStaffs().concat(cases.map(c=>c.staffName||"（担当なし）")))];
- return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><button class="btn primary" type="button" onclick="S.jt='cl';S.clOpen='new';render()">＋ 新規利用者</button><span class="meta">赤・オレンジの件を営業さんごとに並べています。押すと詳しく見られます。</span></div><div class="board">${st.map(n=>{
+ return `${gpBox()}<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><button class="btn primary" type="button" onclick="S.jt='cl';S.clOpen='new';render()">＋ 新規利用者</button><span class="meta">赤・オレンジの件を営業さんごとに並べています。押すと詳しく見られます。</span></div><div class="board">${st.map(n=>{
   const mine=rs.filter(r=>(stUni(r.staff)||"（担当なし）")===n);const items=[];
   mine.forEach(r=>{const a=rtAlerts(r);RT_KEYS.forEach(([k,l])=>{if(a[k].k==="r"||a[k].k==="o")items.push({r,k,l,a:a[k]})});if(a.demo.k==="h")items.push({r,k:"demo",l:"入院",a:a.demo})});
   const cnt=k=>items.filter(x=>x.k===k&&x.a.k!=="h").length,red=items.filter(x=>x.a.k==="r").length;
@@ -4547,6 +4575,7 @@ function render(){
  if(S.view!=="umap")window.__lmAway=true;
  try{fdStash()}catch(e){}
  try{dkCheck()}catch(e){}
+ try{if(gpOn()&&!S.loading)gpStart()}catch(e){}
  renderGps();
  const gated=MODE==="setup"||(MODE==="live"&&(!USER||S.loading));
  document.querySelector(".tabs").hidden=gated;sim.hidden=gated||MODE==="live";
