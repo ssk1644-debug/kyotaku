@@ -256,7 +256,7 @@ tr.hmgrey td{background:#eee!important;color:#888}tr.hmgrey input,tr.hmgrey sele
 .hospl{grid-column:1/-1;font-size:15px;font-weight:700;color:#8e44ad;background:#f4ecf7;border-radius:8px;padding:4px 8px}.hospl.soon{color:#fff;background:#8e44ad}.hospl.soon .meta{color:#fff}
 .client.inhosp{border:2px solid #8e44ad}
 .cbx{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:6px;background:var(--surface);display:grid;gap:6px}
-.rbox{display:flex;gap:6px;align-items:flex-end;margin-top:6px}.rbox textarea{flex:1;font-size:16px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);min-height:44px}
+.flnext{border:2px solid #1a5a9c;gap:4px}.flprep{display:flex!important;flex-wrap:nowrap;gap:6px;align-items:center;font-size:15px;color:var(--ink);padding:3px 6px;border-radius:8px}.flform{display:grid;gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}.flit{border-left:4px solid #1a5a9c;padding:4px 8px;margin:4px 0}.flit.sm{border-left-color:var(--line);font-size:14px;opacity:.85}.flit.nx{border-left-color:#f0a500;background:#fff8e1}.fld{font-weight:700;font-size:14px;color:#1a5a9c}.flit.sm .fld{color:var(--muted,#777);font-weight:400}.flnx{color:#1a5a9c;font-weight:700;font-size:14px}.rbox{display:flex;gap:6px;align-items:flex-end;margin-top:6px}.rbox textarea{flex:1;font-size:16px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);min-height:44px}
 .recbtn.rec{background:var(--alert);color:var(--surface)}
 #recBar{display:flex;gap:8px;align-items:center;background:var(--alert-soft);color:var(--alert);padding:6px 16px;border-top:1px solid var(--alert)}#recBar[hidden]{display:none}#recBar .grow{flex:1;min-width:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#recBar b{white-space:nowrap}#recBar .btn{white-space:nowrap}
 .recdot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--alert);margin-right:6px}
@@ -1108,7 +1108,9 @@ const NEW_DAYS=14;
 function cmRentals(c){const o=DB.offices.find(x=>x.id===c.office),on=o?o.name:"";
  return (DB.rentals||[]).filter(r=>!rtStop(r)&&mineRec(r)&&pnorm(r.cmName)&&pnorm(r.cmName)===pnorm(c.name)&&(r.office===c.office||(on&&String(r.officeName||"").trim()===on)))}
 function offRentals(o){return (DB.rentals||[]).filter(r=>!rtStop(r)&&mineRec(r)&&(r.office===o.id||String(r.officeName||"").trim()===o.name))}
-const rtDemoNow=r=>isD(r.deliv)&&!confDone(r)&&!rtJh(r);
+/* 11/17 社長：納品から60日を過ぎたものは古いデータとして「デモ中」に出さない（台帳には残る） */
+const DEMO_MAX=60;
+const rtDemoNow=r=>isD(r.deliv)&&!confDone(r)&&!rtJh(r)&&daysFrom(r.deliv)<=DEMO_MAX;
 const rtNewNow=r=>{const b=isD(r.start)?r.start:isD(r.confDate)?r.confDate:"";const d=b?daysFrom(b):null;return d!=null&&d>=0&&d<=NEW_DAYS};
 function demoRows(rs){const dm=rs.filter(rtDemoNow).map(r=>({r,k:"demo",d:(daysFrom(r.deliv)||0)+1})).sort((a,b)=>b.d-a.d),nw=rs.filter(r=>!rtDemoNow(r)&&rtNewNow(r)).map(r=>({r,k:"new"}));return dm.concat(nw)}
 function offDemoBox(o){const sc=S.selCm?DB.cms.find(c=>c.id===S.selCm):null,L=demoRows(sc?cmRentals(sc):offRentals(o));if(!L.length)return "";
@@ -1770,6 +1772,8 @@ function fdAuto(fe){const rows=[],xs=[];(fe.items||[]).forEach(x=>{if(x.st||x.de
   const row=fdSchedRow(fe,x);rows.push({table:"sched",row});x.st="sched";x.auto=true;x.sid=row.id;xs.push(x)});
  if(!rows.length)return;
  persist(rows).then(()=>{toast("📅 日時の決まった用事 "+rows.length+"件 を予定に入れました");try{render()}catch(e){}}).catch(e=>{xs.forEach(x=>{x.st="";x.auto=false;x.sid=""});toast("予定に入れられませんでした："+errText(e));try{render()}catch(_){}})}
+/* 自動で入れた予定がどこにあるか分からない（11/17 社長）→「📅 予定を見る」で、やることのその予定まで飛んで黄色で光らせる */
+window.skGo=id=>{S.skHi=id;S.schedWho="";S.view="sched";render();setTimeout(()=>{const e=document.getElementById("sk-"+id);if(e)e.scrollIntoView({block:"center"});else toast("予定が見つかりません（取り消されたかもしれません）")},80);setTimeout(()=>{if(S.skHi===id){S.skHi=null;const e=document.getElementById("sk-"+id);if(e){e.style.outline="";e.style.background=""}}},8000)};
 window.fdUndo=async(fi,i,b)=>{const f=FOUND[fi],x=f&&f.items&&f.items[i];if(!x||!x.sid)return;if(b)b.disabled=true;
  try{await persist([{table:"sched",row:{id:x.sid,state:"削除"}}]);x.st="";x.auto=false;x.sid="";x.def="";toast("予定から外しました");render()}catch(e){if(b)b.disabled=false;toast("外せませんでした："+errText(e))}};
 /* まだ決めていない用事は、読み込み直しても残す（この端末に覚える。7日で消える） */
@@ -1891,7 +1895,7 @@ function fcardsHtml(f,fi){const o=DB.offices.find(x=>x.id===f.office),cm=DB.cms.
  <div class="meta">${esc(o?o.name:"")}${cm?" ・ "+esc(cm.name):""} ・ ${esc(f.date)} の記録から ・ AIのおすすめに色が付いています</div>
  ${(f.cases||[]).length?fcHtml(f,fi):""}
  ${(f.hosp||[]).length?fhHtml(f,fi):""}${f.hospAuto?`<div style="margin-top:8px"><b>🏥 入院・退院の知らせ</b>${f.hospSt==="err"?`<div class="meta" style="color:var(--alert);font-weight:700">⚠ ${f.hospAuto}件を入退院表に入れられませんでした（${esc(f.hospErr||"")}）</div><button class="btn sm" type="button" onclick="haRetry('${f.id}')">もう一度入れる</button>`:f.hospSt==="busy"?`<div class="meta">⏳ ${f.hospAuto}件を入退院表に入れています…</div>`:`<div class="meta">✅ ${f.hospAuto}件を「確認待ち」で入退院表に入れました。利用者が合っているかは、入退院表（事務所）で確認します。</div>`}</div>`:""}
- ${its.map((x,i)=>{if(x.st)return `<div class="logi"><span class="meta">${x.dup?"📅 もう予定に入っています":x.auto?"📅 自動で予定に入れました（"+esc(fxDt(x.date,x.time))+"）":lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}${x.auto&&x.sid?` <button class="btn sm" type="button" style="padding:1px 8px" onclick="fdUndo(${fi},${i},this)">取り消す</button>`:""}${x.st==="fix"&&x.fixFrom?` <span class="meta">（${esc(x.fixFrom)} → ${esc(fxDt(x.date,x.time))}）</span>`:""}</div>`;const fx=fxCands(f,x);return `<div class="fcard">
+ ${its.map((x,i)=>{if(x.st)return `<div class="logi"><span class="meta">${x.dup?"📅 もう予定に入っています":x.auto?"📅 自動で予定に入れました（"+esc(fxDt(x.date,x.time))+"）":lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}${x.sid?` <button class="btn sm" type="button" style="padding:1px 8px" onclick="skGo('${x.sid}')">📅 予定を見る</button>`:""}${x.auto&&x.sid?` <button class="btn sm" type="button" style="padding:1px 8px" onclick="fdUndo(${fi},${i},this)">取り消す</button>`:""}${x.st==="fix"&&x.fixFrom?` <span class="meta">（${esc(x.fixFrom)} → ${esc(fxDt(x.date,x.time))}）</span>`:""}</div>`;const fx=fxCands(f,x);return `<div class="fcard">
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="date" value="${esc(x.date||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].date=this.value;render()" aria-label="日付"><input type="time" value="${esc(x.time||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].time=this.value;render()" aria-label="時間"><span class="meta">${x.date?"":"日付なしでも入れられます"}</span></div>
   <textarea rows="2" oninput="FOUND[${fi}].items[${i}].t=this.value">${esc(x.t)}</textarea>
   ${fx.length?`<div style="margin:4px 0 6px;padding:6px 8px;border-radius:8px;background:#fff6d6;border:1px solid #f0a500"><div class="meta" style="font-weight:700">🔁 ${x.fix?"時間の変更・確定の連絡のようです。":"同じ件の予定がもう入っているかも。"}前の予定を直しますか？</div>
@@ -2254,7 +2258,7 @@ function ctGoBox(){const row=(r,red)=>{const cid=rtCliId(r),u=cid?clientOf(cid):
  const A=ctGoList(false),B=(isJimu()||(USER&&USER.role==="admin"))&&MODE==="live"?ctGoList(true):[];
  return (A.length?`<div class="section-t"><h2 style="font-size:16px">🚗 契約に行く</h2><span class="meta">${A.length}件</span></div><div class="log">${A.map(r=>row(r,(rtCtDays(r)||0)>=3)).join("")}</div>`:"")
   +(B.length?`<div class="section-t"><h2 style="font-size:16px;color:#c0392b">⚠ 契約の回収待ち（持ち出し3日以上）</h2><span class="meta">${B.length}件</span></div><div class="log">${B.map(r=>row(r,true)).join("")}</div>`:"")}
-const rtProgHtml=r=>{const p=rtProg(r);return p.stop?`<span class="ac na">デモで終了</span>`:p.done?`<span class="ac ok">完了</span>`:`<span class="meta">${p.n}/${p.all}</span> 次：${p.next==="ct_doc"&&rtCtStage(r)>0&&rtCtStage(r)<4?(k=>`<b class="${k<3&&!rtCtMail(r)?"blink":""}" style="color:#c0392b">${rtCtLbl(r)[0]} ${rtCtLbl(r)[2]}</b>`)(rtCtStage(r)):`<b>${esc(RF_STEPS[p.next].l.replace(/（.*$/,""))}</b>`}`};
+const rtProgHtml=r=>{const p=rtProg(r);return p.stop?`<span class="ac na">デモで終了</span>`:p.done?`<span class="ac ok">完了</span>`:`<span class="meta">${p.n}/${p.all}</span> 次：${p.next==="ct_doc"&&rtCtStage(r)>0&&rtCtStage(r)<4?(k=>`<b class="${k<3&&!rtCtMail(r)?"blink":""}" style="color:#c0392b">${rtCtLbl(r)[0]} ${rtCtLbl(r)[2]}</b>${(k===2||k===3)&&rtCtGoer(r)&&!rtCtMail(r)?` <span style="color:#c0392b;font-weight:700">→ ${esc(rtCtGoer(r))}</span>`:""}`)(rtCtStage(r)):`<b>${esc(RF_STEPS[p.next].l.replace(/（.*$/,""))}</b>`}`};
 const rtOpts=k=>{const f=RT_FIELDS.concat(...RT_TG.map(x=>x[2])).find(x=>x[0]===k);return f&&String(f[2]).startsWith("sel:")?f[2].slice(4).split(","):[]};
 const rtSel=(r,k,opts,ph)=>`<select class="sim" onchange="rtPut('${r.id}',{${k}:this.value})">${(opts.includes(r[k]||"")?opts:opts.concat([r[k]||""])).filter((o,i,a)=>a.indexOf(o)===i).map(o=>`<option value="${esc(o)}" ${o===(r[k]||"")?"selected":""}>${esc(o||ph||"―")}</option>`).join("")}</select>`;
 const rtTx=(r,k,ph,w)=>`<input class="sim" style="width:${w||140}px" placeholder="${esc(ph||"")}" value="${esc(r[k]||"")}" onchange="rtPut('${r.id}',{${k}:this.value.trim()})">`;
@@ -2355,7 +2359,7 @@ function rtAddBar(){const P=S.rtPre||{},opt=k=>rtOpts(k).map(v=>`<option ${(k===
  <label class="meta" style="display:flex;gap:4px;align-items:center">納品日<input id="rta-d" type="date" class="sim" value="${today()}"></label>
  <input id="rta-o" list="rtaOf" placeholder="居宅" class="sim" style="width:170px" value="${esc(P.o||"")}"><datalist id="rtaOf">${DB.offices.map(o=>`<option value="${esc(o.name)}">`).join("")}</datalist>
  <input id="rta-c" placeholder="担当CM" class="sim" style="width:100px" value="${esc(P.c||"")}"><input id="rta-s" list="rtaSt" placeholder="担当営業" class="sim" style="width:90px" value="${esc(P.s||"")}"><datalist id="rtaSt">${rtStaffs().filter(x=>x!=="（担当なし）").concat((DB.users||[]).map(x=>stUni(x.name))).filter((x,i,a)=>x&&a.indexOf(x)===i).map(n=>`<option value="${esc(n)}">`).join("")}</datalist>
- <button class="btn sm primary" type="button" onclick="rtAddGo(this)">追加</button><span id="rta-h" class="meta" style="color:#8e44ad;flex:1 1 100%">${P.cid&&clientOf(P.cid)?rtaKeiHint(clientOf(P.cid)):""}</span>${S.rtPre?`<span class="meta" style="background:#fff8e1;border-radius:8px;padding:2px 8px">📨 依頼BOXから入れました・確認して「追加」</span><button class="btn sm" type="button" onclick="S.rtPre=null;render()">✕</button>`:`<span class="meta">ほかの項目は行を開いて入れられます</span>`}</div>`}
+ <button class="btn sm primary" type="button" onclick="rtAddGo(this)">追加</button><span id="rta-h" class="meta" style="color:#8e44ad;flex:1 1 100%">${P.cid&&clientOf(P.cid)?rtaKeiHint(clientOf(P.cid)):""}</span>${S.rtPre?`<span class="meta" style="background:#fff8e1;border-radius:8px;padding:2px 8px">${String(S.rtPre.req||"").startsWith("c:")?"🗂 タスクカード":"📨 依頼BOX"}から入れました・確認して「追加」</span><button class="btn sm" type="button" onclick="S.rtPre=null;render()">✕</button>`:`<span class="meta">ほかの項目は行を開いて入れられます</span>`}</div>`}
 /* 一覧から選んだ人が、いま契約中のレンタルを持っていれば区分を「追加」（既契約者の追加）に。違うこともあるので変えられる（11/17 社長） */
 const cliKei=u=>u&&u.useState!=="終了"?(DB.rentals||[]).filter(x=>x.state!=="削除"&&!rtStop(x)&&x.jflag!=="済"&&(x.client===u.id||rtCliId(x)===u.id)&&(confDone(x)||rtDone(x.ct_doc))):[];
 const rtaKeiHint=u=>{const L=cliKei(u);return L.length?`既契約あり（${L.slice(0,3).map(x=>esc(x.item||"用具")).join("・")}${L.length>3?" ほか":""}）→ 区分を「追加」にしました。違えば変えてください`:""};
@@ -2366,7 +2370,7 @@ window.rtaPick=async el=>{await hmCliPick(el);const u=el.dataset.cid?clientOf(el
 window.rtAddGo=async b=>{const g=k=>String(($("#rta-"+k)||{}).value||"").trim(),el=$("#rta-n"),cv=g("n");if(!cv){toast("利用者の名前を入れてください");return}
  const u=(el.dataset.cid&&clientOf(el.dataset.cid))||findClient(cv)||null,on=g("o"),o=DB.offices.find(x=>x.name===on);
  const row={id:newId("x"),cname:u?cliBare(u):cv.replace(/[\s　]*様$/,""),client:u?u.id:"",item:g("i"),kubun:g("k"),deliv:g("d"),officeName:on,office:o?o.id:"",cmName:g("c"),staff:g("s"),createdAt:new Date().toISOString(),state:""};
- const pr=S.rtPre&&S.rtPre.req;if(pr)row.memo="依頼BOX "+md(today())+" から";
+ const pr=S.rtPre&&S.rtPre.req;if(pr)row.memo=(String(pr).startsWith("c:")?"タスクカード":"依頼BOX")+" "+md(today())+" から";
  b.disabled=true;try{await persist([{table:"rentals",row}]);buzz(60);S.rtPre=null;S.rf="all";S.rq2="";toast("追加しました（ほかの項目は行を開いて）");render()}catch(e){b.disabled=false;toast("追加できませんでした："+errText(e))}};
 window.rtTg=b=>{const v=b.dataset.v;b.dataset.v=v==="済"?"":"済";b.classList.toggle("on",b.dataset.v==="済");b.textContent=(b.dataset.v==="済"?"✓ ":"")+b.textContent.replace(/^✓ /,"").replace(/：.*$/,"")};
 window.rtMsg=id=>{S.rtMsg=S.rtMsg===id?null:id;render()};
@@ -3042,7 +3046,7 @@ const PROLES=["CM","家族","本人","病院","業者","その他"];
 /* 記録は新しい順：同じ日の中も、あとから入れたものが上（11/16 社長） */
 const recNew=(a,b)=>String(b.date||"").localeCompare(String(a.date||""))||String(b.id||"").localeCompare(String(a.id||""));
 function cParts(c){const id=c&&c.id?c.id:c;const l=(DB.caselog||[]).filter(x=>x.case===id&&x.kind==="部品").sort((a,b)=>String(b.at).localeCompare(String(a.at)))[0];let p={};try{p=l?JSON.parse(l.text||"{}"):{}}catch(e){p={}}
- const A=v=>Array.isArray(v)?v:[];return {people:A(p.people),cond:String(p.cond||""),prep:A(p.prep),waits:A(p.waits),time:String(p.time||"")}}
+ const A=v=>Array.isArray(v)?v:[];return {people:A(p.people),cond:String(p.cond||""),prep:A(p.prep),waits:A(p.waits),time:String(p.time||""),how:String(p.how||"")}}
 const partOp=(id,p)=>clog(id,"部品",JSON.stringify(p));
 const wOver=w=>!!w&&!w.done&&!!w.due&&w.due<today();
 const wOpen=c=>cParts(c).waits.filter(w=>!w.done);
@@ -3192,41 +3196,99 @@ function viewCase(){const c=(DB.cases||[]).find(x=>x.id===S.caseId);if(!c)return
  return `<div class="ctile c-${cColor(c)} ${cOver(c)?"over":""}" style="cursor:default;margin-top:8px;padding-bottom:8px">
   <div class="ct-h"><b style="font-size:19px">${esc(cFull(c))}　${esc(cTopic(c))}</b><span style="display:flex;gap:6px;align-items:center"><span class="ct-type">${esc(c.type||"その他")}</span><button class="btn sm" type="button" title="確認・知らせる・まとめる・直す・削除" onclick="S.caseMore=${more?"null":"'"+id+"'"};render()">${more?"✕":"⋯"}</button></span></div>
   <div class="meta">${o?`<a href="#" onclick="openOffice('${o.id}');return false">${esc(o.name)}</a>`:"居宅未設定"}${cm?" ・ CM "+esc(cm.name):""}${u&&u.lv?" ・ "+esc(u.lv):""}${c.staffName?" ・ 担当 "+esc(c.staffName):""}</div>
-  <div class="steps cvsteps">${st.map((x,k)=>`<button type="button" class="${k===ci?"on":k<ci?"past":""}" onclick="caseStage('${id}','${x}',this)">${k<ci?"✓ ":""}${x}</button>`).join("")}</div>
+  ${more?`<div class="steps cvsteps" style="margin-top:6px">${st.map((x,k)=>`<button type="button" class="${k===ci?"on":k<ci?"past":""}" onclick="caseStage('${id}','${x}',this)">${k<ci?"✓ ":""}${x}</button>`).join("")}</div>`:""}
   ${more?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)">${(cc=>`<button class="btn sm" type="button" onclick="caseCheck('${id}',this)">${cc.some(l=>l.by===myId())?"✓ 確認済み":"✓ 確認した"}</button>${cc.length?`<span class="meta">確認：${cc.map(l=>esc(l.byName||"")+" "+esc(fmtAt(l.at))).join("、")}</span>`:""}`)(caseChecks(id))}
    <select class="sim" onchange="if(this.value)caseShare('${id}',this.value);this.value=''"><option value="">💬 だれかに知らせる</option>${(DB.users||[]).filter(u=>u.email&&u.email!==myId()).map(u=>`<option value="${esc(u.email)}">${esc(u.name)}</option>`).join("")}<option value="all">全員の部屋</option></select>
    <button class="btn sm" type="button" onclick="mgStart('${id}')">🔗 ほかのカードとまとめる</button>
    ${others.length?`<select id="cs-merge" class="sim"><option value="">同じ利用者のカードへ</option>${others.map(x=>`<option value="${x.id}">${esc(x.type)}（${esc(x.stage||"受付")}）${esc((x.title||x.next||"").slice(0,20))}</option>`).join("")}</select><button class="btn sm" type="button" onclick="caseMerge('${id}',this)">まとめる</button>`:""}
    <button class="btn sm" type="button" style="color:var(--alert)" onclick="caseDel('${id}',this)">このカードを削除</button></div>`:""}</div>
- <div class="cvgrid"><div>
- <div class="form" style="margin-top:8px;gap:2px"><div style="display:flex;justify-content:space-between;align-items:center"><span class="meta">次にやること${c.due?` ・ 期限 <span class="${cOver(c)?"ovt":""}">${esc(c.due.slice(5).replace("-","/"))}${p.time?" "+esc(p.time):""}${cOver(c)?"（過ぎています）":""}</span>`:""}</span><button class="btn sm" type="button" onclick="S.caseEd=${S.caseEd===id?"null":"'"+id+"'"};render()">${S.caseEd===id?"閉じる":"✏ 直す"}</button></div>
-  <b style="font-size:17px">${esc(c.next||c.title||"（まだ決まっていません）")}</b>${caseSchedLine(c)}
-  ${S.caseEd===id?`<div style="margin-top:6px;display:grid;gap:6px"><label>見出し（用件をひとこと）<input id="cs-title" maxlength="40" value="${esc(c.title||"")}"></label>
-  <div class="row2"><label>次にやること<input id="cs-next" value="${esc(c.next||"")}"></label><label>日にち・時間（入れると予定にも入ります）<span style="display:flex;gap:6px"><input type="date" id="cs-due" value="${esc(caseWhen(c).date||"")}"><input type="time" id="cs-time" value="${esc(caseWhen(c).time||"")}" style="width:auto"></span></label></div>
+ ${caseFlowView(c)}
+ </div>`}
+
+/* ===== 11/17 社長：タスクカードを「流れ」で見る。いつも見えるのは「▶ 次（何を・いつ・どうする・用意）」と、これまでの流れ（日付・やったこと・結果・→次）だけ。
+   「✓ やった・結果を書く」で、今日の結果と次の「何を・いつ・どうする・用意するもの」を書く → 結果は caselog kind=結果（JSON）、次はカード・予定・準備リストに入る ===== */
+const FL_SHOW=["結果","会話","メモ","作成","確認"];
+const flJ=l=>{try{return JSON.parse(l.text||"{}")}catch(e){return {res:l.text}}};
+function caseFlowView(c){const id=c.id,p=cParts(c),w=caseWhen(c),logs=caseLogs(id).filter(l=>FL_SHOW.includes(l.kind)).reverse(),reqs=caseReqs(c),wo=p.waits.filter(x=>!x.done),done=cDone(c),fo=S.flOpen===id;
+ const prep=p.prep.map((x,i)=>`<div class="flprep" style="${x.j&&!x.ok?"background:#fff3bf":""}"><input type="checkbox" style="width:auto" ${x.ok?"checked":""} onchange="cpPrep('${id}',${i},this)"><span style="${x.ok?"text-decoration:line-through;opacity:.6":""}">${esc(x.t||"")}</span><button class="btn sm" type="button" style="padding:0 6px;margin-left:auto" title="事務さんへ" onclick="cpPrepJ('${id}',${i},this)">${x.j?"事務✓":"事務へ"}</button><button class="btn sm" type="button" style="padding:0 6px" onclick="cpDel('${id}','prep',${i},this)">×</button></div>`).join("");
+ const item=l=>{if(l.kind==="結果"){const j=flJ(l);return `<div class="flit"><div class="fld">${esc(j.d?fxDt(j.d,""):fmtAt(l.at))}${j.what?" ・ "+esc(j.what):""} <span class="meta">${esc(l.byName||"")}</span></div><div>${esc(j.res||"（結果なし）")}</div>${j.nx&&j.nx.what?`<div class="flnx">→ 次：${j.nx.date?esc(fxDt(j.nx.date,j.nx.time))+" ":""}${esc(j.nx.what)}</div>`:j.fin?'<div class="flnx">✓ 完了</div>':""}</div>`}
+  return `<div class="flit sm"><div class="fld">${esc(fmtAt(l.at))} ・ ${esc(l.kind==="会話"?"会話":l.kind==="作成"?"受付":l.kind)} <span class="meta">${esc(l.byName||"")}</span>${l.rec&&DB.records.some(r=>r.id===l.rec)?` <a href="#" onclick="recShow('${l.rec}');return false">元の会話</a>`:""}</div><div>${esc(String(l.text||"").slice(0,140))}</div></div>`};
+ const lastN=6,old=logs.length>lastN?logs.slice(0,logs.length-lastN):[],rec=logs.slice(-lastN);
+ return `<div class="form flnext" style="margin-top:8px">
+  ${done?`<div style="font-size:17px;font-weight:700">✓ 完了しています</div><div><button class="btn sm" type="button" onclick="flReopen('${id}',this)">続きがある（次を書く）</button></div>`:`
+  <div class="meta">▶ 次にやること</div>
+  <div style="font-size:19px;font-weight:700">${w.date?`<span style="color:${c.due&&c.due<today()?"#c0392b":"#1a5a9c"}">${esc(fxDt(w.date,w.time))}</span> `:""}${esc(c.next||c.title||"（まだ決まっていません）")}</div>
+  ${p.how?`<div><span class="meta">どうする：</span>${esc(p.how)}</div>`:""}
+  ${p.prep.length?`<div class="meta" style="margin-top:4px">用意するもの（${p.prep.filter(x=>x.ok).length}/${p.prep.length}）</div>${prep}`:""}
+  ${caseSchedLine(c)}${flRtLine(c)}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn primary" type="button" style="flex:1;min-width:200px" onclick="S.flOpen=${fo?"null":"'"+id+"'"};render()">${fo?"閉じる":"✓ やった・結果を書く"}</button><button class="btn" type="button" onclick="S.flOpen=null;S.caseEd=${S.caseEd===id?"null":"'"+id+"'"};render()">${S.caseEd===id?"閉じる":"✏ 次を直す"}</button></div>`}
+  ${fo&&!done?flForm(c):""}${S.caseEd===id?flEdit(c):""}</div>
+ <div class="form" style="margin-top:8px;gap:4px"><b>これまでの流れ</b>
+  ${old.length?`<details><summary class="meta" style="cursor:pointer">前の ${old.length}件</summary>${old.map(item).join("")}</details>`:""}
+  ${rec.map(item).join("")||'<div class="meta">まだありません。「✓ やった・結果を書く」で残っていきます</div>'}
+  ${done?"":`<div class="flit nx"><div class="fld">▶ 次 ${w.date?esc(fxDt(w.date,w.time)):""}</div><div>${esc(c.next||"（未定）")}</div></div>`}</div>
+ <details class="form" style="margin-top:8px" ${reqs.some(r=>r.state!=="済")?"open":""}><summary style="cursor:pointer"><b>💬 メモ・事務へ</b> <span class="meta">${reqs.length?"事務とのやりとり "+reqs.length+"件"+(reqs.some(r=>r.state!=="済")?"（対応中あり）":""):""}${p.cond?" ・ 条件："+esc(firstLine(p.cond).slice(0,20)):""}</span></summary>
+  <div class="rbox"><textarea id="cs-memo" rows="1" placeholder="ひとこと（流れに残す／事務へのお願い）"></textarea></div>
+  <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin-top:4px"><button class="btn sm" type="button" onclick="caseMemo('${id}',this)">流れに残す</button><button class="btn sm" type="button" onclick="caseAsk('${id}',this)">📨 事務にお願い</button></div>
+  ${reqs.length?`<div class="log" style="margin-top:6px">${reqs.map(r=>`<div class="logi" style="${r.state==="済"?"opacity:.7":"background:#fff8e1"}"><div class="meta">📨 ${fmtAt(r.at)} ・ ${esc(r.staff||"")} → 事務 ・ <b>${esc(r.state||"未対応")}</b>${r.state==="済"&&r.doneBy?"（"+esc(r.doneBy)+"）":""}</div>${esc(r.text)}${reqPhotos(r)}
+   <div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${replyBox(r.id,seeJimu()&&jimuMode()?(r.email||""):JIMU,r.office||"",seeJimu()&&jimuMode()?"営業さんに返事":"事務に一言")}
+   ${seeJimu()?`<div style="margin-top:4px"><button class="btn sm" type="button" onclick="reqState('${r.id}',${r.state==="済"?"false":"true"},this)">${r.state==="済"?"未対応に戻す":"済にする"}</button></div>`:""}</div>`).join("")}</div>`:""}
+  <div class="meta" style="margin-top:8px">📝 条件・メモ（用途・体の状態・希望など）</div><div class="rbox"><textarea id="cpc" rows="2">${esc(p.cond)}</textarea><button class="btn sm" type="button" onclick="cpCond('${id}',this)">保存</button></div>
+  ${wo.length||p.people.length?`<div class="meta" style="margin-top:8px">前に入っている分</div>${wo.map(x=>{const i=p.waits.indexOf(x);return `<div class="cpw ${wOver(x)?"over":""}"><span>⏳ <b>${esc(x.what||"")}</b> <span class="meta">期限 ${esc(md(x.due))}</span></span><button class="btn sm" type="button" onclick="cpWait('${id}',${i},'done',this)">✓ 済んだ</button></div>`}).join("")}${p.people.map(x=>`<div class="cpw"><span><span class="cprole">${esc(x.role||"")}</span> <b>${esc(x.name||"")}</b></span></div>`).join("")}`:""}
+  ${(h=>h?`<div class="meta" style="margin-top:8px">レンタル台帳</div>${h}`:"")(caseRentals(c))}</details>`}
+function flForm(c){const id=c.id,p=cParts(c),w=caseWhen(c);
+ return `<div class="flform"><label>今日の結果（話した内容・決まったこと）<textarea id="fl-res" rows="3" placeholder="例：家屋訪問済み。外階段は手すりで昇降可。車椅子は不要、ピックアップ歩行器が必要"></textarea></label>
+  <div style="font-weight:700;margin-top:6px">次は？</div>
+  <label>何を<input id="fl-what" placeholder="例：歩行器を搬入／退院日の連絡を待つ"></label>
+  <div class="row2"><label>いつ<span style="display:flex;gap:6px"><input type="date" id="fl-date"><input type="time" id="fl-time" style="width:auto"></span></label><label>どうする<input id="fl-how" placeholder="例：退院日に合わせて納品、CMに連絡"></label></div>
+  <label>用意するもの（、で区切る）<input id="fl-prep" placeholder="例：ピックアップ歩行器、カタログ"></label>
+  <label style="display:flex;gap:6px;align-items:center;font-size:15px"><input type="checkbox" id="fl-j" style="width:auto"> 用意するものを事務にお願いする</label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn primary" type="button" style="flex:1" onclick="flSave('${id}',false,this)">保存して次へ</button><button class="btn" type="button" onclick="flSave('${id}',true,this)">これで完了</button></div>
+  ${w.date||c.next?`<div class="meta">今の「${esc(c.next||"")}」${w.date?"（"+esc(fxDt(w.date,w.time))+"）":""}の結果として残ります</div>`:""}</div>`}
+function flEdit(c){const id=c.id,p=cParts(c),w=caseWhen(c),u=c.client?clientOf(c.client):null;
+ return `<div class="flform"><label>次にやること（何を）<input id="cs-next" value="${esc(c.next||"")}"></label>
+  <div class="row2"><label>いつ（入れると予定にも入ります）<span style="display:flex;gap:6px"><input type="date" id="cs-due" value="${esc(w.date||"")}"><input type="time" id="cs-time" value="${esc(w.time||"")}" style="width:auto"></span></label><label>どうする<input id="cs-how" value="${esc(p.how)}"></label></div>
+  <label>用意するものを足す（、で区切る）<input id="cs-prep" placeholder="例：カタログ、契約書"></label>
+  <details><summary class="meta" style="cursor:pointer">見出し・種類・利用者</summary><label>見出し<input id="cs-title" maxlength="40" value="${esc(c.title||"")}"></label>
   <div class="row2"><label>種類<select id="cs-type">${Object.keys(CTYPES).map(k=>`<option ${k===c.type?"selected":""}>${k}</option>`).join("")}</select></label>
-  <label>利用者<input id="cs-client" list="csClients" value="${esc(u?clientLabel(u):c.clientName||"")}" placeholder="名前の一部で候補から選ぶ"></label></div>
-  <datalist id="csClients">${DB.clients.map(clOpt).join("")}</datalist>
-  <div><button class="btn primary" type="button" onclick="S.caseEd=null;caseSave('${id}',this)">保存</button></div></div>`:""}</div>
- <div class="form" style="margin-top:8px;gap:4px"><div><b>☑ 準備</b> <span class="meta">${p.prep.length?p.prep.filter(x=>x.ok).length+"/"+p.prep.length+" 済 ・ 事務に用意してほしい物は「事務さんへ」":"持っていく物・書類など"}</span></div>
- ${p.prep.map((x,i)=>`<div class="cpw" style="${x.j&&!x.ok?"background:#fff3bf;border-color:#f0a500":x.ok&&x.j?"background:#e6f4ea":""}"><label style="display:flex;gap:8px;align-items:center;font-size:16px;color:var(--ink);flex:1"><input type="checkbox" style="width:auto" ${x.ok?"checked":""} onchange="cpPrep('${id}',${i},this)"> <span style="${x.ok?"text-decoration:line-through;opacity:.6":""}">${esc(x.t||"")}</span>${x.ok&&x.by?`<span class="meta">✓ ${esc(x.by)}</span>`:""}</label><button class="btn sm" type="button" style="${x.j?"background:#f0a500;color:#fff;border-color:#f0a500":""}" onclick="cpPrepJ('${id}',${i},this)">${x.j?"🟨 事務さんへ":"事務さんへ"}</button><button class="btn sm" type="button" onclick="cpDel('${id}','prep',${i},this)">×</button></div>`).join("")}
- <div class="rbox"><input id="cpr" placeholder="例：歩行車（デモ）・カタログ・契約書"><button class="btn sm" type="button" onclick="cpAddPrep('${id}',this)">＋ 足す</button></div></div>
- <details class="form" style="margin-top:8px" ${S.caseCondOpen===id?"open":""}><summary style="cursor:pointer"><b>📝 条件・メモ</b>${p.cond?` <span class="meta">${esc(firstLine(p.cond).slice(0,30))}</span>`:' <span class="meta">（なし）</span>'}</summary>
- <div class="rbox" style="margin-top:6px"><textarea id="cpc" rows="2" placeholder="用途・体の状態・希望など（例：買い物用・途中で座りたい・車に積む）">${esc(p.cond)}</textarea><button class="btn sm" type="button" onclick="cpCond('${id}',this)">保存</button></div></details>
- ${wo.length||p.people.length?`<details class="form" style="margin-top:8px"><summary style="cursor:pointer" class="meta">前に入っている分：${wo.length?"⏳ 待ち "+wo.length+"件":""}${wo.length&&p.people.length?" ・ ":""}${p.people.length?"👥 関係者 "+p.people.length+"人":""}</summary>
- ${p.waits.map((w,i)=>w.done?"":`<div class="cpw ${wOver(w)?"over":""}"><span>${wOver(w)?"⚠ ":"⏳ "}<b>${esc(w.what||"")}</b>${w.who?"（"+esc(w.who)+"）":""} <span class="${wOver(w)?"ovt":"meta"}">期限 ${esc(md(w.due))}</span></span><button class="btn sm primary" type="button" onclick="cpWait('${id}',${i},'done',this)">✓ 済んだ</button><button class="btn sm" type="button" onclick="cpDel('${id}','waits',${i},this)">×</button></div>`).join("")}
- ${p.people.map((x,i)=>`<div class="cpw"><span><span class="cprole">${esc(x.role||"")}</span> <b>${esc(x.name||"")}</b>${x.rel?"（"+esc(x.rel)+"）":""}${x.go?" ・ 同行する":""}</span><button class="btn sm" type="button" onclick="cpDel('${id}','people',${i},this)">×</button></div>`).join("")}</details>`:""}
- ${ci<st.length-1?`<button class="btn primary" type="button" style="width:100%;margin-top:8px" onclick="caseStage('${id}','${st[ci+1]}',this)">次の段階へ：${esc(st[ci+1])}</button>`:""}
- </div><div>
- <div class="form" style="margin-top:8px;gap:6px"><div class="rbox"><textarea id="cs-memo" rows="1" placeholder="ひとこと足す（経過のメモ／事務へのお願い）"></textarea></div>
- <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap"><button class="btn sm primary" type="button" onclick="caseMemo('${id}',this)">経過に足す</button><button class="btn sm" type="button" onclick="caseAsk('${id}',this)">📨 事務にお願い</button></div>
- ${reqs.length?`<div class="log">${reqs.map(r=>`<div class="logi" style="${r.state==="済"?"opacity:.7":"background:#fff8e1"}"><div class="meta">📨 ${fmtAt(r.at)} ・ ${esc(r.staff||"")} → 事務 ・ <b>${esc(r.state||"未対応")}</b>${r.state==="済"&&r.doneBy?"（"+esc(r.doneBy)+"）":""}</div>${esc(r.text)}${reqPhotos(r)}
-  <div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${replyBox(r.id,seeJimu()&&jimuMode()?(r.email||""):JIMU,r.office||"",seeJimu()&&jimuMode()?"営業さんに返事":"事務に一言")}
-  ${seeJimu()?`<div style="margin-top:4px"><button class="btn sm" type="button" onclick="reqState('${r.id}',${r.state==="済"?"false":"true"},this)">${r.state==="済"?"未対応に戻す":"済にする"}</button></div>`:""}</div>`).join("")}</div>`:""}
- <div><b>経過</b> <span class="meta">${logs.length}件（新しい順）</span></div>
- <div class="log">${logs.slice(0,3).map(logH).join("")||'<div class="meta">まだ経過がありません</div>'}</div>
- ${logs.length>3?`<details><summary class="meta" style="cursor:pointer">前の経過 ${logs.length-3}件を見る</summary><div class="log" style="margin-top:6px">${logs.slice(3).map(logH).join("")}</div></details>`:""}</div>
- ${(h=>h?`<details class="form" style="margin-top:8px"><summary class="meta" style="cursor:pointer">レンタル台帳を見る</summary>${h}</details>`:"")(caseRentals(c))}
- </div></div>`}
+  <label>利用者<input id="cs-client" list="csClients" value="${esc(u?clientLabel(u):c.clientName||"")}"></label></div><datalist id="csClients">${DB.clients.map(clOpt).join("")}</datalist></details>
+  <div><button class="btn primary" type="button" onclick="S.caseEd=null;caseSave('${id}',this)">保存</button></div></div>`}
+/* 11/17：カードとレンタル台帳をつなぐ。①この人の台帳の進み具合を1行ずつ ②次が「デモ・納品・搬入」なら「📦 台帳に行を作る」
+   （事務・社長は台帳がその場で開く。営業さんは台帳を見られないので、事務へ「台帳に入れてください」の依頼になる） */
+function flRtRows(c){if(!c.client)return [];return (DB.rentals||[]).filter(r=>r.state!=="削除"&&!rtStop(r)&&(r.client===c.client||rtCliId(r)===c.client)&&(rtDemoNow(r)||(!rtProg(r).done&&isD(r.deliv)&&daysFrom(r.deliv)<=120))).sort((a,b)=>String(b.deliv||"").localeCompare(String(a.deliv||"")))}
+const flRtWant=c=>/デモ|納品|搬入|持って行く|持っていく/.test(String(c.next||""));
+function flRtLine(c){const L=flRtRows(c),want=flRtWant(c),hasNew=L.some(r=>isD(r.deliv)&&daysFrom(r.deliv)<=7);if(!L.length&&!want)return "";
+ return `<div style="margin-top:6px;padding:4px 8px;border-radius:8px;background:#f3f7f6">${L.slice(0,4).map(r=>`<div style="font-size:14px">📦 <b>${esc(r.item||"用具")}</b> <span class="meta">納品 ${esc(md(r.deliv))}${rtDemoNow(r)?"・デモ "+((daysFrom(r.deliv)||0)+1)+"日目":""}</span> ${rtProgHtml(r)}</div>`).join("")}
+ ${want?`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:2px"><button class="btn sm" type="button" onclick="flToRt('${c.id}',this)">📦 台帳に行を作る${seeJimu()?"":"（事務へ）"}</button>${hasNew?'<span class="meta">最近の行があります。重ならないか確認を</span>':""}</div>`:""}</div>`}
+window.flToRt=async(id,b)=>{const c=DB.cases.find(x=>x.id===id);if(!c)return;const p=cParts(c),u=c.client?clientOf(c.client):null,txt=[c.next,c.title,p.prep.map(x=>x.t).join("、")].join(" ");
+ const item=(RQ_ITEM.find(([re])=>re.test(txt))||[])[1]||"";
+ if(seeJimu()){const o=u?DB.offices.find(x=>x.id===clOffice(u)):DB.offices.find(x=>x.id===c.office),cm=u?DB.cms.find(x=>x.id===u.cm):DB.cms.find(x=>x.id===c.cm);
+  S.rtPre={req:"c:"+id,cid:u?u.id:"",name:u?cliBare(u):String(c.clientName||""),item,kubun:u&&cliKei(u).length?"追加":"新規",o:o?o.name:"",c:cm?cm.name:"",s:stUni((u&&u.staff)||c.staffName||"")};
+  S.view="jimu";S.jt="ledger";render();scrollTo(0,0);return}
+ const w=caseWhen(c),dm=/デモ/.test(c.next||"");
+ if(!await uiConfirm("事務に「台帳に入れてください」とお願いします。\n"+cFull(c)+"・"+(item||"用具")+(w.date?"・"+fxDt(w.date,""):"")))return;
+ return caseOps([{table:"reqs",row:{id:newId("q"),office:c.office||"",cm:c.cm||"",rec:"c:"+id,text:cFull(c)+" 様　"+(item||"用具")+"の"+(dm?"デモ":"納品")+(w.date?"（"+fxDt(w.date,w.time)+"）":"")+"：レンタル台帳に入れてください"+(p.prep.length?"\n用意："+p.prep.map(x=>x.t).join("、"):""),staff:USER?USER.name:"デモ",state:"未対応",at:new Date().toISOString()}},{table:"cases",row:{id}}],b,"事務にお願いしました")};
+const flSplit=t=>String(t||"").split(/[、,，\n]/).map(x=>x.trim()).filter(Boolean);
+window.flSave=async(id,fin,b)=>{const c=DB.cases.find(x=>x.id===id);if(!c)return;const g=k=>String(($("#fl-"+k)||{}).value||"").trim();
+ const res=g("res"),nx={what:g("what"),date:g("date"),time:g("time"),how:g("how")},pr=flSplit(g("prep")),pj=!!($("#fl-j")||{}).checked;
+ if(!res&&!nx.what&&!fin){toast("今日の結果か、次にやることを書いてください");return}
+ if(!fin&&!nx.what&&(nx.date||pr.length)){toast("次に「何を」するかを書いてください");return}
+ const w=caseWhen(c),p=cParts(c),ops=[],st=ctSteps(c),cur=cStage(c);
+ const j={d:w.date&&w.date<=today()?w.date:today(),what:c.next||"",res,fin:fin&&!nx.what?1:0};if(nx.what)j.nx=nx;
+ ops.push(clog(id,"結果",JSON.stringify(j)));
+ /* 今の予定は「済」に */
+ const s0=caseSched(c);if(s0&&s0.state!=="済")ops.push({table:"sched",row:{id:s0.id,state:"済",doneAt:new Date().toISOString()}});
+ if(fin&&!nx.what){p.waits.forEach(x=>{if(!x.done)x.done=today()});p.how="";p.time="";ops.push(partOp(id,p),{table:"cases",row:{id,stage:"完了",state:"完了",doneAt:new Date().toISOString()}});
+  S.flOpen=null;return caseOps(ops,b,"完了にしました"+(c.cm||c.office?"。CMに報告しましたか？":""))}
+ /* 次：カード・どうする・時間・用意するもの（済んだ物は外す） */
+ p.prep=p.prep.filter(x=>!x.ok);pr.forEach(t=>{const e=p.prep.find(x=>x.t===t);if(e){if(pj)e.j=true}else p.prep.push({t,ok:false,j:pj})});p.how=nx.how;p.time=nx.time;
+ const row={id,next:nx.what,due:nx.date||""};if(cur===st[0]&&st.length>2)row.stage=st[1];   /* 最初の段階のままなら1つ進める */
+ if(cDone(c)){row.stage=st[Math.max(0,st.length-2)];row.state="";row.doneAt=""}
+ ops.push({table:"cases",row},partOp(id,p));
+ if(nx.date){const c2=Object.assign({},c,row,{next:nx.what});const srow=fdSchedRow({office:c.office,cm:c.cm||""},{t:caseSchedText(c2),date:nx.date,time:nx.time});ops.push({table:"sched",row:srow},clog(id,"予定",srow.id))}
+ if(pj&&pr.length)ops.push({table:"reqs",row:{id:newId("q"),office:c.office||"",cm:c.cm||"",rec:"c:"+id,text:caseHead(c)+"：用意お願いします → "+pr.join("、")+(nx.date?"（"+fxDt(nx.date,nx.time)+" "+nx.what+"）":""),staff:USER?USER.name:"デモ",state:"未対応",at:new Date().toISOString()}});
+ S.flOpen=null;return caseOps(ops,b,"保存しました"+(nx.date?"（次の予定 "+fxDt(nx.date,nx.time)+"）":""))};
+window.flReopen=(id,b)=>{const c=DB.cases.find(x=>x.id===id);if(!c)return;const st=ctSteps(c);S.flOpen=id;return caseOps([{table:"cases",row:{id,stage:st[Math.max(0,st.length-2)],state:"",doneAt:""}}],b,"")};
 
 /* タスクカードにつながる事務への依頼：カードから送ったもの（rec=c:案件ID）と、カードに入れた会話から送ったもの */
 function caseReqs(c){const recs=new Set((DB.caselog||[]).filter(l=>l.case===c.id&&l.rec).map(l=>l.rec));
@@ -3269,7 +3331,7 @@ window.caseSave=async(id,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c)return;c
  const type=$("#cs-type").value,st=CTYPES[type]||CTYPES["その他"],stage=st.includes(c.stage)?c.stage:(c.stage==="完了"?"完了":st[0]);
  const row={id,title:$("#cs-title").value.trim(),next:$("#cs-next").value.trim(),due:$("#cs-due").value,type,stage};
  if(u){row.client=u.id;row.clientName="";row.office=clOffice(u)||c.office;row.cm=u.cm||c.cm}else if(nv){row.client="";row.clientName=nv}
- const tm=($("#cs-time")||{}).value||"",p=cParts(c),ex=[];if(p.time!==tm){p.time=tm;ex.push(partOp(id,p))}
+ const tm=($("#cs-time")||{}).value||"",p=cParts(c),ex=[];{const hw=$("#cs-how"),pp=$("#cs-prep"),add=pp?flSplit(pp.value).map(t=>({t,ok:false})):[];if(p.time!==tm||(hw&&hw.value.trim()!==p.how)||add.length){p.time=tm;if(hw)p.how=hw.value.trim();p.prep=p.prep.concat(add);ex.push(partOp(id,p))}}
  /* 日にちが入っていれば予定にも入れる（前の予定があれば日時を直す） */
  if(row.due){const c2=Object.assign({},c,row);caseSchedOps(c2,row.due,tm).forEach(o=>ex.push(o))}
  return caseOps([{table:"cases",row}].concat(ex).concat(u?recSyncOps(id,c.client,u.id):[]),b,row.due?"保存して、予定にも入れました":"保存しました")};
@@ -3445,7 +3507,7 @@ window.schedDel=async(id,b)=>{if(!await uiConfirm("この予定を削除しま�
 window.schedDone=(id,done,b)=>saveFast([{table:"sched",row:{id,state:done?"済":"",doneAt:done?new Date().toISOString():""}}]);
 function schedItem(s,showOffice){const o=DB.offices.find(x=>x.id===s.office),cm=DB.cms.find(c=>c.id===s.cm),done=s.state==="済",col=skColor(s.kind);
  const who=canAdmin()&&MODE==="live"&&!S.schedWho&&s.staff?` ・ ${esc(s.staff)}`:"";
- return `<div class="logi" style="border-left-color:${col};${done?"opacity:.6":""}"><div class="meta"><span style="background:${col};color:#fff;border-radius:999px;padding:1px 8px;font-weight:700">${esc(s.kind||"その他")}</span> ${s.date?esc(String(s.date).slice(5).replace("-","/"))+"（"+wd(s.date)+"）":"日付なし"}${s.time?" "+esc(s.time):""}${showOffice&&o?" ・ "+esc(o.name):""}${cm?" ・ "+esc(cm.name):""}${s.place?" ・ "+esc(s.place):""}${who}</div>
+ return `<div class="logi" id="sk-${s.id}" style="border-left-color:${col};${done?"opacity:.6":""}${S.skHi===s.id?";outline:3px solid #f0a500;background:#fff8e1":""}"><div class="meta"><span style="background:${col};color:#fff;border-radius:999px;padding:1px 8px;font-weight:700">${esc(s.kind||"その他")}</span> ${s.date?esc(String(s.date).slice(5).replace("-","/"))+"（"+wd(s.date)+"）":"日付なし"}${s.time?" "+esc(s.time):""}${showOffice&&o?" ・ "+esc(o.name):""}${cm?" ・ "+esc(cm.name):""}${s.place?" ・ "+esc(s.place):""}${who}</div>
  <div style="${done?"text-decoration:line-through":""}">${esc(s.text)}</div>
  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px"><button class="btn sm ${done?"":"primary"}" type="button" onclick="schedDone('${s.id}',${done?"false":"true"},this)">${done?"未に戻す":"✓ 済"}</button><button class="btn sm" type="button" onclick="schedOpen('${s.id}')">直す</button>
  ${done||!s.date?"":`<a class="btn sm" style="text-decoration:none" href="${esc(calUrl({title:"【"+(s.kind||"予定")+"】"+String(s.text).split("\n")[0].slice(0,40),date:s.date,start:s.time||"",end:"",place:s.place||""},o,cm))}" target="_blank" rel="noopener">Googleカレンダーに追加</a>`}</div></div>`}
