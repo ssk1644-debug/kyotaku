@@ -780,7 +780,7 @@ const lmColor=j=>j.gone?"#aaa":(lmCal(j)||lmNoCal(j))?"#222":lmStaffCol(lmStaff(
 const lmName=j=>{const u=lmClient(j.code);return u?String(u.name||"").replace(/\s*様$/,""):String(j.nm||"（名前なし）")};
 const inspDue=j=>j.ins&&daysFrom(j.ins)>=INSP_DAYS;
 function lmCtTodo(j){const R=lmRent(j);return R&&R.all.some(rtCtOut)?["契約書"]:[]}
-function lmAlerts(j){if(j.gone)return [];const A=[];{const C=lmCtTodo(j);if(C.length)A.push("📝 契約書をもらう")}if(j.pri)A.push((j.pri==="u"?"🚨 至急":"📌 優先")+(j.priT?"："+j.priT:""));lmEr(j).forEach(e=>A.push("📋 用事："+e.t+(e.due?"（〜"+md(e.due)+"）":"")));return A.concat(lmAlerts0(j))}
+function lmAlerts(j){if(j.gone)return [];const A=[];{const C=lmCtTodo(j);if(C.length){const me=USER?stUni(USER.name):"",R=lmRent(j),go=R?R.all.filter(r=>rtCtOut(r)&&me&&rtCtGoer(r)===me&&rtCtStaff(r)&&rtCtStaff(r)!==me):[];A.push(go.length?"🚗 契約に行く（"+rtCtStaff(go[0])+"さんから）":"📝 契約書をもらう")}}if(j.pri)A.push((j.pri==="u"?"🚨 至急":"📌 優先")+(j.priT?"："+j.priT:""));lmEr(j).forEach(e=>A.push("📋 用事："+e.t+(e.due?"（〜"+md(e.due)+"）":"")));return A.concat(lmAlerts0(j))}
 function lmAlerts0(j){const A=[],hz=(()=>{const u=lmClient(j.code);return u&&hospOf?hospOf(u.id):null})();
  if(!lmCal(j)&&!lmNoCal(j)&&j.k!=="6"&&!hz)A.push(j.k==="5"?"📅 カレンダー（社長が行く予定）":"📅 カレンダー配ってね");
  if(lmDoc(j))A.push("📄 書類・用事あり"+(j.c?"："+j.c:""));else if(j.c)A.push("📝 "+j.c);
@@ -872,7 +872,9 @@ window.lmEdSave=(code,b)=>{const v=id=>String(($("#"+id)||{}).value||"").trim();
 /* 居宅の用事・訪問の印（caselog kind=居宅用事、id="lo"+居宅id、case="o:"+居宅id） */
 function loAll(){const m={};(DB.caselog||[]).forEach(l=>{if(l.kind!=="居宅用事"||l.state==="削除")return;let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}m[String(l.case||"").slice(2)]=j});return m}
 function loGet(oid){const j=Object.assign({},loAll()[oid]||{});if(!Array.isArray(j.er))j.er=[];return j}
-function loList(){const m=loAll();return DB.offices.filter(o=>!offGone(o)).map(o=>{const j=m[o.id];return j&&(j.pri||(j.er||[]).length)?{o,j:Object.assign({er:[]},j)}:null}).filter(Boolean).sort((a,b)=>lmPri(b.j)-lmPri(a.j)||String(a.o.name).localeCompare(String(b.o.name),"ja"))}
+/* 11/18 社長：居宅の用事（📋）は、営業さんには「自分が担当の居宅」か「自分が入れた用事」だけ出す。ほかの人の用事（例：社長の訪問調整）は出さない。事務・社長は全部 */
+function loVis(o,j){if(seeAllRec())return j;const mine=isMine(o),nm=String(USER?USER.name:"").replace(/[\s　]/g,""),er=(j.er||[]).filter(e=>mine||(nm&&String(e.by||"").replace(/[\s　]/g,"")===nm));return Object.assign({},j,{er,pri:mine?j.pri:""})}
+function loList(){const m=loAll();return DB.offices.filter(o=>!offGone(o)).map(o=>{const j0=m[o.id],j=j0?loVis(o,Object.assign({er:[]},j0)):null;return j&&(j.pri||(j.er||[]).length)?{o,j}:null}).filter(Boolean).sort((a,b)=>lmPri(b.j)-lmPri(a.j)||String(a.o.name).localeCompare(String(b.o.name),"ja"))}
 async function loSet(oid,patch,b,msg){const j=Object.assign(loGet(oid),patch);
  saveFast([{table:"caselog",row:{id:"lo"+oid,case:"o:"+oid,kind:"居宅用事",text:JSON.stringify(j),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}],msg)}
 window.loPri=async (oid,k)=>{let t="";if(k){t=await uiPrompt((k==="u"?"🚨 至急":"📌 優先")+"の理由（ひとこと・空でも可）","");if(t===null)return;t=t.trim()}
@@ -4252,7 +4254,7 @@ window.importViaGas=async b=>{const st=$("#imp-st");
 const ckind=c=>c.kind==="service"?"service":"kyotaku";
 function cardText(c){const cl=c.client&&DB.clients.find(u=>u.id===c.client);return [c.name,c.org,c.title,c.memo,c.stype,c.placeNote,cl?cl.name:""].join(" ")}
 function cardList(){const q=S.q.trim(),t=S.cardTab||"kyotaku",so=S.cardSort||"new",ja=(a,b)=>String(a||"").localeCompare(String(b||""),"ja");
- const l=DB.cards.filter(c=>ckind(c)===t&&(!q||cardText(c).includes(q)));
+ const l=DB.cards.filter(c=>cdVis(c)&&ckind(c)===t&&(!q||cardText(c).includes(q)));
  if(so==="kana")return l.slice().sort((a,b)=>ja(a.kana||a.name,b.kana||b.name));
  if(so==="org")return l.slice().sort((a,b)=>ja(a.org,b.org)||ja(a.kana||a.name,b.kana||b.name));
  if(so==="stype")return l.slice().sort((a,b)=>(!a.stype&&b.stype?1:a.stype&&!b.stype?-1:ja(a.stype,b.stype))||ja(a.org,b.org)||ja(a.kana||a.name,b.kana||b.name));
@@ -4260,8 +4262,8 @@ function cardList(){const q=S.q.trim(),t=S.cardTab||"kyotaku",so=S.cardSort||"ne
 const CARD_SO=[["new","新しい順"],["kana","50音順"],["org","事業所順"],["stype","サービスの種類順"]];
 window.cardSortSet=k=>{S.cardSort=k;saveUI();render()};
 function viewCards(){
- const t=S.cardTab||"kyotaku",n=k=>DB.cards.filter(c=>ckind(c)===k).length;
- return `<div class="section-t"><h2>名刺</h2><span class="meta">${DB.cards.length}枚</span></div>
+ const t=S.cardTab||"kyotaku",n=k=>DB.cards.filter(c=>cdVis(c)&&ckind(c)===k).length;
+ return `<div class="section-t"><h2>名刺</h2><span class="meta">${DB.cards.filter(cdVis).length}枚</span></div>
  <div class="seg" style="margin-bottom:10px"><button type="button" class="${t==="kyotaku"?"on":""}" onclick="S.cardTab='kyotaku';render()">居宅（${n("kyotaku")}）</button><button type="button" class="${t==="service"?"on":""}" onclick="S.cardTab='service';render()">サービス事業所（${n("service")}）</button></div>
  <input class="search" id="q" placeholder="${t==="service"?"名前・事業所・種類・利用者様の名前で検索":"名前・事業所で検索"}" value="${esc(S.q)}" oninput="S.q=this.value;renderCardsOnly()">
  <div class="seg" style="margin:-2px 0 10px;flex-wrap:wrap">${CARD_SO.filter(x=>x[0]!=="stype"||t==="service").map(([k,l])=>`<button type="button" class="${(S.cardSort||"new")===k?"on":""}" onclick="cardSortSet('${k}')">${l}</button>`).join("")}</div>
@@ -4317,7 +4319,24 @@ function cardGrid0(list){return list.length?`<div class="cards">${list.map(c=>`<
   ${c.stype?`<span class="chip" style="justify-self:start">${esc(c.stype)}</span>`:""}
   ${(cl=>c.place==="client"?`<span class="meta">${esc(cl?cl.name.replace(/ 様$/,""):c.placeNote)}様宅で一緒になった${cl&&c.placeNote?"（"+esc(c.placeNote)+"）":""}</span>`:c.place==="seminar"?`<span class="meta">研修会でもらった${c.placeNote?"："+esc(c.placeNote):""}</span>`:"")(c.client&&DB.clients.find(u=>u.id===c.client))}
   <span class="num">${esc(c.tel)}</span><span>${esc(c.email)}</span>${c.memo?`<span class="meta">${esc(c.memo)}</span>`:""}
-  ${c.cm?`<span class="chip" style="justify-self:start">CM登録あり</span>`:""}</div></div>`).join("")}</div>`:'<div class="empty">該当する名刺がありません</div>'}
+  ${c.cm?`<span class="chip" style="justify-self:start">CM登録あり</span>`:""}${cdOwnHtml(c)}</div></div>`).join("")}</div>`:'<div class="empty">該当する名刺がありません</div>'}
+/* ===== 名刺は各自のもの（11/18 社長）。持ち主＝owner（空なら最後に直した人）。「👤 共有」で相手を選ぶと share（メールを , 区切り）に入り、相手にも届く。社長・事務は全員分を見られる ===== */
+const cdOwner=c=>String(c.owner||c.updatedBy||"").toLowerCase();
+const cdShare=c=>String(c.share||"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
+const cdMine=c=>MODE!=="live"||cdOwner(c)===myId()||!cdOwner(c);
+const cdVis=c=>seeAllRec()||cdMine(c)||cdShare(c).includes(myId());
+function cdOwnHtml(c){const me=myId(),ow=cdOwner(c),sh=cdShare(c),op=S.cdShare===c.id,nm=e=>uName(e)||e;
+ const us=(DB.users||[]).filter(u=>u.email&&u.email!==ow);
+ return `<div style="border-top:1px dashed var(--line);margin-top:6px;padding-top:6px;display:grid;gap:4px">
+  ${ow&&ow!==me?`<span class="meta">👤 ${esc(nm(ow))}さん${sh.includes(me)?"から共有":"の名刺"}</span>`:""}
+  ${sh.length?`<span class="meta">共有先：${sh.map(e=>esc(nm(e))).join("・")}</span>`:""}
+  ${cdMine(c)||seeAllRec()?`<div><button class="btn sm" type="button" onclick="S.cdShare=${op?"null":"'"+c.id+"'"};render()">${op?"閉じる":"👤 共有"}</button></div>`:""}
+  ${op?`<div style="display:flex;flex-wrap:wrap;gap:4px 10px">${us.map(u=>`<label style="display:flex;gap:4px;align-items:center;font-size:15px"><input type="checkbox" style="width:auto" class="cdsh" value="${esc(u.email)}" ${sh.includes(u.email)?"checked":""}>${esc(u.name)}</label>`).join("")}</div>
+   ${seeAllRec()?`<label class="meta">持ち主<select id="cdow" class="sim">${ow?"":`<option value="" selected>（未設定）</option>`}${(DB.users||[]).map(u=>`<option value="${esc(u.email)}" ${u.email===ow?"selected":""}>${esc(u.name)}</option>`).join("")}</select></label>`:""}
+   <div><button class="btn sm primary" type="button" onclick="cdShareSave('${c.id}',this)">保存</button></div>`:""}</div>`}
+window.cdShareSave=(id,b)=>{const c=DB.cards.find(x=>x.id===id);if(!c)return;const sh=[...document.querySelectorAll(".cdsh:checked")].map(x=>x.value),row={id,share:sh.join(",")};
+ const ow=$("#cdow");if(ow&&ow.value)row.owner=ow.value;else if(!c.owner)row.owner=cdOwner(c)||myId();
+ S.cdShare=null;saveFast([{table:"cards",row}],sh.length?"共有しました（"+sh.map(e=>uName(e)||e).join("・")+"）":"共有をやめました")};
 const PH={};
 window.loadPhoto=async(b,id)=>{b.disabled=true;b.textContent="読み込み中…";
  try{PH[id]=(await api("photo",{id})).dataUrl;b.parentNode.innerHTML=`<img src="${PH[id]}" alt="">`}catch(e){b.disabled=false;b.textContent="表示できません"}};
@@ -4371,7 +4390,7 @@ window.commitCard=async e=>{e.preventDefault();
  const f={name:v("#c-name"),kana:v("#c-kana"),org:v("#c-org"),title:v("#c-title"),addr:v("#c-addr"),tel:v("#c-tel"),email:v("#c-email"),memo:v("#c-memo")};
  if(SC.kind==="service"){const pn=$("#c-pnote")?v("#c-pnote"):"";const cl=SC.place==="client"&&pn?DB.clients.find(u=>u.name===pn):null;
   const row={id:newId("b"),kind:"service",stype:$("#c-stype")?v("#c-stype"):"",place:SC.place||"",client:cl?cl.id:"",placeNote:cl?"":pn.replace(/\s*様(宅)?$/,""),
-   name:f.name,kana:f.kana,org:f.org,title:f.title,addr:f.addr,tel:f.tel,email:f.email,memo:f.memo,cm:"",office:"",photo:SC.photo};
+   name:f.name,kana:f.kana,org:f.org,title:f.title,addr:f.addr,tel:f.tel,email:f.email,memo:f.memo,cm:"",office:"",photo:SC.photo,owner:myId()};
   const b=$("#c-save");b.disabled=true;b.innerHTML='<span class="spin"></span> 保存中…';
   try{await persist([{table:"cards",row}])}catch(err){b.disabled=false;b.textContent="名刺を保存";toast("保存できませんでした："+errText(err));return}
   SC.stage="idle";S.cardTab="service";buzz(60);toast("サービス事業所の名刺を保存しました");render();return}
@@ -4381,7 +4400,7 @@ window.commitCard=async e=>{e.preventDefault();
  if(o){cm=DB.cms.find(c=>c.office===o.id&&c.name.replace(/\s/g,"")===f.name.replace(/\s/g,""));
   if(!cm){cm={id:newId("c"),office:o.id,name:f.name,kana:f.kana,role:/主任/.test(f.title)?"主任CM":/管理者|所長/.test(f.title)?"管理者":"CM",years:"",count:null,traits:[],likes:"",note:f.memo};ops.push({table:"cms",row:cm});made+="CMを追加"}
   else made+="既存CMに名刺を紐付け";}
- ops.push({table:"cards",row:{id:newId("b"),name:f.name,kana:f.kana,org:f.org,title:f.title,addr:f.addr,tel:f.tel,email:f.email,memo:f.memo,cm:cm?cm.id:"",office:o?o.id:"",photo:SC.photo}});
+ ops.push({table:"cards",row:{id:newId("b"),name:f.name,kana:f.kana,org:f.org,title:f.title,addr:f.addr,tel:f.tel,email:f.email,memo:f.memo,cm:cm?cm.id:"",office:o?o.id:"",photo:SC.photo,owner:myId()}});
  const b=$("#c-save");b.disabled=true;b.textContent="登録中…";
  try{await persist(ops)}catch(err){b.disabled=false;b.textContent="居宅・CMに登録";toast("登録できませんでした："+errText(err));return}
  SC.stage="idle";fillSim();toast(made||"名刺を保存しました");
