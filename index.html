@@ -502,9 +502,14 @@ async function loadAll(){const d=await api("load");if(d.user)USER=d.user;
  DB.recCutoff=d.recCutoff||"";if(d.now)SYNC_TS=new Date(new Date(d.now).getTime()-90000).toISOString()}
 /* 前回のデータをこの端末に覚えておき、次に開いたときすぐ表示する（ログアウトで消す） */
 const CKEY="kyotaku-c";
-function cacheSave(){if(MODE!=="live"||!USER||!SESSION||S.bgLoad)return;try{const db=Object.assign({},DB,{records:DB.records.map(r=>r.trans?Object.assign({},r,{trans:"",hasTrans:"1"}):r)});localStorage.setItem(CKEY,JSON.stringify({s:SESSION.slice(-8),at:Date.now(),user:USER,db}))}catch(e){try{localStorage.removeItem(CKEY)}catch(e2){}}}
+/* 11/18 社長「立ち上げが遅い」：4MB近くあり localStorage（約5MB）に入らなかったので、IndexedDB に覚える（2回目からすぐ画面が出る） */
+const CDB={db:null};
+function cdb(){if(CDB.db)return Promise.resolve(CDB.db);return new Promise((ok,ng)=>{try{const q=indexedDB.open("kyotaku-cache",1);q.onupgradeneeded=()=>{if(!q.result.objectStoreNames.contains("kv"))q.result.createObjectStore("kv")};q.onsuccess=()=>{CDB.db=q.result;ok(q.result)};q.onerror=()=>ng(q.error)}catch(e){ng(e)}})}
+async function cdbGet(k){try{const d=await cdb();return await new Promise(ok=>{const r=d.transaction("kv","readonly").objectStore("kv").get(k);r.onsuccess=()=>ok(r.result||null);r.onerror=()=>ok(null)})}catch(e){return null}}
+async function cdbSet(k,v){try{const d=await cdb();await new Promise(ok=>{const t=d.transaction("kv","readwrite"),st=t.objectStore("kv");if(v==null)st.delete(k);else st.put(v,k);t.oncomplete=ok;t.onerror=ok;t.onabort=ok})}catch(e){}}
+function cacheSave(){if(MODE!=="live"||!USER||!SESSION||S.bgLoad)return;try{const db=Object.assign({},DB,{records:DB.records.map(r=>r.trans?Object.assign({},r,{trans:"",hasTrans:"1"}):r)});cdbSet(CKEY,{s:SESSION.slice(-8),at:Date.now(),user:USER,db:JSON.parse(JSON.stringify(db))});try{localStorage.removeItem(CKEY)}catch(e){}}catch(e){}}
 let CST=0;function cacheSoon(){if(MODE!=="live")return;clearTimeout(CST);CST=setTimeout(cacheSave,2000)}
-function cacheLoad(){try{const c=JSON.parse(localStorage.getItem(CKEY)||"null");if(!c||!SESSION||c.s!==SESSION.slice(-8)||Date.now()-c.at>14*864e5)return null;return c}catch(e){return null}}
+async function cacheLoad(){try{let c=await cdbGet(CKEY);if(!c)c=JSON.parse(localStorage.getItem(CKEY)||"null");if(!c||!SESSION||c.s!==SESSION.slice(-8)||Date.now()-c.at>14*864e5)return null;return c}catch(e){return null}}
 
 /* ===== Googleログイン ===== */
 function initGis(){if(window.google&&google.accounts){gisReady();return}
@@ -517,7 +522,7 @@ async function onCredential(resp){S.loginMsg="確認中…";render();
  try{const d=await api("login",{idToken:resp.credential});SESSION=d.session;try{localStorage.setItem("kyotaku-s",SESSION)}catch(e){}
   USER=d.user;S.loginMsg="";await boot()}
  catch(e){USER=null;S.loginMsg=errText(e);render()}}
-async function boot(){const c=cacheLoad();
+async function boot(){const c=await cacheLoad();
  if(c){Object.assign(DB,c.db);USER=c.user;S.loading=false;S.bgLoad=true;fillSim();restoreLast();setTimeout(checkShared,300);
   if(!DB.offices.some(o=>o.id===S.office))S.office=null;render()}
  else{S.loading=true;render()}
@@ -528,7 +533,7 @@ async function boot(){const c=cacheLoad();
  catch(e){S.loading=false;S.bgLoad=false;
   if(c){if(e.code!=="auth"){toast("最新のデータを読み込めませんでした（前回の内容を表示中）");render()}return}
   if(e.code!=="auth")S.loginMsg="データを読み込めません："+errText(e);render()}}
-window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;S.bgLoad=false;try{localStorage.removeItem("kyotaku-s");localStorage.removeItem(CKEY);if(typeof msg!=="string"){localStorage.removeItem(DKEY);localStorage.removeItem(RKEY);rdbDel(()=>false)}}catch(e){}
+window.logout=msg=>{const s=SESSION;SESSION=null;USER=null;S.bgLoad=false;try{localStorage.removeItem("kyotaku-s");localStorage.removeItem(CKEY);cdbSet(CKEY,null);if(typeof msg!=="string"){localStorage.removeItem(DKEY);localStorage.removeItem(RKEY);rdbDel(()=>false)}}catch(e){}
  try{google.accounts.id.disableAutoSelect()}catch(e){}
  if(s&&typeof msg!=="string")fetch(setupCfg().gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"logout",session:s})}).catch(()=>{});
  DB={offices:[],cms:[],clients:[],records:[],cards:[],users:[],calendar:[],items:[],dist:[],visits:[],contracts:[],jisseki:[],reqs:[],sched:[],msgs:[],cases:[],caselog:[],hosp:[],rentals:[]};S.loginMsg=typeof msg==="string"?msg:"ログアウトしました。";render();initGis()};
@@ -776,7 +781,7 @@ const isRetired=n=>{const k=String(n||"").replace(/[\s　]/g,"");if(!k)return fa
 const lmStaff=j=>{const u=lmClient(j.code),n=lmStaffName((j.stFix&&j.st)||(u&&u.staff)||j.st||"");return n&&!isRetired(n)?n:"（担当なし）"};
 const lmStaffCol=n=>{const f=LM_FIX.find(x=>x[0]===n);if(f)return f[1];const L=lmStaffs().filter(x=>!LM_FIX.some(y=>y[0]===x));return LM_COL[Math.max(0,L.indexOf(n))%LM_COL.length]};
 function lmStaffs(){return [...new Set(lmRows().map(lmStaff))].sort()}
-const lmColor=j=>j.gone?"#aaa":(lmCal(j)||lmNoCal(j))?"#222":lmStaffCol(lmStaff(j));
+const lmColor=j=>j.gone?"#aaa":lmCal(j)?"#2e7d32":lmNoCal(j)?"#90a4ae":lmStaffCol(lmStaff(j));   /* 11/18 社長：カレンダー済は緑の ✓（黒は見えにくい） */
 const lmName=j=>{const u=lmClient(j.code);return u?String(u.name||"").replace(/\s*様$/,""):String(j.nm||"（名前なし）")};
 const inspDue=j=>j.ins&&daysFrom(j.ins)>=INSP_DAYS;
 function lmCtTodo(j){const R=lmRent(j);return R&&R.all.some(rtCtOut)?["契約書"]:[]}
@@ -938,6 +943,11 @@ function lmImpOpt(p){const codes=new Set(p.rows.map(r=>r.code)),old=lmRows(),mis
  ${miss.length?`<label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="lm-rm" style="width:auto"> マイマップにいない人 <b>${miss.length}人</b>を地図から外す</label><details><summary class="meta" style="cursor:pointer">外れる人を見る</summary><div class="meta" style="max-height:160px;overflow:auto">${miss.map(j=>esc(lmName(j))+"（"+esc(lmStaff(j))+"）").join("、")}</div></details>`:""}</div>`}
 /* 11/18：地図にいない利用者（ケアレンツだけにいる人）・地図の行はあるのに位置が無い人を、ケアレンツの住所から Google の住所検索で地図に入れる */
 const lmNoMapCl=()=>{const have=new Set(lmRows().filter(j=>!j.gone).map(j=>codeN(j.code)));return DB.clients.filter(u=>u.code&&u.useState!=="終了"&&u.addr&&!have.has(codeN(u.code)))};
+/* 11/18 社長：地図に出ていない（位置が無い）人の一覧 */
+const lmNoPosAll=L=>(L||lmRows().filter(j=>!j.gone)).filter(j=>j.lat==null||j.lat===""||!isFinite(+j.lat));
+function lmNpBox(L){const np=lmNoPosAll(L);return `<div class="form" style="padding:8px 10px;margin:0 0 6px;border-color:#c62828"><b>📍 位置が無いので地図に出ていない人 ${np.length}人</b><div class="meta">訪問したときに「👤 詳細」→「今いる場所」で位置を入れると地図に出ます。${canImport()?"事務・社長は下の「住所から位置を出す」でもう一度試せます。":""}</div>
+ ${np.slice(0,150).map(j=>{const u=lmClient(j.code);return `<div style="display:flex;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)"><span style="flex:1;min-width:0"><b>${esc(lmName(j))}</b> 様 <span class="meta">${esc(lmStaff(j)||"担当なし")} ・ ${u&&u.addr?"住所で見つからない":"住所の登録なし"}</span></span><button class="btn sm" type="button" onclick="lmDetOpen('${j.code}')">👤 詳細</button></div>`}).join("")}
+ ${canImport()?`<div style="margin-top:6px"><button class="btn sm primary" type="button" onclick="lmFillGeo(this)">住所から位置を出す</button> <span class="meta" id="lm-st2"></span></div>`:""}</div>`}
 const lmNoPos=()=>lmRows().filter(j=>!j.gone&&(j.lat==null||j.lat==="")).map(j=>({j,u:lmClient(j.code)})).filter(x=>x.u&&x.u.addr);
 window.lmFillGeo=async b=>{const A=lmNoMapCl().map(u=>({u,addr:u.addr,lat:null})),B=lmNoPos().map(x=>({j:x.j,u:x.u,addr:x.u.addr,lat:null})),L=A.concat(B);if(!L.length){toast("足す人はいません");return}
  if(!await uiConfirm("地図にいない "+A.length+"人と、位置が無い "+B.length+"人の位置を、ケアレンツの住所から Google の住所検索で出して地図に入れます。\n（住所は検索に使うだけで、AIには送りません。数分かかります）"))return;b.disabled=true;
@@ -1022,10 +1032,12 @@ function viewUmap(){const all=lmRows();const so=S.lmSo||(S.pos?"near":"staff"),f
  <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;overflow-x:auto;white-space:nowrap">${stRow}</div>
  <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;overflow-x:auto;white-space:nowrap">
   <div class="seg" style="flex:none">${[["todo","まだ"],["doc","用事"],["go","📌"],["done","済"],["all","全"]].map(([k,l])=>`<button type="button" class="${f===k&&!S.lmQ?"on":""}" style="padding:5px 6px" onclick="S.lmF='${k}';S.lmQ='';S.lmSheet=false;render()">${l} ${n(k)}</button>`).join("")}</div>
+  ${(np=>np.length?`<button class="btn sm" type="button" style="padding:5px 8px;flex:none;${S.lmNpOpen?"background:#c62828;color:#fff;border-color:#c62828":"color:#c62828;border-color:#c62828"}" onclick="S.lmNpOpen=!S.lmNpOpen;render()">📍位置なし ${np.length}</button>`:"")(lmNoPosAll(live))}
   <div class="seg" style="flex:none" title="近くを通った時の知らせ"><button type="button" class="${nearAll()?"":"on"}" style="padding:5px 8px" onclick="nearAllSet(false)">🔔自分</button><button type="button" class="${nearAll()?"on":""}" style="padding:5px 8px" onclick="nearAllSet(true)">🔔全員</button></div>
   <div class="seg" style="flex:none">${[["w","⚠"],["p","🅿"],["b","📝"]].map(([k,l])=>`<button type="button" title="${{w:"注意事項",p:"駐車場",b:"備考"}[k]}をピンに出す" class="${lmShow(k)?"on":""}" style="padding:5px 8px" onclick="lmShowT('${k}')">${l}</button>`).join("")}</div>
   <button class="btn sm" type="button" style="padding:5px 8px;flex:none" onclick="S.lmOpt=!S.lmOpt;render()">⚙</button>
  </div>
+ ${S.lmNpOpen?lmNpBox(live):""}
  ${S.lmOpt?`<div class="form" style="padding:8px;margin:0 0 6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
   <div class="seg">${[["near","近い順"],["staff","担当順"],["town","町名順"]].map(([k,l])=>`<button type="button" class="${so===k?"on":""}" onclick="S.lmSo='${k}';render()">${l}</button>`).join("")}</div>
   ${canImport()&&S.lmImp?`<button class="btn sm" type="button" onclick="S.lmImp=false;S.lmOpt=false;render()">📥 マイマップ取り込みを隠す</button>`:""}<button class="btn sm" type="button" onclick="S.lmOpt=false;render()">閉じる</button></div>`:""}
@@ -1107,9 +1119,12 @@ async function drawUmap(){const el=$("#umap");if(!el)return;try{await loadLeafle
  UMAP=L.map(el,{preferCanvas:true});window.__lmMk={};L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(UMAP);
  const L2=lmFiltered().filter(j=>j.lat!=null),pts=[],hq=!!S.lmQ;
  if(hq){const hit=new Set(L2.map(j=>j.code));lmBase().filter(j=>j.lat!=null&&!hit.has(j.code)).forEach(j=>{L.circleMarker([+j.lat,+j.lng],{radius:5,weight:1,color:"#fff",fillColor:lmColor(j),fillOpacity:.35,opacity:.5}).addTo(UMAP).on("click",()=>lmDetOpen(j.code))})}
- L2.forEach(j=>{const ll=[+j.lat,+j.lng];pts.push(ll);const A=lmAlerts(j),doc=lmDoc(j);
-  const ic=lmStaffIco(lmStaff(j)),col=lmColor(j),done=lmCal(j)||lmNoCal(j),pr=lmPri(j),z=hq||pr?36:28,iz=hq||pr?26:20;
-  const mk=L.marker(ll,{zIndexOffset:hq||pr?1000+pr*100:0,icon:L.divIcon({className:"",iconSize:[z,z],iconAnchor:[z/2,z/2],popupAnchor:[0,-z/2+1],html:`<div class="${pr===2?"lmpulse":""}" style="width:${z}px;height:${z}px;border-radius:50%;background:${col};border:${pr===2?"4px solid #e60000":pr===1?"4px solid #f39c12":doc?"3px solid #8e44ad":"2px solid #fff"};box-shadow:0 1px 3px rgba(0,0,0,.45);display:grid;place-items:center;font-size:${hq?21:15}px;line-height:1;color:#fff;">${lmIcoHtml(ic,iz)}</div>`})}).addTo(UMAP);window.__lmMk[j.code]=mk;
+ /* 11/18 社長：同じ場所の人は表示だけ少しずつずらす（保存の位置はそのまま） */
+ const grp={};L2.forEach(j=>{const k=(+j.lat).toFixed(5)+","+(+j.lng).toFixed(5);(grp[k]=grp[k]||[]).push(j.code)});
+ const llOf=j=>{const k=(+j.lat).toFixed(5)+","+(+j.lng).toFixed(5),g=grp[k];if(!g||g.length<2)return [+j.lat,+j.lng];const i=g.indexOf(j.code),n=g.length,r=0.00013*(n>6?1.6:1),a=2*Math.PI*i/n;return [+j.lat+r*Math.sin(a),+j.lng+r*Math.cos(a)/Math.cos(+j.lat*Math.PI/180)]};
+ L2.forEach(j=>{const ll=llOf(j);pts.push(ll);const A=lmAlerts(j),doc=lmDoc(j);
+  const ic=lmStaffIco(lmStaff(j)),col=lmColor(j),done=lmCal(j)||lmNoCal(j),dk=done&&!j.gone,pr=lmPri(j),z=hq||pr?36:28,iz=hq||pr?26:20;
+  const mk=L.marker(ll,{zIndexOffset:hq||pr?1000+pr*100:0,icon:L.divIcon({className:"",iconSize:[z,z],iconAnchor:[z/2,z/2],popupAnchor:[0,-z/2+1],html:`<div class="${pr===2?"lmpulse":""}" style="width:${z}px;height:${z}px;border-radius:50%;background:${col};border:${pr===2?"4px solid #e60000":pr===1?"4px solid #f39c12":doc?"3px solid #8e44ad":dk?"3px solid "+lmStaffCol(lmStaff(j)):"2px solid #fff"};box-shadow:0 1px 3px rgba(0,0,0,.45);display:grid;place-items:center;font-size:${dk?(hq?22:17):(hq?21:15)}px;font-weight:900;line-height:1;color:#fff;">${dk?(lmCal(j)?"✓":"−"):lmIcoHtml(ic,iz)}</div>`})}).addTo(UMAP);window.__lmMk[j.code]=mk;
   {const tt=((lmShow("w")&&j.n?"⚠":"")+(lmShow("p")&&j.pk?"🅿":"")+(lmShow("b")&&(j.c||j.b2)?" "+String(j.c||j.b2).slice(0,14):"")).trim();if(tt)mk.bindTooltip(esc(tt),{permanent:true,direction:"right",offset:[12,0],className:"lmtip"})}
   mk.bindPopup(`<div style="display:flex;gap:6px;align-items:flex-start"><div style="flex:1;min-width:0"><b>${esc(lmName(j))} 様</b>${(x=>x?`<br><span style="font-size:12px;font-weight:700;color:${x[1]}">${esc(x[0])}</span>`:"")(lmHospLbl(j))}<br><span style="font-size:12px">${esc(lmStaff(j))} ・ ${esc(KB_L[j.k||""]||"")}</span>${A.length?"<br>"+A.map(esc).join("<br>"):""}</div>${lmTagsHtml(j)}</div>${lmCal(j)?`<button type="button" class="btn sm" style="margin-top:6px" onclick="lmUndo('${j.code}',this)">まだに戻す</button>`:`<button type="button" class="btn sm primary" style="margin-top:6px" onclick="lmGive('${j.code}',this)">📅 カレンダー渡した</button>`} <button type="button" class="btn sm" style="margin-top:6px" onclick="lmInsp('${j.code}',this)">🔧 点検した</button> <button type="button" class="btn sm" style="margin-top:6px" onclick="ckClient('${j.code}',this)">📍 チェックイン</button> <button type="button" class="btn sm" style="margin-top:6px" onclick="lmDetOpen('${j.code}')">👤 詳細・電話</button>${ckLastT(j.code)?`<div style="font-size:12px;margin-top:4px">${esc(ckLastT(j.code))}</div>`:""} <a class="btn sm primary" style="margin-top:6px;text-decoration:none;display:inline-block" href="https://www.google.com/maps/dir/?api=1&destination=${j.lat},${j.lng}" target="_blank" rel="noopener">🚗 ルート</a>${(R=>R&&R.demo.length?R.demo.map(r=>` <button type="button" class="btn sm" style="margin-top:6px" onclick="tagScan('${r.id}')">🏷 ${esc(String(r.item||"品").slice(0,8))}のタグ${tagOf(r.id)?"（済）":""}</button>`).join(""):"")(lmRent(j))}`,{maxWidth:440,minWidth:270})});
  loList().filter(x=>x.o.lat!=null).forEach(({o,j})=>{const pr=lmPri(j);L.marker([+o.lat,+o.lng],{zIndexOffset:900,icon:L.divIcon({className:"",iconSize:[32,32],iconAnchor:[16,16],popupAnchor:[0,-15],html:`<div class="${pr===2?"lmpulse":""}" style="width:32px;height:32px;border-radius:8px;background:#fff;border:${pr===2?"4px solid #e60000":pr===1?"4px solid #f39c12":"3px solid #2c3e50"};box-shadow:0 1px 3px rgba(0,0,0,.45);display:grid;place-items:center;font-size:17px">🏢</div>`})}).addTo(UMAP).bindPopup(`<b>${esc(o.name)}</b><br>${esc([j.priT].concat(j.er.map(e=>"📋 "+e.t+(e.due?"（〜"+md(e.due)+"）":""))).filter(Boolean).join("<br>")).replace(/&lt;br&gt;/g,"<br>")}<br><button type="button" class="btn sm" style="margin-top:6px" onclick="S.view='visit';S.office='${o.id}';S.autoOpened='${o.id}';render()">居宅を開く</button>`)});
@@ -3768,6 +3783,23 @@ window.benchRun=async b=>{const out=$("#benchOut");b.disabled=true;out.textConte
   out.innerHTML=`開くときの読み込み：<b>${(tl/1000).toFixed(1)}秒</b><br>10件同時の保存：成功 ${ok.length}件・失敗 ${rs.length-ok.length}件${ms.length?` ・ いちばん遅い ${(Math.max(...ms)/1000).toFixed(1)}秒 ・ 平均 ${(ms.reduce((a,c)=>a+c,0)/ms.length/1000).toFixed(1)}秒`:""}${rs.some(r=>r.err)?"<br>失敗の理由："+esc(rs.find(r=>r.err).err):""}`}
  catch(e){out.textContent="計測できませんでした："+errText(e)}b.disabled=false};
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
+/* 11/18 社長：古い版のまま使うとデータが消えるので、新しい版が出たら必ず更新させる。
+   10分ごと＋アプリに戻ったときに公開中の index.html を見て、APP_VER が違えば赤い帯→入力中でなければ全画面で更新を求める */
+const APP_VER="w106";
+let VER_NEW="",VER_T0=0;
+async function verCheck(){if(MODE!=="live"||location.protocol!=="https:")return;try{
+ const t=await fetch(location.pathname+"?vc="+Date.now(),{cache:"no-store"}).then(r=>r.ok?r.text():"");const m=t.match(/const APP_VER="([^"]+)"/);
+ if(m&&m[1]!==APP_VER){if(!VER_NEW)VER_T0=Date.now();VER_NEW=m[1];verShow()}}catch(e){}}
+function verShow(){if(!VER_NEW)return;const hard=!typing()||Date.now()-VER_T0>5*60000;
+ let el=document.getElementById("verBar");if(!el){el=document.createElement("div");el.id="verBar";document.body.appendChild(el)}
+ el.style.cssText=hard?"position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:20px":"position:fixed;left:0;right:0;top:0;z-index:99999;background:#c62828;color:#fff;padding:10px 12px;display:flex;gap:8px;align-items:center;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,.3)";
+ el.innerHTML=hard?`<div style="background:#fff;border-radius:16px;padding:20px;max-width:360px;text-align:center;border:4px solid #c62828"><div style="font-size:40px">🔄</div><div style="font-size:18px;font-weight:800;margin:6px 0;color:#c62828">新しい版があります</div><div style="font-size:14px;line-height:1.6">古い版のままだと、入れた内容が<b>消えることがあります</b>。<br>必ず今すぐ更新してください。</div><button class="btn primary" type="button" style="width:100%;margin-top:14px;padding:14px;font-size:17px" onclick="verGo(this)">今すぐ更新する</button></div>`
+  :`<b style="flex:1">🔄 新しい版があります。入力を終えたら必ず更新してください</b><button class="btn sm" type="button" onclick="verGo(this)">更新</button>`}
+window.verGo=async b=>{if(b){b.disabled=true;b.textContent="保存を待っています…"}
+ for(let i=0;i<20&&sqKeys().some(k=>!SQ[k].fail);i++)await new Promise(r=>setTimeout(r,500));
+ try{await fetch(location.pathname,{cache:"reload"})}catch(e){}location.reload()};
+setInterval(verCheck,10*60000);setInterval(verShow,30000);setTimeout(verCheck,15000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")verCheck()});
 /* ===== 紹介実績（ケアレンツの新規契約データ） ===== */
 let KC=null;
 async function sha(x){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("asport-kyotaku|"+x));return [...new Uint8Array(b)].slice(0,8).map(v=>v.toString(16).padStart(2,"0")).join("")}
