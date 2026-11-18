@@ -448,10 +448,10 @@ function applyOp(t,row){if(t==="records"&&!mineRec(row)){DB.records=DB.records.f
 /* 保存：デモはこの端末に、本番はスプレッドシートに */
 async function persist(ops){
  if(MODE==="live"){let d;
-  try{d=await api("batch",{ops:ops.map(o=>{const row=toServer(o.table,o.row),ex=Array.isArray(DB[o.table])?DB[o.table].find(x=>x.id===o.row.id):null;if(ex&&ex.updatedAt!=null)row._base=ex.updatedAt;return {table:o.table,row}})})}
+  try{d=await api("batch",{ops:ops.map(o=>{const row=toServer(o.table,o.row),ex=Array.isArray(DB[o.table])?DB[o.table].find(x=>x.id===o.row.id):null;if(ex&&ex.updatedAt!=null&&!row._mp)row._base=ex.updatedAt;return {table:o.table,row}})})}
   catch(e){if(e&&e.code==="conflict")syncNow("quiet");throw e}
   d.rows.forEach((r,i)=>{const v=fromServer(ops[i].table,r);if(ops[i].table==="records"){const ex=DB.records.find(x=>x.id===v.id);if(ex&&ex.trans&&!v.trans)v.trans=ex.trans;if(!v.trans&&ex&&ex.hasTrans)v.hasTrans=ex.hasTrans}applyOp(ops[i].table,v)});cacheSoon()}
- else{ops.forEach(o=>applyOp(o.table,o.row));save()}}
+ else{ops.forEach(o=>{const lr=Object.assign({},o.row);delete lr._mp;delete lr._mm;applyOp(o.table,lr)});save()}}
 /* どの保存でも、上に「保存中…」→「✓ 保存しました」を出す（押したのが分かるように） */
 let SAVE_N=0,SAVE_T=null;function saveInd(st){let el=$("#saveInd");if(!el){el=document.createElement("div");el.id="saveInd";el.className="saveind";document.body.appendChild(el)}
  clearTimeout(SAVE_T);if(st==="busy"){el.textContent="保存中…";el.className="saveind on"}else if(st==="ok"){el.textContent="✓ 保存しました";el.className="saveind on ok";SAVE_T=setTimeout(()=>{el.className="saveind"},1400)}else el.className="saveind"}
@@ -471,7 +471,7 @@ function sqInd(){const busy=sqKeys().some(k=>!SQ[k].fail);if(busy)saveInd("busy"
  bar.innerHTML=`<div style="flex:1;font-size:14px"><b>⚠ 保存できていない変更 ${n}件</b><div style="font-size:12px;opacity:.9">電波の良い所で押してください。画面は変えたままです</div></div><button class="btn sm" type="button" onclick="sqRetry()">もう一度</button>`}
 function sqReapply(t,id){const k=t+":"+id,q=SQ[k];if(!q)return;const ex=(DB[t]||[]).find(x=>x.id===id);if(ex){const u=ex.updatedAt;Object.assign(ex,q.row);if(u!=null)ex.updatedAt=u}}
 async function sqSend(k){const q=SQ[k];if(!q||q.busy)return;q.busy=true;q.fail=false;sqInd();const seq=q.seq,t=q.table,row=Object.assign({},q.row);let again=false;
- try{if(MODE==="live"){const ex=(DB[t]||[]).find(x=>x.id===row.id),sr=toServer(t,row);if(ex&&ex.updatedAt!=null)sr._base=ex.updatedAt;
+ try{if(MODE==="live"){const ex=(DB[t]||[]).find(x=>x.id===row.id),sr=toServer(t,row);if(ex&&ex.updatedAt!=null&&!sr._mp)sr._base=ex.updatedAt;
    const d=await api("batch",{ops:[{table:t,row:sr}]});const v=fromServer(t,d.rows[0]);
    if(SQ[k]===q&&q.seq===seq){applyOp(t,v);delete SQ[k]}else{const e=(DB[t]||[]).find(x=>x.id===row.id);if(e&&v&&v.updatedAt!=null)e.updatedAt=v.updatedAt;again=true}
    cacheSoon()}
@@ -481,7 +481,7 @@ async function sqSend(k){const q=SQ[k];if(!q||q.busy)return;q.busy=true;q.fail=f
   else{q.tries=(q.tries||0)+1;if(q.tries<=3){q.busy=false;setTimeout(()=>sqSend(k),1000*Math.pow(2,q.tries));sqInd();return}q.fail=true}}
  q.busy=false;sqInd();if(again&&SQ[k])sqSend(k)}
 /* ops：[{table,row}]（どれも id で上書きする行）。すぐ画面を変えて、保存は裏で */
-function saveFast(ops,msg){ops.forEach(o=>{applyOp(o.table,Object.assign({},o.row));const k=o.table+":"+o.row.id,q=SQ[k]||(SQ[k]={table:o.table,row:{},seq:0,tries:0});Object.assign(q.row,o.row);q.seq++;q.tries=0;q.fail=false});
+function saveFast(ops,msg){ops.forEach(o=>{{const lr=Object.assign({},o.row);delete lr._mp;delete lr._mm;applyOp(o.table,lr)}const k=o.table+":"+o.row.id,q=SQ[k]||(SQ[k]={table:o.table,row:{},seq:0,tries:0}),mp0=q.row._mp;Object.assign(q.row,o.row);if(mp0&&o.row._mp)q.row._mp=Object.assign({},mp0,o.row._mp);q.seq++;q.tries=0;q.fail=false});
  if(MODE!=="live")save();buzz(30);if(msg)toast(msg);render();ops.forEach(o=>sqSend(o.table+":"+o.row.id));return true}
 window.sqRetry=()=>{sqKeys().forEach(k=>{const q=SQ[k];if(q.fail){q.fail=false;q.tries=0;sqSend(k)}})};
 window.addEventListener("beforeunload",e=>{if(sqKeys().length){e.preventDefault();e.returnValue="保存できていない変更があります"}});
@@ -799,8 +799,9 @@ function lmHospLbl(j){const h=lmHosp(j);if(!h)return null;const r=hmRes(h),od=is
 const lmHospTag=j=>{const x=lmHospLbl(j);return x?`<span class="status" style="font-size:11px;background:${x[1]};color:#fff">${esc(x[0])}</span> `:""};
 const lmStateTag=j=>j.gone?`<span class="status" style="font-size:11px;background:#ddd;color:#555">利用終了</span>`:lmHospTag(j)+lmPriTag(j)+lmStateTag0(j)+" "+lmRentTag(j);
 const lmStateTag0=j=>`<span class="status ${lmCal(j)?"st-ok":lmDoc(j)?"st-alert":"st-warn"}" style="font-size:11px">${esc(lmNoCal(j)&&!lmCal(j)?"カレンダー不要":(KB_L[j.k||""]||("区分"+j.k)))}</span>`;
+/* 11/18：直した項目だけ（_mp）をサーバーへ送り、サーバー側で最新の中身に足し込む（ほかの人の入力を古い中身で上書きしない）。text はこの端末の表示用 */
 async function lmSet(code,patch,b,msg){const j=lmRows().find(x=>x.code===code)||{};const nj=Object.assign(lmClean(j),patch);
- saveFast([{table:"caselog",row:{id:"lm"+codeN(code),case:"m:"+code,kind:"地図",text:JSON.stringify(nj),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}],msg)}
+ saveFast([{table:"caselog",row:{id:"lm"+codeN(code),case:"m:"+code,kind:"地図",text:JSON.stringify(nj),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString(),_mp:Object.assign({},patch),_mm:"set"}}],msg)}
 window.lmDel=async(code,b)=>{const j=lmRows().find(x=>x.code===code);if(!j)return;if(!await uiConfirm(lmName(j)+" 様を地図から消します。よろしいですか？\n（間違い・重複のとき用。ケアレンツの利用者一覧は消えません）"))return;
  const nj=lmClean(j);if(b)b.disabled=true;
  try{await persist([{table:"caselog",row:{id:"lm"+codeN(code),case:"m:"+code,kind:"地図",text:JSON.stringify(nj),state:"削除",rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}]);buzz(60);toast("地図から消しました");S.lmDet=null;S.lmEd=false;render()}catch(e){if(b)b.disabled=false;toast("消せませんでした："+errText(e))}};
@@ -922,12 +923,25 @@ function lmImpOpt(p){const codes=new Set(p.rows.map(r=>r.code)),old=lmRows(),mis
  <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="lmik" style="width:auto" ${keep?"checked":""} onchange="S.lmImpKeep=true;render()"> アプリで入れた内容を残す（使い始めた後）</label>
  <div class="meta">新しく増える ${nw}人 ・ 更新 ${ex.length}人${keep?`（うちアプリの内容を残す ${tch.length}人：カレンダー済・書類済・位置の手直し・備考・担当の手直し・用事・印・利用終了など）`:tch.length?`（うち ${tch.length}人はアプリで入れた内容が戻ります）`:""}</div>
  ${miss.length?`<label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="lm-rm" style="width:auto"> マイマップにいない人 <b>${miss.length}人</b>を地図から外す</label><details><summary class="meta" style="cursor:pointer">外れる人を見る</summary><div class="meta" style="max-height:160px;overflow:auto">${miss.map(j=>esc(lmName(j))+"（"+esc(lmStaff(j))+"）").join("、")}</div></details>`:""}</div>`}
-function lmImportBox(){const p=S.lmPlan;return `<details class="form" ${p||!lmRows().length?"open":""}><summary style="cursor:pointer"><b>📥 マイマップを取り込む（KML）</b></summary>
+/* 11/18：地図にいない利用者（ケアレンツだけにいる人）・地図の行はあるのに位置が無い人を、ケアレンツの住所から Google の住所検索で地図に入れる */
+const lmNoMapCl=()=>{const have=new Set(lmRows().filter(j=>!j.gone).map(j=>codeN(j.code)));return DB.clients.filter(u=>u.code&&u.useState!=="終了"&&u.addr&&!have.has(codeN(u.code)))};
+const lmNoPos=()=>lmRows().filter(j=>!j.gone&&(j.lat==null||j.lat==="")).map(j=>({j,u:lmClient(j.code)})).filter(x=>x.u&&x.u.addr);
+window.lmFillGeo=async b=>{const A=lmNoMapCl().map(u=>({u,addr:u.addr,lat:null})),B=lmNoPos().map(x=>({j:x.j,u:x.u,addr:x.u.addr,lat:null})),L=A.concat(B);if(!L.length){toast("足す人はいません");return}
+ if(!await uiConfirm("地図にいない "+A.length+"人と、位置が無い "+B.length+"人の位置を、ケアレンツの住所から Google の住所検索で出して地図に入れます。\n（住所は検索に使うだけで、AIには送りません。数分かかります）"))return;b.disabled=true;
+ const st=x=>{const e=$("#lm-st2");if(e)e.textContent=x};const ok=await geoMany(L,(i,n)=>st("住所から位置を出しています… "+i+"/"+n));
+ const by=myId(),bn=USER?USER.name:"デモ",at=new Date().toISOString(),ops=[];
+ L.filter(x=>x.lat!=null).forEach(x=>{const code=x.j?x.j.code:x.u.code,pos={lat:x.lat,lng:x.lng};
+  if(x.j)ops.push({table:"caselog",row:{id:"lm"+codeN(code),case:"m:"+code,kind:"地図",text:JSON.stringify(Object.assign(lmClean(x.j),pos)),rec:"",by,byName:bn,at,_mp:pos,_mm:"pos"}});
+  else ops.push({table:"caselog",row:{id:"lm"+codeN(code),case:"m:"+code,kind:"地図",text:JSON.stringify({k:"",v:"",c:"",n:"",st:stUni(x.u.staff||""),y:"",lat:x.lat,lng:x.lng,ins:""}),rec:"",by,byName:bn,at}})});
+ try{for(let i=0;i<ops.length;i+=100){st("保存中… "+i+"/"+ops.length);await persist(ops.slice(i,i+100))}impLog("住所から地図に足す","");st("");toast("位置を入れました："+ok+"/"+L.length+"人");render()}catch(e){toast("保存できませんでした："+errText(e))}b.disabled=false};
+function lmFillBox(){if(!canImport())return "";const a=lmNoMapCl().length,c=lmNoPos().length;if(!a&&!c)return "";
+ return `<div class="form" style="margin-bottom:8px;padding:8px 10px"><b>📍 地図に位置が無い利用者</b> <span class="meta">地図にいない ${a}人 ・ 位置が無い ${c}人</span><div style="margin-top:6px"><button class="btn sm primary" type="button" onclick="lmFillGeo(this)">住所から位置を出して地図に入れる</button> <span class="meta" id="lm-st2"></span></div><div class="meta">ケアレンツの住所から Google の住所検索（マイマップと同じ）で位置を出します。ずれていたら訪問したときに「今いる場所」で直してください。</div></div>`}
+function lmImportBox(){const p=S.lmPlan;return `${lmFillBox()}<details class="form" ${p||!lmRows().length?"open":""}><summary style="cursor:pointer"><b>📥 マイマップを取り込む（KML）</b></summary>
  <div class="meta">マイマップ → 地図名の横の「︙」→「KMLにエクスポート」→「地図全体」を選び「.KML ファイルにエクスポート」にチェックしてダウンロード。読み込みはこの端末の中だけで行い、外へは送りません（電話・住所は取り込みません）。</div>
  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><label class="btn sm" for="lmx" style="display:inline-flex">📊 担当ごとのカレンダー表（Excel・CSV、複数可）</label><input type="file" id="lmx" multiple accept=".xlsx,.xls,.csv" onchange="lmXls(this)" style="position:absolute;left:-9999px"><label class="btn sm" for="lmk" style="display:inline-flex">🗺 マイマップのKML（位置）</label></div>
- <div class="meta">先に Excel・CSV（担当の最終版）、次に KML の順で入れてください。KMLは位置だけを足します（担当・区分は表のまま）。Excel・CSV（顧客コード・顧客名・区分番号・内容・担当者名・住所 の列）で担当と区分を入れ、位置はKML（マイマップのピン）から。KMLが無い人は、住所から国土地理院の住所検索で位置を出せます（AIには送りません。住所は保存しません）。</div><input type="file" id="lmk" accept=".kml,application/vnd.google-earth.kml+xml,text/xml" onchange="lmKml(this)" style="position:absolute;left:-9999px">
+ <div class="meta">先に Excel・CSV（担当の最終版）、次に KML の順で入れてください。KMLは位置だけを足します（担当・区分は表のまま）。Excel・CSV（顧客コード・顧客名・区分番号・内容・担当者名・住所 の列）で担当と区分を入れ、位置はKML（マイマップのピン）から。KMLに位置が無い人（住所から置かれたピン）は、住所から Google の住所検索で位置を出せます（マイマップと同じ検索。AIには送りません。住所は保存しません）。</div><input type="file" id="lmk" accept=".kml,application/vnd.google-earth.kml+xml,text/xml" onchange="lmKml(this)" style="position:absolute;left:-9999px">
  ${p?`<div class="notice" style="margin-top:8px">${p.src==="xls"?"表":"ピン"} <b>${p.rows.length}</b> 件（位置あり ${p.rows.filter(r=>r.lat!=null).length}件）（利用者とつながった ${p.hit}件・つながらない ${p.rows.length-p.hit}件・顧客コードなし ${p.nocode}件）。レイヤー：${esc(p.folders.join("、"))}<br>カレンダー済 ${p.rows.filter(lmCal).length}件 ・ 書類あり ${p.rows.filter(lmDoc).length}件</div>
- ${p.src==="xls"&&p.rows.some(r=>r.lat==null&&r.addr)?`<label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="lm-geo" style="width:auto" checked> 位置が無い ${p.rows.filter(r=>r.lat==null&&r.addr).length}人は、住所から位置を出す（国土地理院。時間がかかります）</label>`:""}
+ ${p.rows.some(r=>r.lat==null&&r.addr)?`<label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="lm-geo" style="width:auto" checked> 位置が無い ${p.rows.filter(r=>r.lat==null&&r.addr).length}人は、住所から位置を出す（Google の住所検索＝マイマップと同じ。AIには送りません。数分かかります）</label>`:""}
  ${p.src==="xls"?lmImpOpt(p):""}
  <div style="display:flex;gap:8px;margin-top:6px"><button class="btn primary" type="button" onclick="lmImport(this)">この内容で取り込む</button><button class="btn" type="button" onclick="S.lmPlan=null;render()">やめる</button></div><div class="meta" id="lm-st"></div>`:""}</details>`}
 window.lmKml=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;let txt="";try{txt=await f.text()}catch(e){toast("読めませんでした");return}
@@ -942,7 +956,8 @@ window.lmKml=async inp=>{const f=inp.files[0];inp.value="";if(!f)return;let txt=
   const code=d["顧客コード"]||"";if(!code){nocode++;return}
   const raw=String(d["顧客名"]||first(p,"name")||"").trim(),m=raw.match(/^(\S+?[ 　]+\S+?)(?:[ 　\/／]+(.*))?$/);
   const fy=(fn.match(/20\d\d/)||[""])[0],fs=(fn.match(/20\d\d\s*(.+?)\s*カレンダー/)||[,""])[1];
-  rows.push({code,k:String(d["区分番号"]||"").trim(),v:d["訪問回数"]||"",c:d["内容"]||"",n:m&&m[2]?m[2].trim():"",nm:m?m[1].replace(/[ 　]+/," "):raw,st:d["担当者名"]||fs,y:fy,lat:isFinite(lat)?lat:null,lng:isFinite(lng)?lng:null})});
+  const hasCo=p.getElementsByTagName("coordinates").length>0;   /* 11/18：住所から置かれたピンは KML に緯度経度がなく、<address> だけ */
+  rows.push({code,k:String(d["区分番号"]||"").trim(),v:d["訪問回数"]||"",c:d["内容"]||"",n:m&&m[2]?m[2].trim():"",nm:m?m[1].replace(/[ 　]+/," "):raw,st:d["担当者名"]||fs,y:fy,lat:hasCo&&isFinite(lat)?lat:null,lng:hasCo&&isFinite(lng)?lng:null,addr:first(p,"address")||d["住所"]||""})});
  const hit=rows.filter(r=>lmClient(r.code)).length;S.lmPlan={rows,hit,nocode,folders:[...folders]};render()};
 window.lmXls=async inp=>{const fs=[...inp.files];inp.value="";if(!fs.length)return;const rows=[],folders=[];let nocode=0;const old={};lmRows().forEach(j=>old[j.code]=j);
  try{for(const f of fs){const R=await readSheetRows(f),hi=R.findIndex(r=>r.some(c=>String(c).trim()==="顧客コード"));if(hi<0){toast(f.name+"：「顧客コード」の列が見つかりません");continue}
@@ -955,14 +970,23 @@ window.lmXls=async inp=>{const fs=[...inp.files];inp.value="";if(!fs.length)retu
  catch(e){toast("読めませんでした："+errText(e));return}
  const hit=rows.filter(r=>lmClient(r.code)).length;S.lmPlan={rows,hit,nocode,folders,src:"xls"};render()};
 async function gsiGeo(addr){const q=String(addr).replace(/^広島県|^岡山県/,m=>m);const r=await fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q="+encodeURIComponent(q));const d=await r.json();const x=d&&d[0];return x?{lat:x.geometry.coordinates[1],lng:x.geometry.coordinates[0]}:null}
-window.lmImport=async b=>{const pg=$("#lm-geo");if(pg&&pg.checked&&S.lmPlan){const L=S.lmPlan.rows.filter(r=>r.lat==null&&r.addr);b.disabled=true;let i=0,ok=0;
-  for(const r of L){i++;const st=$("#lm-st");if(st)st.textContent="住所から位置を出しています… "+i+"/"+L.length;try{const g=await gsiGeo(r.addr);if(g){r.lat=g.lat;r.lng=g.lng;ok++}}catch(e){}await new Promise(z=>setTimeout(z,120))}
+/* 住所 → 位置（本番は GAS の Google 住所検索、デモは国土地理院）。30件ずつ */
+async function geoMany(L,prog){let ok=0;for(let i=0;i<L.length;i+=30){const ch=L.slice(i,i+30);if(prog)prog(i,L.length);
+  if(MODE==="live"){let d=null;try{d=await api("geo",{addrs:ch.map(r=>r.addr)})}catch(e){toast("住所検索：" +errText(e));break}(d.res||[]).forEach((g,k)=>{if(g&&isFinite(g.lat)){ch[k].lat=+g.lat;ch[k].lng=+g.lng;ok++}});if(d.stop){toast("Google の住所検索の今日の上限に近いので、ここで止めました。残りは明日もう一度");break}}
+  else for(const r of ch){try{const g=await gsiGeo(r.addr);if(g){r.lat=g.lat;r.lng=g.lng;ok++}}catch(e){}}}return ok}
+window.lmImport=async b=>{const pg=$("#lm-geo");if(pg&&pg.checked&&S.lmPlan){const L=S.lmPlan.rows.filter(r=>r.lat==null&&r.addr);b.disabled=true;
+  const ok=await geoMany(L,(i,n)=>{const st=$("#lm-st");if(st)st.textContent="住所から位置を出しています… "+i+"/"+n});
   toast("位置が出たのは "+ok+"/"+L.length+"人です");b.disabled=false}
  S.lmPlan&&S.lmPlan.rows.forEach(r=>delete r.addr);const p=S.lmPlan;if(!p)return;b.disabled=true;const old={};lmRows().forEach(j=>old[j.code]=j);const by=myId(),bn=USER?USER.name:"デモ",at=new Date().toISOString();
  const keep=!!S.lmImpKeep,rmEl=$("#lm-rm"),rm=p.src==="xls"&&rmEl&&rmEl.checked;
- const ops=p.rows.map(r=>{const o=old[r.code]||{};let nj;if(p.src!=="xls"&&old[r.code]){nj=Object.assign(lmClean(o),o.fix?{}:{lat:r.lat,lng:r.lng})}
-  else if(keep&&old[r.code]){nj=lmClean(o);const ed=!!o.edAt;nj.v=r.v;nj.y=r.y;if(!(o.calAt||o.edAt||o.docAt))nj.k=r.k;if(!ed){nj.c=r.c;nj.n=r.n}if(!o.fix&&r.lat!=null){nj.lat=r.lat;nj.lng=r.lng}if(!o.stFix)nj.st=r.st;if(!lmClient(r.code))nj.nm=r.nm}
-  else{nj={k:r.k,v:r.v,c:r.c,n:r.n,lat:r.lat,lng:r.lng,st:r.st,y:r.y,ins:o.ins||""};if(!lmClient(r.code))nj.nm=r.nm}return {table:"caselog",row:{id:"lm"+codeN(r.code),case:"m:"+r.code,kind:"地図",text:JSON.stringify(nj),rec:"",by,byName:bn,at}}});
+ /* 11/18：すでにいる人は、変える項目だけ（_mp）を送り、サーバーが最新の中身を見て足し込む（_mm：pos＝位置だけ／keep＝アプリの入力を残す／over＝上書き。どれも位置が無い行は今の位置を消さない） */
+ const ops=p.rows.map(r=>{const o=old[r.code],hasP=r.lat!=null,pos=hasP?{lat:r.lat,lng:r.lng}:{};let nj,mp=null,mm="";
+  if(o&&p.src!=="xls"){if(!hasP)return null;nj=Object.assign(lmClean(o),o.fix?{}:pos);mp=pos;mm="pos"}
+  else if(o&&keep){nj=lmClean(o);const ed=!!o.edAt;nj.v=r.v;nj.y=r.y;if(!(o.calAt||o.edAt||o.docAt))nj.k=r.k;if(!ed){nj.c=r.c;nj.n=r.n}if(!o.fix&&hasP)Object.assign(nj,pos);if(!o.stFix)nj.st=r.st;if(!lmClient(r.code))nj.nm=r.nm;
+   mp=Object.assign({v:r.v,y:r.y,k:r.k,c:r.c,n:r.n,st:r.st},pos,lmClient(r.code)?{}:{nm:r.nm});mm="keep"}
+  else if(o){nj={k:r.k,v:r.v,c:r.c,n:r.n,lat:hasP?r.lat:o.lat,lng:hasP?r.lng:o.lng,st:r.st,y:r.y,ins:o.ins||""};if(!lmClient(r.code))nj.nm=r.nm;mp=Object.assign({k:r.k,v:r.v,c:r.c,n:r.n,st:r.st,y:r.y},pos,lmClient(r.code)?{}:{nm:r.nm});mm="over"}
+  else{nj={k:r.k,v:r.v,c:r.c,n:r.n,lat:r.lat,lng:r.lng,st:r.st,y:r.y,ins:""};if(!lmClient(r.code))nj.nm=r.nm}
+  const row={id:"lm"+codeN(r.code),case:"m:"+r.code,kind:"地図",text:JSON.stringify(nj),rec:"",by,byName:bn,at};if(mp){row._mp=mp;row._mm=mm}return {table:"caselog",row}}).filter(Boolean);
  if(rm){const codes=new Set(p.rows.map(r=>r.code));Object.values(old).filter(j=>!codes.has(j.code)).forEach(j=>ops.push({table:"caselog",row:{id:"lm"+codeN(j.code),case:"m:"+j.code,kind:"地図",text:JSON.stringify(lmClean(j)),state:"削除",rec:"",by,byName:bn,at}}))}
  if(!await impPre("マイマップ",ops)){b.disabled=false;return}try{for(let i=0;i<ops.length;i+=100){const st=$("#lm-st");if(st)st.textContent="保存中… "+i+"/"+ops.length;await persist(ops.slice(i,i+100))}impLog("マイマップ","");S.lmPlan=null;buzz(60);toast(p.rows.length+"件を取り込みました"+(rm?"（マイマップにいない人を外しました）":""));render()}
  catch(e){b.disabled=false;toast("取り込めませんでした："+errText(e))}};
