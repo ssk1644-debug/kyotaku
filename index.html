@@ -930,7 +930,11 @@ window.loErDone=(oid,i,b)=>{const j=loGet(oid);const er=j.er.slice();er.splice(i
 function loBox(o){const j=loGet(o.id);
  return `<div class="form" style="padding:8px 10px;margin:6px 0;${priBorder(j)}"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>📌 訪問管理</b>${priSeg(j,"loPri",o.id)}${j.pri?`<span class="meta">${esc(j.priT||"")} ${esc(j.priBy||"")} ${esc(md(j.priAt||""))}</span>`:""}</div>
  ${j.er.map((e,i)=>erRow(e,i,"loErDone",o.id)).join("")}
- <div style="display:flex;gap:6px;margin-top:6px"><input id="lo-t" placeholder="この居宅での用事（例：印鑑をもらう・書類を届ける）" style="flex:1;min-width:0;margin:0"><input id="lo-d" type="date" style="width:140px;margin:0"><button class="btn sm primary" type="button" onclick="loErAdd('${o.id}',this)">＋</button></div></div>`}
+ <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${LO_CHIPS.map(t=>`<button class="btn sm" type="button" style="font-size:13px;padding:3px 10px" onclick="const e=document.getElementById('lo-t');e.value=e.value?e.value+'・'+'${t.replace(/^\S+ /,"")}':'${t.replace(/^\S+ /,"")}';e.focus()">${t}</button>`).join("")}</div>
+ <input id="lo-t" placeholder="用事を書く（上の札を押しても入ります）" style="width:100%;margin:6px 0 0">
+ <div style="display:flex;gap:6px;align-items:center;margin-top:6px"><label class="meta" style="display:flex;gap:4px;align-items:center;flex:1">期限（なくても可）<input id="lo-d" type="date" style="width:auto;margin:0"></label><button class="btn sm primary" type="button" style="min-width:80px" onclick="loErAdd('${o.id}',this)">＋ 入れる</button></div></div>`}
+/* 11/21 社長：居宅の用事はよく使うものを押すだけで入れる */
+const LO_CHIPS=["📄 計画書","🖋 住改の印鑑","📥 書類をもらう","📦 納品"];
 const goDist=(lat,lng)=>S.pos&&lat!=null?" ・ "+lmDistT(dist(S.pos.lat,S.pos.lng,+lat,+lng)):"";
 function loRowHtml({o,j}){return `<div style="padding:6px 4px;border-bottom:1px solid var(--line);cursor:pointer" onclick="S.view='visit';S.office='${o.id}';S.autoOpened='${o.id}';render()">${j.pri==="u"?"🚨":j.pri==="p"?"📌":"🏢"} <b>${esc(o.name)}</b><span class="meta">${goDist(o.lat,o.lng)}</span><div class="meta">${esc([j.priT].concat(j.er.map(e=>e.t+(e.due?"（〜"+md(e.due)+"）":""))).filter(Boolean).join("・"))}</div></div>`}
 function goBoxHtml(){const me=lmMe(),O=loList(),U=lmRows().filter(j=>!j.gone&&(lmPri(j)>0||lmCtTodo(j).length)&&(!me||lmStaff(j)===me)).sort((a,b)=>lmPri(b)-lmPri(a));if(!O.length&&!U.length)return "";
@@ -2016,8 +2020,9 @@ function fcardsHtml(f,fi){const o=DB.offices.find(x=>x.id===f.office),cm=DB.cms.
  <div class="meta">${esc(o?o.name:"")}${cm?" ・ "+esc(cm.name):""} ・ ${esc(f.date)} の記録から ・ AIのおすすめに色が付いています</div>
  ${(f.cases||[]).length?fcHtml(f,fi):""}
  ${(f.hosp||[]).length?fhHtml(f,fi):""}${f.hospAuto?`<div style="margin-top:8px"><b>🏥 入院・退院の知らせ</b>${f.hospSt==="err"?`<div class="meta" style="color:var(--alert);font-weight:700">⚠ ${f.hospAuto}件を入退院表に入れられませんでした（${esc(f.hospErr||"")}）</div><button class="btn sm" type="button" onclick="haRetry('${f.id}')">もう一度入れる</button>`:f.hospSt==="busy"?`<div class="meta">⏳ ${f.hospAuto}件を入退院表に入れています…</div>`:`<div class="meta">✅ ${f.hospAuto}件を「確認待ち」で入退院表に入れました。利用者が合っているかは、入退院表（事務所）で確認します。</div>`}</div>`:""}
- ${its.map((x,i)=>{if(x.st)return `<div class="logi"><span class="meta">${x.dup?"📅 もう予定に入っています":x.auto?"📅 自動で予定に入れました（"+esc(fxDt(x.date,x.time))+"）":lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}${x.sid?` <button class="btn sm" type="button" style="padding:1px 8px" onclick="skGo('${x.sid}')">📅 予定を見る</button>`:""}${x.auto&&x.sid?` <button class="btn sm" type="button" style="padding:1px 8px" onclick="fdUndo(${fi},${i},this)">取り消す</button>`:""}${x.st==="fix"&&x.fixFrom?` <span class="meta">（${esc(x.fixFrom)} → ${esc(fxDt(x.date,x.time))}）</span>`:""}</div>`;const fx=fxCands(f,x);return `<div class="fcard">
-  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="date" value="${esc(x.date||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].date=this.value;render()" aria-label="日付"><input type="time" value="${esc(x.time||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].time=this.value;render()" aria-label="時間"><span class="meta">${x.date?"":"日付なしでも入れられます"}</span></div>
+ ${its.map((x,i)=>{if(x.st)return `<div class="logi"><span class="meta">${x.dup?"📅 もう予定に入っています":x.auto?"📅 自動で予定に入れました（"+esc(fxDt(x.date,x.time))+"）":lbl[x.st]}</span>${x.st==="drop"?"":"："+esc(x.t)}${x.sid?` <button class="btn sm" type="button" style="padding:1px 8px" onclick="skGo('${x.sid}')">📅 予定を見る</button>`:""}${x.auto&&x.sid?` <button class="btn sm" type="button" style="padding:1px 8px" onclick="fdUndo(${fi},${i},this)">取り消す</button>`:""}${x.st==="fix"&&x.fixFrom?` <span class="meta">（${esc(x.fixFrom)} → ${esc(fxDt(x.date,x.time))}）</span>`:""}</div>`;const fx=fxCands(f,x),dt=x.date||x.showDt;return `<div class="fcard" style="border-top:2px solid var(--accent);padding-top:6px;margin-top:10px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b style="color:var(--accent)">📌 見つかった用事 ${i+1}／${its.length}</b>${dt?"":`<button class="btn sm" type="button" style="font-size:12px;padding:2px 8px" onclick="FOUND[${fi}].items[${i}].showDt=1;render()">📅 日付を入れる</button>`}</div>
+  ${dt?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><label class="meta" style="display:flex;gap:4px;align-items:center">日付<input type="date" value="${esc(x.date||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].date=this.value;render()"></label><label class="meta" style="display:flex;gap:4px;align-items:center">時間<input type="time" value="${esc(x.time||"")}" style="width:auto;flex:0 0 auto" onchange="FOUND[${fi}].items[${i}].time=this.value;render()"></label></div>`:""}
   <textarea rows="2" oninput="FOUND[${fi}].items[${i}].t=this.value">${esc(x.t)}</textarea>
   ${fx.length?`<div style="margin:4px 0 6px;padding:6px 8px;border-radius:8px;background:#fff6d6;border:1px solid #f0a500"><div class="meta" style="font-weight:700">🔁 ${x.fix?"時間の変更・確定の連絡のようです。":"同じ件の予定がもう入っているかも。"}前の予定を直しますか？</div>
    ${fx.map(s=>`<div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap"><span class="meta" style="flex:1;min-width:150px">${esc(fxDt(s.date,s.time))} ${esc(String(s.text||"").slice(0,28))}</span><button class="btn sm ${x.fix?"primary":""}" type="button" onclick="fdFix(${fi},${i},'${s.id}',this)">→ ${esc(fxDt(x.date,x.time))} に直す</button></div>`).join("")}
@@ -3368,9 +3373,11 @@ function viewCase(){const c=(DB.cases||[]).find(x=>x.id===S.caseId);if(!c)return
   ${more?`<div class="steps cvsteps" style="margin-top:6px">${st.map((x,k)=>`<button type="button" class="${k===ci?"on":k<ci?"past":""}" onclick="caseStage('${id}','${x}',this)">${k<ci?"✓ ":""}${x}</button>`).join("")}</div>`:""}
   ${more?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)">${(cc=>`<button class="btn sm" type="button" onclick="caseCheck('${id}',this)">${cc.some(l=>l.by===myId())?"✓ 確認済み":"✓ 確認した"}</button>${cc.length?`<span class="meta">確認：${cc.map(l=>esc(l.byName||"")+" "+esc(fmtAt(l.at))).join("、")}</span>`:""}`)(caseChecks(id))}
    <select class="sim" onchange="if(this.value)caseShare('${id}',this.value);this.value=''"><option value="">💬 だれかに知らせる</option>${(DB.users||[]).filter(u=>u.email&&u.email!==myId()).map(u=>`<option value="${esc(u.email)}">${esc(u.name)}</option>`).join("")}<option value="all">全員の部屋</option></select>
+   <button class="btn sm" type="button" onclick="S.cxCl=S.cxCl==='${id}'?null:'${id}';render()">👤 利用者を変える</button>
    <button class="btn sm" type="button" onclick="mgStart('${id}')">🔗 ほかのカードとまとめる</button>
    ${others.length?`<select id="cs-merge" class="sim"><option value="">同じ利用者のカードへ</option>${others.map(x=>`<option value="${x.id}">${esc(x.type)}（${esc(x.stage||"受付")}）${esc((x.title||x.next||"").slice(0,20))}</option>`).join("")}</select><button class="btn sm" type="button" onclick="caseMerge('${id}',this)">まとめる</button>`:""}
-   <button class="btn sm" type="button" style="color:var(--alert)" onclick="caseDel('${id}',this)">このカードを削除</button></div>`:""}</div>
+   <button class="btn sm" type="button" style="color:var(--alert)" onclick="caseDel('${id}',this)">このカードを削除</button></div>`:""}
+  ${more&&S.cxCl===id?`<div style="margin-top:6px;padding:6px 8px;border-radius:8px;background:#eef5f3"><div class="meta" style="font-weight:700">正しい利用者を選んでください（経過・用意するもの・事務とのやりとりはそのまま引き継ぎます）</div><input id="cx-cl" list="cxCls" placeholder="名前の一部を入れて候補から選ぶ" style="width:100%;margin:4px 0"><datalist id="cxCls">${DB.clients.map(clOpt).join("")}</datalist><button class="btn sm primary" type="button" onclick="caseSetClient('${id}',this)">この利用者に変える</button> <button class="btn sm" type="button" onclick="S.cxCl=null;render()">やめる</button></div>`:""}</div>
  ${caseFlowView(c)}
  </div>`}
 
@@ -3521,6 +3528,11 @@ window.mgStop=()=>{S.mergeFrom=null;mgBar()};
 window.caseMergeTo=async(id,to,b)=>{const c=DB.cases.find(y=>y.id===id);if(!c||id===to)return;
  const ops=caseLogs(id).map(l=>({table:"caselog",row:{id:l.id,case:to}}));ops.push({table:"cases",row:{id,state:"削除"}},{table:"cases",row:{id:to}},clog(to,"まとめ","「"+(c.type||"")+(c.title?"："+c.title:"")+"」をこのカードにまとめました"));
  if(await caseOps(ops,b,"まとめました"))caseOpen(to)};
+/* 11/21 社長：間違った利用者につながったカードを付け替える */
+window.caseSetClient=async(id,b)=>{const c=DB.cases.find(x=>x.id===id);if(!c)return;const v=($("#cx-cl")||{}).value||"",u=findClient(v);if(!u){toast("利用者を候補から選んでください");return}
+ const old=c.client?cliBare(clientOf(c.client)||{name:c.clientName||""}):(c.clientName||"（なし）");if(!await uiConfirm("このカードの利用者を\n"+old+" 様 → "+cliBare(u)+" 様\nに変えます。"))return;
+ const row={id,client:u.id,clientName:"",office:clOffice(u)||c.office||"",cm:u.cm||c.cm||""};S.cxCl=null;
+ return caseOps([{table:"cases",row},clog(id,"進捗","利用者を "+old+" 様 から "+cliBare(u)+" 様 に変更（"+(USER?USER.name:"デモ")+"）")],b,"利用者を変えました")};
 window.caseDel=async(id,b)=>{if(!await uiConfirm("このカードを削除しますか？（経過も見えなくなります）"))return;const c=DB.cases.find(x=>x.id===id),st0=c?c.state||"":"";
  if(await caseOps([{table:"cases",row:{id,state:"削除"}}],b,"")){S.view="sched";S.caseId=null;render();undoBar("カードを削除しました",async()=>{await persist([{table:"cases",row:{id,state:st0}}]);caseOpen(id)})}};
 /* 消したあと7秒だけ「元に戻す」を出す */
@@ -3595,7 +3607,7 @@ function fcHtml(f,fi){if(f.casesDone)return `<div style="margin-top:8px"><b>🗂
   ${x.next||x.due?`<div class="meta">次：${esc(x.next||"―")}${x.due?" ・ 期限 "+esc(x.due):""}</div>`:""}
   ${x.cond?`<div class="meta">📝 条件：${esc(x.cond)}</div>`:""}${(x.people||[]).length?`<div class="meta">👥 ${x.people.map(p=>esc(p.role+"："+(p.name||p.rel)+(p.go?"（同行）":""))).join("、")}</div>`:""}${(x.prep||[]).length?`<div class="meta">☑ 準備：${x.prep.map(esc).join("、")}</div>`:""}${(x.waits||[]).length?`<div class="meta">⏳ 待ち：${x.waits.map(w=>esc(w.what+(w.who?"（"+w.who+"）":""))).join("、")}</div>`:""}</div>`}).join("")}
  <datalist id="fcCl">${DB.clients.map(clOpt).join("")}</datalist>
- <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="fcApply(${fi},this)">チェックした分をタスクカードに入れる</button><button class="btn sm" type="button" onclick="FOUND[${fi}].cases.push({cname:'',client:'',type:'その他',text:'',next:'',due:'',target:'new',on:true});render()">＋ カードを足す</button></div></div>`}
+ <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="fcApply(${fi},this)">チェックした分をタスクカードに入れる</button><button class="btn sm" type="button" style="font-size:12px;padding:2px 8px" onclick="FOUND[${fi}].cases.push({cname:'',client:'',type:'その他',text:'',next:'',due:'',target:'new',on:true});render()">＋ カードを足す</button></div></div>`}
 window.fcClient=(fi,xi,v)=>{const x=FOUND[fi]&&FOUND[fi].cases[xi];if(!x)return;const u=findClient(v);if(!u){toast("一覧から選んでください");return}
  const old=x.client;x.client=u.id;x.cname=cliBare(u);const same=openCasesOf(u.id).find(c=>c.type===x.type);x.target=same?same.id:"new";
  (x.people||[]).forEach(q=>{if(/本人/.test(q.rel||""))q.name=cliBare(u)});
@@ -3898,7 +3910,7 @@ window.benchRun=async b=>{const out=$("#benchOut");b.disabled=true;out.textConte
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 /* 11/18 社長：古い版のまま使うとデータが消えるので、新しい版が出たら必ず更新させる。
    10分ごと＋アプリに戻ったときに公開中の index.html を見て、APP_VER が違えば赤い帯→入力中でなければ全画面で更新を求める */
-const APP_VER="w113";
+const APP_VER="w114";
 let VER_NEW="",VER_T0=0;
 async function verCheck(){if(MODE!=="live"||location.protocol!=="https:")return;try{
  const t=await fetch(location.pathname+"?vc="+Date.now(),{cache:"no-store"}).then(r=>r.ok?r.text():"");const m=t.match(/const APP_VER="([^"]+)"/);
