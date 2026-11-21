@@ -918,7 +918,7 @@ window.lmEdSave=(code,b)=>{const v=id=>String(($("#"+id)||{}).value||"").trim();
 function loAll(){const m={};(DB.caselog||[]).forEach(l=>{if(l.kind!=="居宅用事"||l.state==="削除")return;let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}m[String(l.case||"").slice(2)]=j});return m}
 function loGet(oid){const j=Object.assign({},loAll()[oid]||{});if(!Array.isArray(j.er))j.er=[];return j}
 /* 11/18 社長：居宅の用事（📋）は、営業さんには「自分が担当の居宅」か「自分が入れた用事」だけ出す。ほかの人の用事（例：社長の訪問調整）は出さない。事務・社長は全部 */
-function loVis(o,j){if(seeAllRec())return j;const mine=isMine(o),nm=String(USER?USER.name:"").replace(/[\s　]/g,""),er=(j.er||[]).filter(e=>mine||(nm&&String(e.by||"").replace(/[\s　]/g,"")===nm));return Object.assign({},j,{er,pri:mine?j.pri:""})}
+function loVis(o,j){if(seeAllRec())return j;const mine=isMine(o),nm=String(USER?USER.name:"").replace(/[\s　]/g,""),er=(j.er||[]).filter(e=>nm&&String(e.by||"").replace(/[\s　]/g,"")===nm);   /* 11/21 社長：居宅の用事は入れた本人だけ（社長・事務は全部） */return Object.assign({},j,{er,pri:mine?j.pri:""})}
 function loList(){const m=loAll();return DB.offices.filter(o=>!offGone(o)).map(o=>{const j0=m[o.id],j=j0?loVis(o,Object.assign({er:[]},j0)):null;return j&&(j.pri||(j.er||[]).length)?{o,j}:null}).filter(Boolean).sort((a,b)=>lmPri(b.j)-lmPri(a.j)||String(a.o.name).localeCompare(String(b.o.name),"ja"))}
 async function loSet(oid,patch,b,msg){const j=Object.assign(loGet(oid),patch);
  saveFast([{table:"caselog",row:{id:"lo"+oid,case:"o:"+oid,kind:"居宅用事",text:JSON.stringify(j),rec:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}],msg)}
@@ -3719,7 +3719,10 @@ function jimuNews(){const me=myId(),d=dism(),out=[];
 function reqNews(r,head,k){const o=DB.offices.find(x=>x.id===r.office)||{name:""},c=caseOfReq(r),dn=r.state==="済";
  const who=dn&&(r.doneBy||r.doneAt)?` 対応：${esc(r.doneBy||"事務")}${r.doneAt?" "+esc(fmtAt(r.doneAt)):""}`:"";
  const title=c?`<div class="chead" style="margin-top:0">🗂 ${esc(caseHead(c))}</div>`:`<div class="chead" style="margin-top:0">📝 ${esc(String(r.text||"").split("\n")[0].slice(0,30))}</div>`;
- return `<div class="jreq st-doing">${title}<div class="meta" style="margin-top:2px">${esc(o.name)}${o.name?" ・ ":""}あなたのお願い${r.at?"（"+esc(fmtAt(r.at))+"）":""}：</div>${esc(r.text)}${c?`<div><button type="button" class="btn sm" style="margin-top:4px" onclick="caseOpen('${c.id}')">🗂 タスクカードを開く</button></div>`:""}<div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${r.state==="済"?"":replyBox(r.id,JIMU,r.office||"","事務に一言")}
+ /* 11/21 社長：最初は件名と状態だけの1行。押すと開く（至急は開いたまま） */
+ const urg=/🚨至急/.test(r.text||""),op=urg||(S.nwOpen||{})[k];
+ if(k&&!op)return `<div class="jreq st-doing" style="padding:8px 10px"><div style="display:flex;gap:6px;align-items:center"><div style="flex:1;min-width:0;cursor:pointer" onclick="S.nwOpen=Object.assign({},S.nwOpen,{'${k}':1});render()"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c?"🗂 "+esc(caseHead(c)):"📝 "+esc(String(r.text||"").split("\n")[0].slice(0,30))}</div><div class="meta"><b style="color:${dn?"#1e8e3e":"var(--accent)"}">${dn?"✅ ":"💬 "}${head}</b>${o.name?" ・ "+esc(o.name):""} ▸</div></div><button class="btn sm ${dn?"primary":""}" type="button" onclick="dismiss('${k}')">${dn?"✓ 完了":"✓ 確認した"}</button></div></div>`;
+ return `<div class="jreq st-doing">${title}${k&&!urg?`<button class="btn sm" type="button" style="float:right;margin-top:-28px;padding:0 8px" onclick="S.nwOpen=Object.assign({},S.nwOpen,{'${k}':0});render()">▴ 畳む</button>`:""}<div class="meta" style="margin-top:2px">${esc(o.name)}${o.name?" ・ ":""}あなたのお願い${r.at?"（"+esc(fmtAt(r.at))+"）":""}：</div>${esc(r.text)}${c?`<div><button type="button" class="btn sm" style="margin-top:4px" onclick="caseOpen('${c.id}')">🗂 タスクカードを開く</button></div>`:""}<div class="thread">${msgsOf(r.id).map(msgHtml).join("")}</div>${r.state==="済"?"":replyBox(r.id,JIMU,r.office||"","事務に一言")}
  <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:8px;padding-top:6px;border-top:1px dashed var(--line)"><span class="meta" style="text-align:right"><b style="color:${dn?"#1e8e3e":"var(--accent)"}">${dn?"✅ ":"💬 "}${head}</b>${who}</span>${k?`<button class="btn sm ${dn?"primary":""}" type="button" onclick="dismiss('${k}')">${dn?"✓ 完了":"✓ 確認した"}</button>`:""}</div></div>`}
 function todoCount(){const t=today();let n=0;try{n=schedMine().filter(s=>s.state!=="済"&&s.date&&s.date<=t).length+jimuNews().length+(DB.cases||[]).filter(c=>cLive(c)&&c.staff===myId()&&cOver(c)).length+waitsDue(false).filter(x=>x.w.due<=t).length+ctGoList(false).length}catch(e){}return n}
 function viewTodo(){markRead("sales");const t=today(),list=schedMine(),open=list.filter(s=>s.state!=="済").sort(sortS),news=jimuNews(),me=myId();
@@ -3910,7 +3913,7 @@ window.benchRun=async b=>{const out=$("#benchOut");b.disabled=true;out.textConte
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 /* 11/18 社長：古い版のまま使うとデータが消えるので、新しい版が出たら必ず更新させる。
    10分ごと＋アプリに戻ったときに公開中の index.html を見て、APP_VER が違えば赤い帯→入力中でなければ全画面で更新を求める */
-const APP_VER="w114";
+const APP_VER="w115";
 let VER_NEW="",VER_T0=0;
 async function verCheck(){if(MODE!=="live"||location.protocol!=="https:")return;try{
  const t=await fetch(location.pathname+"?vc="+Date.now(),{cache:"no-store"}).then(r=>r.ok?r.text():"");const m=t.match(/const APP_VER="([^"]+)"/);
@@ -4189,7 +4192,8 @@ function jkPanel(){const m=jkMonth();if(!m)return "";
 let MAP=null;
 function loadLeaflet(){return new Promise((res,rej)=>{if(window.L)return res();
  const c=document.createElement("link");c.rel="stylesheet";c.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";document.head.appendChild(c);
- const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";sc.onload=res;sc.onerror=()=>rej(new Error("地図の部品を読み込めません"));document.head.appendChild(sc)})}
+ const sc=document.createElement("script");sc.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";sc.onload=()=>{try{L.Control.Attribution.prototype.options.prefix=false}catch(e){}res()};sc.onerror=()=>rej(new Error("地図の部品を読み込めません"));document.head.appendChild(sc);
+ const st=document.createElement("style");st.textContent=".leaflet-control-attribution{font-size:9px!important;opacity:.55;padding:0 4px!important;background:rgba(255,255,255,.5)!important}";document.head.appendChild(st)})}   /* 11/21 社長：右下の旗とLeafletを消し、OpenStreetMapの表示は小さく */
 function mapColor(){return S.mapColor||(jkMonth()?"jk":"visit")}
 function mapHtml(){const mc=mapColor(),m=jkMonth();return `${m?`<div class="seg" style="margin-bottom:8px"><button type="button" class="${mc==="jk"?"on":""}" onclick="S.mapColor='jk';render()">色分け：実績</button><button type="button" class="${mc==="visit"?"on":""}" onclick="S.mapColor='visit';render()">色分け：訪問</button></div>`:""}<div id="map"><div class="progress" style="padding:16px"><span class="spin"></span>地図を読み込み中…</div></div>
  <div class="meta" style="margin-top:6px">${mc==="jk"?`<span style="color:#c0392b">●</span> ${+m.slice(5)}月分の実績が未　<span style="color:#0d6e62">●</span> 実績 済`:`<span style="color:#c0392b">●</span> 訪問が${GAP_DAYS}日以上空いている　<span style="color:#0d6e62">●</span> 訪問OK`}　<span style="color:#8a8a8a">●</span> 利用者なし・閉鎖など　<span style="color:#1a73e8">●</span> 現在地</div>`}
@@ -4801,7 +4805,18 @@ function viewLogin(){
   ${S.loginMsg?`<div class="${/確認中/.test(S.loginMsg)?"meta":"notice"}" style="text-align:left">${esc(S.loginMsg)}</div>`:""}
   <div class="meta" style="font-size:12px">ボタンが出ない場合は、LINEなどのアプリ内ではなく、ChromeまたはSafariで開いてください。</div>
  </div>`}
-function render(){
+/* 11/21 社長：新年メモはカレンダーと分ける（2027年1月から配る）。社長が開いたときに1回だけ自動で分ける */
+let NM_DONE=false;
+function nmSplit(){if(NM_DONE||S.loading||S.bgLoad||!USER&&MODE==="live"||!canAdmin()||!(DB.items||[]).length)return;NM_DONE=true;
+ const it=DB.items.find(i=>/カレンダー/.test(i.name||"")&&itKinds(i).some(k=>/新年メモ/.test(k)));if(!it)return;
+ const nid="inm"+(itYear(it)||"2027"),ex=DB.items.find(i=>i.id===nid),ops=[];
+ ops.push({table:"items",row:{id:it.id,kinds:itKinds(it).filter(k=>!/新年メモ/.test(k)).join("、")}});
+ if(!ex)ops.push({table:"items",row:{id:nid,name:(itYear(it)||"2027")+"年 新年メモ",start:(itYear(it)||"2027")+"-01-01",end:(itYear(it)||"2027")+"-01-31",target:it.target||"all",kinds:"新年メモ",note:"カレンダーから分けました（11/21）"}});
+ (DB.dist||[]).filter(d=>d.item===it.id&&/新年メモ/.test(d.qty||"")).forEach(d=>{const q=String(d.qty).split(","),nm=q.filter(x=>/新年メモ/.test(x)),rest=q.filter(x=>!/新年メモ/.test(x));
+  ops.push({table:"dist",row:{id:d.id,qty:rest.join(",")}});if(d.state!=="配布済")ops.push({table:"dist",row:{id:nid+"-"+d.office,item:nid,office:d.office,qty:nm.join(","),state:"未配布"}});
+  else ops.push({table:"dist",row:{id:nid+"-"+d.office,item:nid,office:d.office,qty:nm.join(","),state:"配布済",date:d.date||"",by:d.by||""}})});
+ persist(ops).then(()=>{toast("新年メモをカレンダーから分けました（"+(itYear(it)||"2027")+"年1月から）");render()}).catch(e=>{NM_DONE=false;toast("新年メモを分けられませんでした："+errText(e))})}
+function render(){setTimeout(nmSplit,0);
  if(S.view!=="umap")window.__lmAway=true;
  try{fdStash()}catch(e){}
  try{dkCheck()}catch(e){}
