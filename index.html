@@ -1356,6 +1356,13 @@ window.distSet=async(item,office,done)=>{const it=DB.items.find(x=>x.id===item)|
  if(done&&ks.length){const o0=DB.offices.find(x=>x.id===office),d0=distOf(it,o0||{id:office})||{},pl0=planOf(it,o0||{id:office},d0);if(Object.keys(pl0).length&&!/予定:/.test(d0.note||""))row.note=((d0.note||"")+" 予定:"+ks.map(k=>k+":"+(pl0[kNorm(k)]||0)).join(",")).trim();const q=ks.map((k,n)=>{const e=document.getElementById("dq-"+item+"-"+n);return k+":"+(Math.max(0,Number(e&&e.value)||0))});if(!q.some(x=>!/:0$/.test(x))){toast("部数を入れてください");return}row.qty=q.join(",")}
  S.distEd=null;
  try{await persist([{table:"dist",row}]);toast(done?"配布済にしました":"未配布に戻しました");render()}catch(e){toast("保存できませんでした："+errText(e))}};
+/* 11/25 社長：配布表で予定の部数を直す。未配布は dist の qty（＝予定）、配布済は note の「予定:」に入れる */
+window.distPlan=async(item,office,x,v,el)=>{const it=DB.items.find(i=>i.id===item);const o=DB.offices.find(i=>i.id===office);if(!it||!o)return;const ks=itKinds(it),d=distOf(it,o)||{},done=d.state==="配布済";
+ const cur=planOf(it,o,d),m={};ks.forEach((k,n)=>{const kk=kNorm(k);m[k]=n===x?(v===""?null:Math.max(0,Number(v)||0)):(cur[kk]!=null?cur[kk]:null)});
+ const str=ks.filter(k=>m[k]!=null).map(k=>k+":"+m[k]).join(",");
+ const row={id:d.id||item+"-"+office,item,office};if(!d.id){row.state="未配布";row.date="";row.by=""}
+ if(done)row.note=(String(d.note||"").replace(/\s*予定:\S*/,"")+(str?" 予定:"+str:"")).trim();else row.qty=str;
+ if(el)el.disabled=true;try{await persist([{table:"dist",row}]);buzz(30);render()}catch(e){if(el)el.disabled=false;toast("保存できませんでした："+errText(e))}};
 function itemsAdmin(){const t=today();
  return `<div class="section-t"><h2>配布物（カレンダー・カタログ・チラシなど）</h2></div>
  <div class="form"><div class="meta">配布期間中だけ、居宅の画面に「配布済にする」ボタンが出ます。集計はスプレッドシートの「集計_配布」シートで見られます。居宅ごとの数を決めたいときは、スプレッドシートの「配布記録」シートに行を入れてください。</div>
@@ -2753,17 +2760,18 @@ function knLines(u){const k=u&&u.code?knGet(u.code):null;if(!k)return [];const L
  const it=(k.it||[]);if(it.length){const on=it.filter(x=>!x.e),off=it.filter(x=>x.e);
   L.push(["レンタル品",(on.length?on.map(x=>"・"+x.n+(x.s?"（"+x.s+"〜）":"")).join("\n"):"（今借りている品はありません）")+(off.length?"\n― 解約済 ―\n"+off.map(x=>"・"+x.n+"（"+x.e+(x.y?" "+x.y:"")+"）").join("\n"):"")])}
  return L}
-let KN_NEW=null,KN_END=null;
+let KN_NEW=null,KN_END=null,KN_ALL=null;
 async function knRead(f){await loadXlsx();const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
  for(const n of wb.SheetNames){const rows=XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:"",raw:true});if(!rows.length)continue;const h=rows[0];
   if("顧客コード" in h&&"初回レンタル開始日" in h)return {t:"new",rows};
-  if("顧客コード" in h&&"解約日" in h&&"商品名" in h)return {t:"end",rows}}
+  if("顧客コード" in h&&"解約日" in h&&"商品名" in h)return {t:"end",rows};
+  if("顧客コード" in h&&"解約日" in h)return {t:"all",rows}}   /* 11/25 社長：「全解約」の一覧（1人1行・商品名なし）。個別解約はあとで */
  const r0=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:true});
  if(!r0.length)throw new Error(f.name+" にデータの行がありません（見出しだけかもしれません）");
  throw new Error(f.name+" は「新規契約」「契約解約リスト」のどちらでもないようです")}
 window.knPick=async inp=>{const fs=[...inp.files];inp.value="";if(!fs.length)return;S.knSt="読み込み中…";render();const msg=[];
  try{for(const f of fs){const R=await knRead(f);const rows=R.rows.filter(r=>kcG(r,"顧客コード"));
-   if(R.t==="new"){KN_NEW={name:f.name,rows};msg.push("新規契約 "+rows.length+"行")}else{KN_END={name:f.name,rows};msg.push("契約解約リスト "+rows.length+"行")}}
+   if(R.t==="new"){KN_NEW={name:f.name,rows};msg.push("新規契約 "+rows.length+"行")}else if(R.t==="all"){KN_ALL={name:f.name,rows};msg.push("全解約 "+rows.length+"行")}else{KN_END={name:f.name,rows};msg.push("契約解約リスト "+rows.length+"行")}}
   S.knSt="";knMake()}catch(e){S.knSt="読み込めませんでした："+(e&&e.message||errText(e))}render()};
 function knMake(){const ops=[],now=new Date().toISOString(),by=myId(),byName=USER?USER.name:"デモ",K={},C={};
  const kOf=code=>K[code]||(K[code]=Object.assign({it:[]},knGet(code)||{}));
@@ -2792,12 +2800,15 @@ function knMake(){const ops=[],now=new Date().toISOString(),by=myId(),byName=USE
     if(!knEnded(k))return;P.end.push({code,nm:nmBare(u.name),why,end:last,was,on:u.useState!=="終了"});
     if(u.useState!=="終了")ops.push({table:"clients",row:{id:u.id,useState:"終了"}})}
    else{if(k.end&&k.it.some(x=>!x.e&&(!x.s||x.s>k.end))){k.end="";k.why=""}P.part++}})}
+ if(KN_ALL)KN_ALL.rows.forEach(r=>{const code=kcG(r,"顧客コード"),u=cOf(code);if(!u){P.noCli++;return}const e=knD(r["解約日"]);if(!e)return;const k=kOf(code);
+  if(k.s&&k.s>e)return;const why=kcG(r,"中止理由")||kcG(r,"解約備考"),was=knEnded(k)&&k.end===e;k.end=e;k.why=why;k.ce=today();
+  P.end.push({code,nm:nmBare(u.name),why,end:e,was,on:u.useState!=="終了"});if(u.useState!=="終了")ops.push({table:"clients",row:{id:u.id,useState:"終了"}})});
  Object.entries(K).forEach(([code,k])=>{const u=C[code]||cOf(code),on=(k.it||[]).filter(x=>!x.e).map(x=>x.n);if(u&&KN_END&&k.it.length)ops.push({table:"clients",row:{id:u.id,items:on.join("・")}})});
  Object.entries(K).forEach(([code,k])=>ops.push({table:"caselog",row:{id:"kn"+code,case:"k:"+code,kind:"契約",text:JSON.stringify(k),rec:"",by,byName,at:now}}));
  S.knPlan=ops.length?Object.assign(P,{ops}):null}
 window.knGo=async b=>{const pl=S.knPlan;if(!pl)return;if(!await impPre("新規・解約",pl.ops))return;b.disabled=true;
  try{for(let i=0;i<pl.ops.length;i+=100){S.knSt="取り込み中… "+Math.min(i+100,pl.ops.length)+" / "+pl.ops.length;const st=$("#knSt");if(st)st.textContent=S.knSt;await persist(pl.ops.slice(i,i+100))}
-  impLog("新規・解約",[KN_NEW&&KN_NEW.name,KN_END&&KN_END.name].filter(Boolean).join(" / "));S.knSt="✓ 取り込みました（新規 "+pl.nw.length+"人・解約 "+pl.end.filter(x=>!x.was).length+"人）";S.knPlan=null;KN_NEW=KN_END=null;buzz(60);render()}
+  impLog("新規・解約",[KN_NEW&&KN_NEW.name,KN_END&&KN_END.name,KN_ALL&&KN_ALL.name].filter(Boolean).join(" / "));S.knSt="✓ 取り込みました（新規 "+pl.nw.length+"人・解約 "+pl.end.filter(x=>!x.was).length+"人）";S.knPlan=null;KN_NEW=KN_END=KN_ALL=null;buzz(60);render()}
  catch(e){b.disabled=false;S.knSt="取り込めませんでした："+errText(e);render()}};
 function knMonthSum(){const M={};(DB.caselog||[]).forEach(l=>{if(l.kind!=="契約"||l.state==="削除")return;let k;try{k=JSON.parse(l.text||"{}")}catch(e){return}
   const code=String(l.case||"").slice(2);if(k.m)(M[k.m]=M[k.m]||{n:[],e:[]}).n.push({code,k});if(knEnded(k)){const m=k.end.slice(0,7);(M[m]=M[m]||{n:[],e:[]}).e.push({code,k})}});return M}
@@ -2805,9 +2816,9 @@ function knBox(){if(!canImport())return "";const pl=S.knPlan,M=knMonthSum(),ms=O
  const cn=code=>{const u=DB.clients.find(x=>x.code===code);return u?esc(nmBare(u.name)):esc(code)};
  const nf=pl?Object.entries(pl.noOff):[];
  return `<div class="form" style="margin-bottom:10px"><b>🆕 新規・解約を取り込む（毎月）</b>
- <div class="meta">ケアレンツの「新規契約」と「契約解約リスト」のExcelを選んでください（2つ一緒に選べます。どちらか片方でもOK）。何度入れても上書きで、重複しません。新規の人は利用者一覧に入り、全部の品が解約になった人は「終了」になります（地図の🔔確認待ちに出ます）。</div>
+ <div class="meta">ケアレンツの「新規契約」と「契約解約リスト」（または「全解約」の一覧）のExcelを選んでください（2つ一緒に選べます。どちらか片方でもOK）。何度入れても上書きで、重複しません。新規の人は利用者一覧に入り、全部の品が解約になった人は「終了」になります（地図の🔔確認待ちに出ます）。</div>
  <div style="margin-top:6px"><label class="btn primary" for="kn-f" style="display:inline-flex">Excelを選ぶ（新規・解約）</label><input type="file" id="kn-f" multiple accept=".xlsx,.xls,.csv" onchange="knPick(this)" style="position:absolute;opacity:0;width:1px;height:1px">
- ${KN_NEW?` <span class="meta">✓ 新規：${esc(KN_NEW.name)}</span>`:""}${KN_END?` <span class="meta">✓ 解約：${esc(KN_END.name)}</span>`:""}</div>
+ ${KN_NEW?` <span class="meta">✓ 新規：${esc(KN_NEW.name)}</span>`:""}${KN_END?` <span class="meta">✓ 解約：${esc(KN_END.name)}</span>`:""}${KN_ALL?` <span class="meta">✓ 全解約：${esc(KN_ALL.name)}</span>`:""}</div>
  <div class="meta" id="knSt" style="margin-top:4px">${esc(S.knSt||"")}</div>
  ${pl?`<div class="match" style="margin-top:6px">新規 <b>${pl.nw.length}人</b>（一覧に追加 ${pl.add}・更新 ${pl.upd}） ・ 全部解約 <b>${pl.end.filter(x=>!x.was).length}人</b>${pl.part?" ・ 一部だけ解約 "+pl.part+"人":""}${pl.noCli?" ・ 利用者一覧に無い人 "+pl.noCli+"人（先に新規か請求データを入れてください）":""}</div>
  ${pl.end.filter(x=>!x.was).length?`<div class="meta" style="margin-top:4px">終了にする人：${pl.end.filter(x=>!x.was).slice(0,30).map(x=>esc(x.nm)+(x.why?"（"+esc(x.why)+"）":"")).join("、")}${pl.end.length>30?" ほか":""}</div>`:""}
@@ -3818,15 +3829,16 @@ function distTable(){const its=DB.items.slice().sort((a,b)=>String(b.start).loca
   <select class="sim" onchange="S.dtItem=this.value;render()">${its.map(x=>`<option value="${x.id}" ${x.id===it.id?"selected":""}>${esc(x.name)}</option>`).join("")}</select>
   <select class="sim" onchange="S.dtCmp=this.value;render()"><option value="">比べる：なし</option>${its.filter(x=>x.id!==it.id).map(x=>`<option value="${x.id}" ${cp&&x.id===cp.id?"selected":""}>比べる：${esc(x.name)}</option>`).join("")}</select>
   <select class="sim" onchange="S.dtSt=this.value;render()"><option value="">居宅の担当：全員</option>${stList.map(n=>`<option ${st===n?"selected":""}>${esc(n)}</option>`).join("")}</select>
-  <div class="seg">${[["","全部"],["done","配った"],["yet","まだ"]].map(([k,l])=>`<button type="button" class="${sf===k?"on":""}" onclick="S.dtF='${k}';render()">${l}</button>`).join("")}</div></div>
+  <div class="seg">${[["","全部"],["done","配った"],["yet","まだ"]].map(([k,l])=>`<button type="button" class="${sf===k?"on":""}" onclick="S.dtF='${k}';render()">${l}</button>`).join("")}</div>${ks.length?`<button class="btn sm ${S.dtPlan?"primary":""}" type="button" onclick="S.dtPlan=!S.dtPlan;render()">${S.dtPlan?"✓ 予定を直し終わる":"✏ 予定の部数を直す"}</button>`:""}</div>
+ ${S.dtPlan?`<div class="notice" style="margin-bottom:8px">各居宅の予定の部数を直せます（入れたらすぐ保存）。空にするとスプレッドシートの「カレンダー」の数に戻ります。</div>`:""}
  <div class="form" style="padding:8px 10px;margin-bottom:8px"><div><span style="font-weight:700">合計</span>　居宅 ${rows.filter(r=>r.done).length} / ${rows.length}件に配布${kn.length?"　"+ks.map((k,x)=>`${esc(k)} <span style="font-weight:700;font-size:17px">${sQ[x]}</span>${sP[x]?"／予定 "+sP[x]:""}部`).join("　"):""}</div>
   ${Object.keys(by).length?`<div class="meta" style="margin-top:4px">渡した人：${Object.keys(by).sort().map(w=>`<span style="font-weight:700">${esc(w)}</span> ${by[w].n}件${kn.length?"（"+ks.map((k,x)=>esc(k)+" "+by[w].k[x]).join("・")+"）":""}`).join("　")}</div>`:""}</div>
  <div class="rtw"><table class="rt"><thead><tr><th>居宅</th><th>居宅の担当</th>${ks.map(k=>`<th class="num">${esc(k)}</th>`).join("")}${ks.length?"":"<th>配布</th>"}<th>渡した人</th><th>日付</th>${cp?`<th class="num">${esc(cp.name)}</th>`:""}</tr></thead><tbody>
- ${rows.map(r=>`<tr onclick="openOffice('${r.o.id}')" style="${r.done?"":"background:#fff8f0"}"><td><b>${esc(r.o.name)}</b></td><td>${esc(r.st)}</td>${kn.map(k=>`<td class="num">${r.done?`<b>${r.qm[k]||0}</b>`:"−"}${r.pl[k]?`<span class="meta">／${r.pl[k]}</span>`:""}</td>`).join("")}${ks.length?"":`<td>${r.done?"✓":"−"}</td>`}<td>${esc(r.done?r.d.by||"":"")}</td><td class="num">${esc(r.done?md(r.d.date||""):"")}</td>${cp?`<td class="num">${r.cTot==null?"−":Object.keys(r.cq).length?Object.entries(r.cq).map(([k,v])=>esc(k)+v).join(" "):"✓"}</td>`:""}</tr>`).join("")}
+ ${rows.map(r=>`<tr ${S.dtPlan?"":`onclick="openOffice('${r.o.id}')"`} style="${r.done?"":"background:#fff8f0"}"><td><b>${esc(r.o.name)}</b></td><td>${esc(r.st)}</td>${kn.map((k,x)=>S.dtPlan?`<td class="num">${r.done?`<b>${r.qm[k]||0}</b>／`:""}<input type="number" min="0" inputmode="numeric" style="width:56px" value="${r.pl[k]!=null?r.pl[k]:""}" onchange="distPlan('${it.id}','${r.o.id}',${x},this.value,this)"></td>`:`<td class="num">${r.done?`<b>${r.qm[k]||0}</b>`:"−"}${r.pl[k]?`<span class="meta">／${r.pl[k]}</span>`:""}</td>`).join("")}${ks.length?"":`<td>${r.done?"✓":"−"}</td>`}<td>${esc(r.done?r.d.by||"":"")}</td><td class="num">${esc(r.done?md(r.d.date||""):"")}</td>${cp?`<td class="num">${r.cTot==null?"−":Object.keys(r.cq).length?Object.entries(r.cq).map(([k,v])=>esc(k)+v).join(" "):"✓"}</td>`:""}</tr>`).join("")}
  <tr style="font-weight:700;background:#eef5f3"><td>合計</td><td>${rows.length}件</td>${kn.map((k,x)=>`<td class="num">${sQ[x]}${sP[x]?`<span class="meta">／${sP[x]}</span>`:""}</td>`).join("")}${ks.length?"":`<td>${rows.filter(r=>r.done).length}</td>`}<td></td><td></td>${cp?"<td></td>":""}</tr>
  </tbody></table></div><div class="meta" style="margin-top:6px">数字は「渡した部数／予定」。予定はスプレッドシートの「カレンダー」の卓上・3カ月・1カ月から出します。行を押すとその居宅を開きます。</div>`}
 /* 当面は社長だけで試験運用（11/11）。ほかの人を足すときは NP_USERS に名前を入れる */
-const NP_USERS=[];const npOn=()=>MODE==="demo"||canAdmin()||(!!USER&&NP_USERS.some(n=>String(USER.name||"").replace(/[\s　]/g,"").includes(n)));
+const NP_USERS=[];const npOn=()=>MODE==="demo"||canAdmin()||!!USER;   /* 11/26 社長：各営業も日報を出せる（自分の分だけ。全員の・現在地・配布表は社長だけ） */
 function viewNippo(){if(!npOn()){S.view="sched";return viewSched()}if(S.npAll===undefined&&canAdmin())S.npAll=true;if(S.npDist&&canAdmin())return distTable();if(S.npGps&&canAdmin())return `<div class="section-t"><h2>📡 営業の現在地</h2><button class="btn sm" type="button" onclick="S.npGps=false;render()">← 日報報告</button></div>${gpBox()}`;const d=S.npDate||today(),em=myId(),nm=USER?USER.name:"デモ",all=S.npAll&&canAdmin(),mine=npGet(d,em);
  const shift=k=>{const t=new Date(d);t.setDate(t.getDate()+k);return t.toLocaleDateString("sv-SE")};
  const head=`<div class="section-t"><h2>📝 日報報告</h2>${canAdmin()?`<button class="btn" type="button" style="font-size:18px" title="営業の現在地" onclick="S.npGps=true;S.gpOpen=true;render();setTimeout(gpMap,60)">📡 現在地</button> <button class="btn" type="button" onclick="S.npDist=true;render()">📦 配布表</button>`:""}</div>
@@ -3952,7 +3964,7 @@ window.benchRun=async b=>{const out=$("#benchOut");b.disabled=true;out.textConte
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 /* 11/18 社長：古い版のまま使うとデータが消えるので、新しい版が出たら必ず更新させる。
    10分ごと＋アプリに戻ったときに公開中の index.html を見て、APP_VER が違えば赤い帯→入力中でなければ全画面で更新を求める */
-const APP_VER="w116";
+const APP_VER="w117";
 let VER_NEW="",VER_T0=0;
 async function verCheck(){if(MODE!=="live"||location.protocol!=="https:")return;try{
  const t=await fetch(location.pathname+"?vc="+Date.now(),{cache:"no-store"}).then(r=>r.ok?r.text():"");const m=t.match(/const APP_VER="([^"]+)"/);
