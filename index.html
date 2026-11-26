@@ -556,7 +556,11 @@ function hereId(){const n=nearest()[0];return n&&n.d<=ARRIVE_M?n.o.id:null}
 function typing(){const a=document.activeElement;
  if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest("#app"))return true;
  return !!(S.cmEdit||S.calEditing||S.bulk||S.recOpen||($("#f-text")&&$("#f-text").value)||($("#f-trans")&&$("#f-trans").value))}
+/* 11/26 社長：PCはGPSがなく回線から推測して尾道などになる。誤差1km以上は会社（福山市引野町南1-18-25）を現在地にする */
+const HQ_ADDR="広島県福山市引野町南1-18-25";let HQ=null;try{HQ=JSON.parse(localStorage.getItem("hqPos")||"null")}catch(e){}
+async function hqGet(){if(HQ||MODE!=="live")return HQ;try{const d=await api("geo",{addrs:[HQ_ADDR]}),g=d.res&&d.res[0];if(g&&isFinite(g.lat)){HQ={lat:+g.lat,lng:+g.lng};try{localStorage.setItem("hqPos",JSON.stringify(HQ))}catch(e){}}}catch(e){}return HQ}
 function onPos(lat,lng,src){
+ if(src==="gps"&&(window.__lastAcc||0)>1000){if(HQ){lat=HQ.lat;lng=HQ.lng;window.__lastAcc=30;src="hq"}else{hqGet().then(h=>{if(h)onPos(h.lat,h.lng,"hq")});return}}
  try{setTimeout(()=>lmNear(lat,lng),0)}catch(e){}
  const before=hereId(),first=!S.pos;
  S.pos={lat,lng,acc:(window.__lastAcc||null)}; S.gps=src;
@@ -764,7 +768,7 @@ function lmActData(d){const all=lmCanSt(),me=USER?stUni(USER.name):"デモ",A={}
  const rows={};(DB.caselog||[]).forEach(l=>{if(l.kind!=="地図"||l.state==="削除")return;let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}j.code=String(l.case||"").slice(2);rows[j.code]=j;
   if(j.calAt===d)add(j.calBy,"cal",j,"");if(j.ins===d&&j.insBy)add(j.insBy,"ins",j,"");if(j.gone===d&&j.goneHide)add(j.goneBy,"out",j,j.goneWhy||"")});
  (DB.caselog||[]).forEach(l=>{if(l.kind!=="利用者訪問"||!l.at||new Date(l.at).toLocaleDateString("sv-SE")!==d)return;const code=String(l.case||"").slice(2);add(l.byName,"ck",rows[code]||{code},new Date(l.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}))});
- pcVisits(d).forEach(v=>add(v.byName,"pc",{nm:pcIc(v.t)+" "+v.nm},new Date(v.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})));
+ pcVisits(d).forEach(v=>add(v.byName,"pc",{nm:pcLbl(v.t)+" "+v.nm},new Date(v.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})));
  return A}
 function lmActBox(){const d=S.lmActD||today(),A=lmActData(d),ks=Object.keys(A).sort(),sum=k=>ks.reduce((n,w)=>n+A[w][k].length,0),sh=x=>{const nd=new Date(d+"T00:00:00");nd.setDate(nd.getDate()+x);return nd.toLocaleDateString("sv-SE")};
  const nm=x=>esc(x.j&&x.j.nm||lmName(x.j||{})||"");
@@ -870,27 +874,41 @@ const ckBtn=(code,cls)=>`<button class="btn ${cls||""}" type="button" onclick="c
 
 /* ===== 11/25 社長：利用者・居宅以外（病院・施設・包括・新規の家・業者など）でもチェックインして、日報・案件・事務への知らせにつなぐ
    caselog kind=場所訪問, case="p:"+場所id, text=JSON{t,nm,lat,lng,memo,away}。よく行く場所は kind=場所（id="pl"+…）で覚えて、近くに来たら知らせる ===== */
-const PC_T=[["病院","🏥"],["施設","🏢"],["包括","🤝"],["新規の家","🏠"],["業者","🚚"],["その他","📍"]];
-const pcIc=t=>(PC_T.find(x=>x[0]===t)||["","📍"])[1];
+const PC_T=[["病院","🏥"],["施設","🏢"],["包括","🤝"],["新規の家","🏠"],["業者","🚚"],["工事","🔨"],["その他","📍"]];
+const pcIc=t=>(PC_T.find(x=>x[0]===t)||["","✏"])[1];
+const pcLbl=t=>PC_T.some(x=>x[0]===t)?pcIc(t):"✏"+t;
+const pcFreeTypes=()=>[...new Set(pcVisits().map(v=>v.t).concat(pcPlaces().map(p=>p.t)).filter(t=>t&&!PC_T.some(x=>x[0]===t)))];
 const pcPlaces=()=>(DB.caselog||[]).filter(l=>l.kind==="場所"&&l.state!=="削除").map(l=>{let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}return Object.assign({id:l.id},j)}).filter(x=>x.nm);
 const pcVisits=d=>(DB.caselog||[]).filter(l=>l.kind==="場所訪問"&&l.state!=="削除"&&(!d||(l.at&&new Date(l.at).toLocaleDateString("sv-SE")===d))).map(l=>{let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}return Object.assign({by:l.by,byName:l.byName,at:l.at,id:l.id},j)});
 const pcNear=()=>{if(!S.pos)return null;const done=new Set(pcVisits(today()).filter(v=>String(v.by||"").toLowerCase()===String(myId()).toLowerCase()).map(v=>v.nm));
  return pcPlaces().filter(p=>p.lat!=null&&!done.has(p.nm)&&!(S.pcSkip||[]).includes(p.id)).map(p=>({p,d:dist(S.pos.lat,S.pos.lng,+p.lat,+p.lng)})).filter(x=>x.d<=150).sort((a,b)=>a.d-b.d)[0]||null};
+/* 11/26 社長：かんたんなタスク（案件にしない用事）。caselog kind=ちょいタスク, text=JSON{t,due,where}, state="済" で完了 */
+const tdList=()=>(DB.caselog||[]).filter(l=>l.kind==="ちょいタスク"&&l.state!=="削除"&&l.state!=="済"&&String(l.by||"").toLowerCase()===String(myId()).toLowerCase()).map(l=>{let j={};try{j=JSON.parse(l.text||"{}")}catch(e){}return Object.assign({id:l.id,at:l.at},j)}).sort((a,b)=>String(a.due||"9").localeCompare(String(b.due||"9"))||String(a.at).localeCompare(String(b.at)));
+function tdBox(){const L=tdList(),t=today();
+ return `<div class="form" style="padding:8px 10px;margin:0 0 8px"><div style="display:flex;justify-content:space-between;align-items:center"><b>✅ ちょいタスク ${L.length?`<span class="meta">${L.length}件</span>`:""}</b><button class="btn sm" type="button" onclick="S.tdNew=!S.tdNew;render()">${S.tdNew?"×":"＋ 足す"}</button></div>
+ ${S.tdNew?`<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="td-t" class="sim" style="flex:1 1 200px" placeholder="すること"><input id="td-d" type="date" class="sim"><button class="btn sm primary" type="button" onclick="tdAdd(this)">入れる</button></div>`:""}
+ ${L.map(x=>{const od=x.due&&x.due<t;return `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-top:1px solid #eee"><button class="btn sm" type="button" title="済んだ" onclick="tdDone('${x.id}',this)">✓</button><div style="flex:1;min-width:0"><div style="${od?"color:#c62828;font-weight:700":""}">${esc(x.t||"")}</div><div class="meta">${x.due?(od?"⚠ ":"")+"期限 "+esc(x.due.slice(5).replace("-","/"))+"　":""}${esc(x.where||"")}</div></div></div>`}).join("")||(S.tdNew?"":'<div class="meta" style="margin-top:4px">チェックインのとき「次にすること」を書くと、ここに出ます。</div>')}</div>`}
+window.tdAdd=b=>{const t=String($("#td-t").value||"").trim(),d=$("#td-d").value||"";if(!t){toast("することを入れてください");return}S.tdNew=false;
+ saveFast([{table:"caselog",row:{id:newId("td"),case:"td",kind:"ちょいタスク",text:JSON.stringify({t,due:d,where:""}),rec:"",state:"",by:myId(),byName:USER?USER.name:"デモ",at:new Date().toISOString()}}],"入れました")};
+window.tdDone=(id,b)=>{if(b)b.disabled=true;saveFast([{table:"caselog",row:{id,state:"済"}}],"済みにしました")};
 function pcBox(){const nr=!S.pc&&pcNear();
  const near=nr?`<div class="form" style="padding:8px 10px;margin:0 0 6px;border:2px solid var(--accent,#3b82f6)">${pcIc(nr.p.t)} <b>${esc(nr.p.nm)}</b> の近くです（${lmDistT(nr.d)}）<div style="display:flex;gap:6px;margin-top:6px"><button class="btn sm primary" type="button" onclick="pcOpen('${nr.p.id}')">📍 チェックイン</button><button class="btn sm" type="button" onclick="(S.pcSkip=S.pcSkip||[]).push('${nr.p.id}');render()">今はいい</button></div></div>`:"";
  if(!S.pc)return near+`<button class="btn sm" type="button" style="margin:0 0 6px" onclick="pcOpen('')">🏥 病院・施設などにチェックイン</button>`;
  const f=S.pc,pl=pcPlaces();
  return `<div class="form" style="padding:8px 10px;margin:0 0 6px"><div style="display:flex;justify-content:space-between;align-items:center"><b>🏥 ほかの場所にチェックイン</b><button class="btn sm" type="button" onclick="S.pc=null;render()">×</button></div>
- <div class="seg" style="margin:6px 0;flex-wrap:wrap">${PC_T.map(([t,ic])=>`<button type="button" class="${f.t===t?"on":""}" onclick="S.pc.t='${t}';render()">${ic} ${t}</button>`).join("")}</div>
+ <div class="seg" style="margin:6px 0;flex-wrap:wrap">${PC_T.map(([t,ic])=>`<button type="button" class="${f.t===t&&!f.free?"on":""}" onclick="S.pc.t='${t}';S.pc.free=false;render()">${ic} ${t}</button>`).join("")}<button type="button" class="${f.free?"on":""}" onclick="S.pc.free=true;S.pc.t='';render();setTimeout(()=>{const e=$('#pc-ft');e&&e.focus()},50)">✏ フリー</button></div>
+ ${f.free?`<input id="pc-ft" class="sim" list="pc-fl" style="width:100%;margin-bottom:6px" placeholder="種類を自由に（例：家電のお客さま・工事の打合せ）" value="${esc(f.t||"")}" oninput="S.pc.t=this.value"><datalist id="pc-fl">${pcFreeTypes().map(t=>`<option value="${esc(t)}">`).join("")}</datalist>`:""}
  <input id="pc-nm" class="sim" list="pc-dl" style="width:100%" placeholder="場所の名前（例：〇〇病院 地域連携室）" value="${esc(f.nm||"")}" oninput="S.pc.nm=this.value;const p=pcPlaces().find(x=>x.nm===this.value);if(p&&p.t)S.pc.t=p.t">
  <datalist id="pc-dl">${pl.map(p=>`<option value="${esc(p.nm)}">`).join("")}</datalist>
  <textarea id="pc-memo" class="sim" rows="3" style="width:100%;margin-top:6px" placeholder="メモ（話したこと・次にすること）。🎤はキーボードの音声入力で" oninput="S.pc.memo=this.value">${esc(f.memo||"")}</textarea>
+ <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="pc-todo" class="sim" style="flex:1 1 200px" placeholder="次にすること（あれば・やることに出ます）" value="${esc(f.todo||"")}" oninput="S.pc.todo=this.value"><input type="date" class="sim" value="${esc(f.due||"")}" onchange="S.pc.due=this.value" title="期限（なくてもOK）"></div>
  <label class="meta" style="display:block;margin:4px 0"><input type="checkbox" ${f.keep!==false?"checked":""} onchange="S.pc.keep=this.checked"> よく行く場所として覚える（近くに来たら知らせます）</label>
  <label class="meta" style="display:block;margin:4px 0"><input type="checkbox" ${f.urg?"checked":""} onchange="S.pc.urg=this.checked"> 🚨至急（事務に知らせるとき）</label>
  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn primary" type="button" onclick="pcSave('',this)">📍 チェックイン（日報に入る）</button><button class="btn" type="button" onclick="pcSave('case',this)">＋ 案件カードも作る</button><button class="btn" type="button" onclick="pcSave('info',this)">📢 事務に知らせる</button></div>
  <div class="meta">時刻と今の位置も一緒に残ります。</div></div>`}
-window.pcOpen=id=>{const p=pcPlaces().find(x=>x.id===id);S.pc={t:p?p.t||"その他":"病院",nm:p?p.nm:"",memo:"",keep:true};render();setTimeout(()=>{const e=$(p?"#pc-memo":"#pc-nm");e&&e.focus()},60)};
-window.pcSave=async(act,b)=>{const f=S.pc;if(!f)return;const nm=String(f.nm||"").trim(),memo=String(f.memo||"").trim();if(!nm){toast("場所の名前を入れてください");return}
+window.pcOpen=id=>{const p=pcPlaces().find(x=>x.id===id);const ft=p&&p.t&&!PC_T.some(x=>x[0]===p.t);S.pc={t:p?p.t||"その他":"病院",free:!!ft,nm:p?p.nm:"",memo:"",keep:true};render();setTimeout(()=>{const e=$(p?"#pc-memo":"#pc-nm");e&&e.focus()},60)};
+window.pcSave=async(act,b)=>{const f=S.pc;if(!f)return;const nm=String(f.nm||"").trim(),memo=String(f.memo||"").trim(),todo=String(f.todo||"").trim();if(!nm){toast("場所の名前を入れてください");return}
+ f.t=String(f.t||"").trim()||"その他";
  if(act&&!memo){toast("メモに内容を入れてください");return}
  const now=new Date().toISOString(),me=USER?USER.name:"デモ",pos=S.pos?{lat:+(+S.pos.lat).toFixed(6),lng:+(+S.pos.lng).toFixed(6)}:{};
  let p=pcPlaces().find(x=>x.nm===nm);const ops=[];
@@ -898,6 +916,7 @@ window.pcSave=async(act,b)=>{const f=S.pc;if(!f)return;const nm=String(f.nm||"")
  else if(p&&p.lat==null&&pos.lat!=null)ops.push({table:"caselog",row:{id:p.id,case:"pl",kind:"場所",text:JSON.stringify({t:p.t||f.t,nm,lat:pos.lat,lng:pos.lng}),rec:"",by:myId(),byName:me,at:now}});
  const away=p&&p.lat!=null&&pos.lat!=null?dist(pos.lat,pos.lng,+p.lat,+p.lng)>300:0;
  ops.push({table:"caselog",row:{id:newId("ck"),case:"p:"+(p?p.id:nm),kind:"場所訪問",text:JSON.stringify({t:f.t,nm,lat:pos.lat,lng:pos.lng,memo,away:away?1:0}),rec:"",by:myId(),byName:me,at:now}});
+ if(todo)ops.push({table:"caselog",row:{id:newId("td"),case:"td",kind:"ちょいタスク",text:JSON.stringify({t:todo,due:f.due||"",where:pcLbl(f.t)+" "+nm}),rec:"",state:"",by:myId(),byName:me,at:now}});
  let cid="";if(act==="case"){const row=newCaseRow({type:"その他",title:pcIc(f.t)+" "+nm,next:firstLine(memo).slice(0,60)});cid=row.id;ops.push({table:"cases",row},clog(row.id,"作成",f.t+"（"+nm+"）でチェックインして作りました："+memo))}
  if(act==="info")ops.push({table:"reqs",row:{id:newId("q"),office:"",cm:"",rec:"",text:(f.urg?"🚨至急 ":"")+"📢 お知らせ："+f.t+"（"+nm+"）\n"+memo,staff:me,state:"未対応",at:now}});
  if(b)b.disabled=true;
@@ -1188,7 +1207,7 @@ window.lmFixHere=async (code,b)=>{if(!S.pos){toast("現在地が取れていま�
 window.lmFixMap=code=>{S.lmFix=code;S.lmDet=null;S.view="umap";render();toast("地図の正しい場所を押してください")};
 window.lmLocate=()=>{if(S.pos&&UMAP){UMAP.setView([S.pos.lat,S.pos.lng],17);return}
  if(!navigator.geolocation){toast("この端末では現在地が使えません");return}toast("現在地を調べています…");
- navigator.geolocation.getCurrentPosition(p=>{S.pos={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy};if(UMAP){UMAP.setView([S.pos.lat,S.pos.lng],17);drawUmap()}},e=>toast("現在地が取れませんでした（位置情報の許可を確かめてください）"),{enableHighAccuracy:true,timeout:15000,maximumAge:10000})};
+ navigator.geolocation.getCurrentPosition(p=>{S.pos=p.coords.accuracy>1000&&HQ?{lat:HQ.lat,lng:HQ.lng,acc:30}:{lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy};if(UMAP){UMAP.setView([S.pos.lat,S.pos.lng],17);drawUmap()}},e=>toast("現在地が取れませんでした（位置情報の許可を確かめてください）"),{enableHighAccuracy:true,timeout:15000,maximumAge:10000})};
 let UMAP=null;
 async function drawUmap(){const el=$("#umap");if(!el)return;try{await loadLeaflet()}catch(e){el.textContent=e.message;return}if(!$("#umap"))return;
  const fresh=!!window.__lmAway;window.__lmAway=false;const c=UMAP&&!fresh?UMAP.getCenter():null,z=UMAP&&!fresh?UMAP.getZoom():null;if(UMAP){try{UMAP.remove()}catch(e){}UMAP=null}el.innerHTML="";
@@ -2304,6 +2323,7 @@ const gpOn=()=>MODE==="live"&&!!USER&&!jimuMode()&&!!navigator.geolocation;
 const gpHour=()=>{const h=new Date().getHours();return h>=GP_H[0]&&h<GP_H[1]};
 function gpTick(force){if(!gpOn()||!gpHour()||document.visibilityState!=="visible")return;
  navigator.geolocation.getCurrentPosition(async p=>{const c=p.coords,now=Date.now();
+  if((c.accuracy||0)>1000)return;   /* PCなど誤差の大きい位置は送らない */
   if(!force&&GP_LAST&&now-GP_LAST.t<10*60000&&dist(GP_LAST.lat,GP_LAST.lng,c.latitude,c.longitude)<40)return;   /* 動いていなければ10分に1回だけ */
   const row={id:"gp"+myId(),case:"gp",kind:"位置",text:JSON.stringify({lat:+c.latitude.toFixed(6),lng:+c.longitude.toFixed(6),acc:Math.round(c.accuracy||0)}),rec:"",by:myId(),byName:USER.name||"",at:new Date().toISOString()};
   try{const d=await api("batch",{ops:[{table:"caselog",row:toServer("caselog",row)}]});(d.rows||[]).forEach(r=>applyOp("caselog",fromServer("caselog",r)));GP_LAST={t:now,lat:c.latitude,lng:c.longitude}}catch(e){}
@@ -3780,6 +3800,7 @@ function viewTodo(){markRead("sales");const t=today(),list=schedMine(),open=list
  const rts=(DB.rentals||[]).filter(r=>r.state!=="削除"&&(MODE==="demo"||staffEmail(r.staff)===me)&&rtHot(r));
  const users=canAdmin()&&MODE==="live"?[...new Map((DB.sched||[]).filter(s=>s.email).map(s=>[String(s.email).toLowerCase(),s.staff||s.email])).entries()]:[];
  return `<div class="section-t"><h2>やること</h2><button class="btn sm primary" type="button" onclick="schedNew()">＋ 予定を入れる</button>${npOn()?`<button class="btn sm" type="button" onclick="S.view='nippo';S.npDate=today();render();scrollTo(0,0)">📝 日報${npGet(today(),myId())?"（提出済）":""}</button>`:""}</div>
+ ${isJimu()||jimuMode()?"":pcBox()+tdBox()}
  ${users.length?`<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:8px">担当者 <select class="sim" onchange="S.schedWho=this.value;render()"><option value="">全員</option>${users.map(([e,n])=>`<option value="${esc(e)}" ${S.schedWho===e?"selected":""}>${esc(n)}</option>`).join("")}</select></label>`:""}
  ${S.schedEdit?schedForm():""}
  ${news.length?`<div class="section-t"><h2 style="font-size:16px;color:var(--accent)">連絡（事務・営業から）</h2><span class="meta">${news.length}件</span></div><div class="log">${news.map(x=>`<div>${x.html}${x.own?"":`<div style="margin:-4px 0 8px"><button class="btn sm" type="button" onclick="dismiss('${x.k}')">✓ 確認した</button></div>`}</div>`).join("")}</div>`:""}
@@ -3808,7 +3829,7 @@ function npAuto(d,em,nm){const me=String(em||"").toLowerCase(),mine=x=>String(x|
  const cks=(DB.caselog||[]).filter(l=>l.kind==="利用者訪問"&&l.state!=="削除"&&mine(l.by)&&day(l.at)).sort((a,b)=>String(a.at).localeCompare(String(b.at)));
  if(cks.length)L.push("■ 訪問した利用者 "+cks.length+"件\n"+cks.map(l=>{const j=lmRows().find(x=>"m:"+x.code===l.case);let t={};try{t=JSON.parse(l.text||"{}")}catch(e){}return "・"+new Date(l.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+" "+(j?lmName(j)+" 様":"利用者")+(t.away?"（離れた場所から）":"")}).join("\n"));
  const pcs=pcVisits(d).filter(v=>mine(v.by)).sort((a,b)=>String(a.at).localeCompare(String(b.at)));
- if(pcs.length)L.push("■ ほかの場所 "+pcs.length+"件\n"+pcs.map(v=>"・"+new Date(v.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+" "+pcIc(v.t)+" "+v.nm+(v.away?"（離れた場所から）":"")+(v.memo?"："+firstLine(v.memo).slice(0,60):"")).join("\n"));
+ if(pcs.length)L.push("■ ほかの場所 "+pcs.length+"件\n"+pcs.map(v=>"・"+new Date(v.at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+" "+pcLbl(v.t)+" "+v.nm+(v.away?"（離れた場所から）":"")+(v.memo?"："+firstLine(v.memo).slice(0,60):"")).join("\n"));
  if(sd.length)L.push("■ 済ませた予定 "+sd.length+"件\n"+sd.map(x=>"・"+(x.time?x.time+" ":"")+String(x.text||x.kind||"").slice(0,50)).join("\n"));
  if(tg)L.push("■ タグ読み取り "+tg+"件");
  return L.join("\n\n")||"（この日のアプリの記録はありません）"}
@@ -3854,7 +3875,7 @@ function viewNippo(){if(!npOn()){S.view="sched";return viewSched()}if(S.npAll===
   ${(x.cm||[]).length?`<div class="log" style="margin-top:6px">${cms(x)}</div>`:""}
   <div class="rbox" style="margin-top:6px"><textarea id="npc-${x._id}" rows="1" placeholder="コメントを書く"></textarea><button class="btn sm primary" type="button" onclick="npCm('${x._id}',this)">送る</button></div></div>`).join("")||'<div class="empty">この日の日報はまだありません</div>')}
  const auto=npAuto(d,em,nm),r=mine||{};
- return head+(mine?`<div class="notice" style="margin-bottom:8px">✓ ${esc(fmtAt(mine.at))} に提出済み。直して「もう一度提出」もできます。</div>`:"")+
+ return head+(isJimu()||jimuMode()||d!==today()?"":pcBox())+(mine?`<div class="notice" style="margin-bottom:8px">✓ ${esc(fmtAt(mine.at))} に提出済み。直して「もう一度提出」もできます。</div>`:"")+
  `<div class="form"><b>今日の記録（アプリから自動）</b><div style="white-space:pre-wrap;font-size:14px;margin:6px 0;padding:8px 10px;background:var(--bg);border-radius:8px">${esc(auto)}</div>
  <label>ひとこと（感想・反省・気づき・相談）<textarea id="np-memo" rows="3" placeholder="例：〇〇居宅の新任CMさんに挨拶できた。次は資料を持っていく">${esc(r.memo||"")}</textarea></label>
  <label>明日やること<textarea id="np-next" rows="3">${esc(r.next!=null?r.next:npNext(d,em))}</textarea></label>
@@ -3964,7 +3985,7 @@ window.benchRun=async b=>{const out=$("#benchOut");b.disabled=true;out.textConte
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 /* 11/18 社長：古い版のまま使うとデータが消えるので、新しい版が出たら必ず更新させる。
    10分ごと＋アプリに戻ったときに公開中の index.html を見て、APP_VER が違えば赤い帯→入力中でなければ全画面で更新を求める */
-const APP_VER="w117";
+const APP_VER="w118";
 let VER_NEW="",VER_T0=0;
 async function verCheck(){if(MODE!=="live"||location.protocol!=="https:")return;try{
  const t=await fetch(location.pathname+"?vc="+Date.now(),{cache:"no-store"}).then(r=>r.ok?r.text():"");const m=t.match(/const APP_VER="([^"]+)"/);
